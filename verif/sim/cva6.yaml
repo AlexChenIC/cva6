@@ -111,3 +111,20 @@
   tb_path: TB_PATH
   cmd: >
     make questa-testharness target=<target> variant=<variant> elf=<elf> path_var=<path_var> tool_path=<tool_path> isscomp_opts=<isscomp_opts> issrun_opts=<issrun_opts> isspostrun_opts=<isspostrun_opts> log=<log>
+
+###############################################################################
+# Metrics DSIM specific commands, variables
+###############################################################################
+- iss: dsim-testharness
+  path_var: RTL_PATH
+  tool_path: SPIKE_PATH
+  tb_path: TB_PATH
+  cmd: >
+    make dsim-testharness target=<target> variant=<variant> elf=<elf> path_var=<path_var> tool_path=<tool_path> isscomp_opts=<isscomp_opts> issrun_opts=<issrun_opts> isspostrun_opts=<isspostrun_opts> log=<log>
+
+#- iss: dsim-testharness-pk
+#  path_var: RTL_PATH
+#  tool_path: SPIKE_PATH
+#  tb_path: TB_PATH
+#  cmd: >
+#    make dsim-testharness-pk target=<target> variant=<variant> elf=<elf> path_var=<path_var> tool_path=<tool_path> isscomp_opts=<isscomp_opts> issrun_opts=<issrun_opts> isspostrun_opts=<isspostrun_opts> log=<log>

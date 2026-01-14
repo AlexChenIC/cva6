@@ -149,6 +149,20 @@ VCS_WORK_DIR            = $(CVA6_REPO_DIR)/verif/sim/vcs_results/default/vcs.d
 VSIM_WORK_DIR           = $(CVA6_REPO_DIR)/verif/sim/vsim_results/default/vsim.d
 XRUN_WORK_DIR           = $(CVA6_REPO_DIR)/verif/sim/xrun_results
 
+DSIM_RESULTS_DIR        ?= $(CVA6_REPO_DIR)/verif/sim/dsim_results
+DSIM_WORK_DIR           ?= dsim_work
+DSIM_IMAGE              ?= dsim.out
+DSIM_ACC_FLAGS          ?= +acc+b
+DSIM_DMP_FILE           ?= dsim.fst
+DSIM_DMP_FLAGS          ?= -waves $(DSIM_DMP_FILE)
+DSIM                   ?= dsim
+
+# Use UVM DPI only when DSIM_LIB_PATH is set
+DSIM_UVM_DPI :=
+ifdef DSIM_LIB_PATH
+DSIM_UVM_DPI = -pli_lib $(DSIM_LIB_PATH)/libuvm_dpi.so
+endif
+
 export CVA6_UVMT_DIR          = $(CVA6_REPO_DIR)/verif/tb/uvmt
 export CVA6_CORET_DIR          = $(CVA6_REPO_DIR)/verif/tb/core
 export CVA6_UVMT_PATH         = $(CVA6_REPO_DIR)/verif/tb/uvmt
@@ -394,6 +408,10 @@ xrun_clean_all:
 	@echo "[XRUN] Cleanup (entire xrun_work dir)"
 	rm -rf $(CVA6_REPO_DIR)/verif/sim/xrun_results/
 
+dsim_clean_all:
+	@echo "[DSIM] Cleanup (entire dsim_work dir)"
+	rm -rf $(DSIM_RESULTS_DIR)
+
 
 ###############################################################################
 # testharness specific commands, variables
@@ -460,11 +478,59 @@ questa-testharness:
 	$(tool_path)/spike-dasm --isa=$(variant) < $(path_var)/trace_rvfi_hart_00.dasm > $(log)
 	grep $(isspostrun_opts) $(path_var)/trace_rvfi_hart_00.dasm
 
+dsim-testharness:
+	@echo "[DSIM] Building & Running testharness"
+	mkdir -p $(DSIM_RESULTS_DIR)/$(DSIM_WORK_DIR)
+	DSIM_WORK_PATH=$(DSIM_RESULTS_DIR)/$(DSIM_WORK_DIR); \
+	DSIM_FLIST=$$DSIM_WORK_PATH/dsim.f; \
+	$(MAKE) -C $(path_var) dsim_flist flist=$(FLIST_CORE) DSIM_FLIST=$$DSIM_FLIST; \
+	cd $$DSIM_WORK_PATH && \
+	  $(DSIM) -sv -sv2012 -work $$DSIM_WORK_PATH \
+	    -top $(th_top_level) \
+	    -f dsim.f \
+	    $(if $(UVM_HOME), -uvm $(UVM_HOME) +incdir+$(UVM_HOME)/src $(UVM_HOME)/src/uvm_pkg.sv,) \
+	    $(DSIM_ACC_FLAGS) \
+	    +define+HPDCACHE_ASSERT_OFF \
+	    $(isscomp_opts) \
+	    -l dsim_compile.log \
+	    -genimage dsim_image; \
+	$(DSIM) +permissive \
+	    $(DSIM_ACC_FLAGS) \
+	    $(DSIM_DMP_FLAGS) \
+	    -l $(log).dsim \
+	    -image dsim_image \
+	    -work $$DSIM_WORK_PATH \
+	    $(if $(UVM_HOME), -sv_lib $(UVM_HOME)/src/dpi/libuvm_dpi.so,) \
+	    +permissive-off $(COMMON_RUN_ARGS)
+	# Move waveform into the log directory if present
+	[ ! -f $(DSIM_DMP_FILE) ] || mv $(DSIM_DMP_FILE) `dirname $(log)`/`basename $(log) .log`.fst
+	# Generate disassembled log
+	$(tool_path)/spike-dasm --isa=$(variant) < ./trace_rvfi_hart_00.dasm > $(log)
+	@if [ -n "$(isspostrun_opts)" ]; then \
+		grep $(isspostrun_opts) ./trace_rvfi_hart_00.dasm || true; \
+	fi
+
+dsim-testharness-pk:
+	@echo "[DSIM-PK] Building & Running testharness with proxy kernel"
+	DSIM_PK_WORK_DIR=$(DSIM_RESULTS_DIR)/$(DSIM_WORK_DIR)-pk; \
+	rm -rf $$DSIM_PK_WORK_DIR; \
+	mkdir -p $$DSIM_PK_WORK_DIR; \
+	PK_PATH=$(PK_INSTALL_DIR)/riscv-none-elf/bin/pk; \
+	PK_TOHOST_ADDR=$$(RISCV=$(RISCV) CV_SW_PREFIX=$(CV_SW_PREFIX) PK=$$PK_PATH; \
+		$$RISCV/bin/$$CV_SW_PREFIX nm -B $$PK_PATH | grep -w tohost | cut -d' ' -f1); \
+	PK_RUN_ARGS="++$$PK_PATH $(elf) +elf_file=$$PK_PATH +tohost_addr=$$PK_TOHOST_ADDR +signature=$(elf).signature_output +UVM_TESTNAME=uvmt_cva6_firmware_test_c +report_file=$(log).yaml +core_name=$(target) $(issrun_opts) \
+		-sv_lib $(SPIKE_INSTALL_DIR)/lib/libcustomext \
+		-sv_lib $(SPIKE_INSTALL_DIR)/lib/libyaml-cpp \
+		-sv_lib $(SPIKE_INSTALL_DIR)/lib/libriscv \
+		-sv_lib $(SPIKE_INSTALL_DIR)/lib/libfesvr \
+		-sv_lib $(SPIKE_INSTALL_DIR)/lib/libdisasm"; \
+	$(MAKE) dsim-testharness DSIM_RESULTS_DIR=$$DSIM_PK_WORK_DIR DSIM_WORK_DIR=. COMMON_RUN_ARGS="$$PK_RUN_ARGS" log=$(log) elf=$(elf) issrun_opts="$(issrun_opts)"
+
 ###############################################################################
 # Common targets and rules
 ###############################################################################
 
-clean_all: vcs_clean_all
+clean_all: vcs_clean_all dsim_clean_all
 	rm -f *.txt
 	rm -f trace*.log
 	rm -f trace*.dasm
