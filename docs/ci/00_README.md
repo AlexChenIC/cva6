@@ -4,6 +4,8 @@
 
 本目录包含 CVA6 CI/Regression 系统的完整文档，从入门到高级，从理论到实践。
 
+**📁 文件夹结构**: 参见 [README_STRUCTURE.md](./README_STRUCTURE.md) 或 [FILE_TREE.txt](./FILE_TREE.txt)
+
 ---
 
 ## 📚 文档导航
@@ -34,13 +36,26 @@
      bash setup-local-env.sh
      ```
 
-4. **[Week 1 执行指南](./WEEK1_EXECUTION_GUIDE.md)** 🎯 **实战必读**
+4. **[Week 1 执行指南](./guides/WEEK1_EXECUTION_GUIDE.md)** 🎯 **实战必读**
    - 完整的 Step-by-Step 环境配置流程
    - Smoke test 运行详细步骤
    - 常见错误和解决方案（含 SPIKE_SRC_DIR 问题）
    - 测试结果验证和报告生成
    - Week 1 完成 Checklist
    - 快速参考卡（复制粘贴即用）
+
+### 📋 项目规划和执行
+
+**[CVA6 CI能力建设执行计划 v3.0](./plans/gleaming-whistling-waterfall.md)** ⭐⭐⭐ **明天汇报重点**
+- **核心理念**: 6周完成核心CI能力，DSim作为可选扩展
+- **优先级**: GitHub Actions PR CI (Week 1-2) → QuestaSim (Week 3-4) → Weekly Regression + 报告网站 (Week 5-6)
+- **明天汇报要点**: 第三部分包含10张幻灯片完整结构
+- **关键调整**: CI优先，利用已验证的Verilator和QuestaSim
+
+**相关文档**:
+- [任务分析报告](./reports/TASK_ANALYSIS_REGRESSION_CAPABILITY.md) - 深度技术分析（700+行）
+- [文档审查报告](./reports/DOCUMENTATION_REVIEW_REPORT.md) - 质量审查
+- [Week 1 交付总结](./guides/WEEK1_DELIVERY_SUMMARY.md) - 第一周成果
 
 ### 📖 深入理解
 
@@ -224,6 +239,13 @@ gtkwave verif/sim/trace_hart_0000.fst
 
 | 日期 | 版本 | 更新内容 | 作者 |
 |------|------|---------|------|
+| 2026-01-18 | v3.0 | **重大调整**: 优先级重排，CI优先 | CI Team |
+| | | - 执行计划v3.0: 6周核心交付 | |
+| | | - 创建文件夹结构（plans/reports/guides/）| |
+| | | - Week 1-2: GitHub Actions PR CI（原Week 4）| |
+| | | - Week 3-4: QuestaSim完整集成 | |
+| | | - Week 5-6: Weekly Regression + 报告网站 ✅ | |
+| | | - Week 7-12: DSim集成（可选）+ 优化 | |
 | 2026-01-18 | v1.1 | 完成核心CI文档（Week 2-6 交付）| CI Team |
 | | | - 03_how_ci_runs_end_to_end.md (956行) | |
 | | | - 05_ci_contract.md (493行) | |
@@ -235,7 +257,7 @@ gtkwave verif/sim/trace_hart_0000.fst
 | | | - 01_ci_for_beginners.md (648行) | |
 | | | - 02_current_cva6_ci_inventory.md (846行) | |
 | | | - setup-local-env.sh | |
-| | | - WEEK1_EXECUTION_GUIDE.md (529行) | |
+| | | - guides/WEEK1_EXECUTION_GUIDE.md (529行) | |
 | | | - 00_README.md | |
 
 ---
