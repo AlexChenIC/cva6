@@ -21,7 +21,9 @@ echo "[INFO] Starting Infrastructure Build..."
 # --- 1. System Prerequisites ---
 # Installs packages like make, autoconf, dtc, etc.
 echo "[INFO] Installing System Prerequisites..."
-if command -v apt-get >/dev/null 2>&1; then
+if [ -n "$CVA6_CI_SKIP_APT" ]; then
+    echo "[INFO] CVA6_CI_SKIP_APT is set. Skipping system prerequisites install."
+elif command -v apt-get >/dev/null 2>&1; then
     sudo apt-get update -y
     sudo apt-get install -y --no-install-recommends \
         build-essential \
@@ -45,7 +47,9 @@ fi
 # exists and is non-empty, we might be good, or it delegates to the install script
 # which usually handles logic.
 echo "[INFO] Checking RISC-V Toolchain..."
-if [ ! -d "$RISCV/bin" ]; then
+if [ -n "$CVA6_CI_SKIP_TOOLCHAIN" ]; then
+    echo "[INFO] CVA6_CI_SKIP_TOOLCHAIN is set. Skipping toolchain install."
+elif [ ! -d "$RISCV/bin" ]; then
     echo "[INFO] Toolchain not found. Installing..."
     # Note: ci/install-toolchain.sh often takes a long time.
     # In GitHub Actions, we rely on the 'cache' step restoring this.
@@ -62,7 +66,9 @@ export VERILATOR_INSTALL_DIR="$TOOLS_DIR/verilator"
 if [ -z "$VERILATOR_BUILD_DIR" ]; then
     export VERILATOR_BUILD_DIR="$VERILATOR_INSTALL_DIR/build-v5.008"
 fi
-if [ ! -f "$VERILATOR_INSTALL_DIR/bin/verilator" ]; then
+if [ -n "$CVA6_CI_SKIP_VERILATOR" ]; then
+    echo "[INFO] CVA6_CI_SKIP_VERILATOR is set. Skipping Verilator install."
+elif [ ! -f "$VERILATOR_INSTALL_DIR/bin/verilator" ]; then
     echo "[INFO] Verilator not found. Installing..."
     source "$PROJECT_ROOT/verif/regress/install-verilator.sh"
 else
@@ -75,7 +81,9 @@ export SPIKE_INSTALL_DIR="$TOOLS_DIR/spike"
 if [ -z "$SPIKE_SRC_DIR" ]; then
     export SPIKE_SRC_DIR="$PROJECT_ROOT/verif/core-v-verif/vendor/riscv/riscv-isa-sim"
 fi
-if [ ! -f "$SPIKE_INSTALL_DIR/bin/spike" ]; then
+if [ -n "$CVA6_CI_SKIP_SPIKE" ]; then
+    echo "[INFO] CVA6_CI_SKIP_SPIKE is set. Skipping Spike install."
+elif [ ! -f "$SPIKE_INSTALL_DIR/bin/spike" ]; then
     echo "[INFO] Spike not found. Installing..."
     source "$PROJECT_ROOT/verif/regress/install-spike.sh"
 else
@@ -84,7 +92,9 @@ fi
 
 # --- 5. Python Requirements ---
 echo "[INFO] Installing Python requirements..."
-if [ -f "$PROJECT_ROOT/verif/sim/dv/requirements.txt" ]; then
+if [ -n "$CVA6_CI_SKIP_PIP" ]; then
+    echo "[INFO] CVA6_CI_SKIP_PIP is set. Skipping Python dependencies."
+elif [ -f "$PROJECT_ROOT/verif/sim/dv/requirements.txt" ]; then
     python3 -m pip install --upgrade pip
     python3 -m pip install -r "$PROJECT_ROOT/verif/sim/dv/requirements.txt"
 else

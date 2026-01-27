@@ -22,7 +22,7 @@ jobs:
       matrix:
         # Define the testing matrix
         target: [cv32a65x, cv64a6_imafdc_sv39]
-        suite:  [smoke, arch, benchmarks] 
+        suite:  [smoke, arch, compliance, benchmarks]
         # Note: 'full' suite is excluded from PRs by default to save time, 
         # but can be added or triggered manually.
 

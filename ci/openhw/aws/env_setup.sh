@@ -27,11 +27,21 @@ fi
 # Define standard paths for tools relative to the project root
 # This allows for easy relocation or mapping in Docker containers later.
 export TOOLS_DIR="$PROJECT_ROOT/tools"
-export RISCV="$TOOLS_DIR/riscv-toolchain"
-export VERILATOR_ROOT="$TOOLS_DIR/verilator"
-export SPIKE_ROOT="$TOOLS_DIR/spike"
-export VERILATOR_INSTALL_DIR="$VERILATOR_ROOT"
-export SPIKE_INSTALL_DIR="$SPIKE_ROOT"
+if [ -z "$RISCV" ]; then
+    export RISCV="$TOOLS_DIR/riscv-toolchain"
+fi
+if [ -z "$VERILATOR_ROOT" ]; then
+    export VERILATOR_ROOT="$TOOLS_DIR/verilator"
+fi
+if [ -z "$SPIKE_ROOT" ]; then
+    export SPIKE_ROOT="$TOOLS_DIR/spike"
+fi
+if [ -z "$VERILATOR_INSTALL_DIR" ]; then
+    export VERILATOR_INSTALL_DIR="$VERILATOR_ROOT"
+fi
+if [ -z "$SPIKE_INSTALL_DIR" ]; then
+    export SPIKE_INSTALL_DIR="$SPIKE_ROOT"
+fi
 if [ -z "$SPIKE_SRC_DIR" ]; then
     export SPIKE_SRC_DIR="$PROJECT_ROOT/verif/core-v-verif/vendor/riscv/riscv-isa-sim"
 fi
@@ -51,6 +61,9 @@ SIMULATOR="${SIMULATOR:-verilator}"
 if [ -z "$QUESTASIM_HOME" ]; then
     # Default path - override in self-hosted runner or external script
     export QUESTASIM_HOME="${QUESTASIM_HOME:-/opt/siemens/questasim}"
+fi
+if [ -z "$QUESTA_HOME" ]; then
+    export QUESTA_HOME="$QUESTASIM_HOME"
 fi
 if [ -z "$MTI_HOME" ]; then
     export MTI_HOME="$QUESTASIM_HOME"

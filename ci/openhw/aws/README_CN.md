@@ -8,7 +8,7 @@
 
 具体痛点与解决目标：
 *   **解耦**：将 GitHub Actions 的 YAML 逻辑与具体的 Shell 脚本实现分离。这使得同一个测试脚本既可以在 GitHub 上跑，也可以在未来的 AWS Self-hosted Runner 或本地开发者机器上直接运行，方便调试。
-*   **多仿真器准备**：虽然目前仅支持 Verilator，但脚本架构设计之初就考虑了 DSim、Questasim 等商业 EDA 工具的接入接口。
+*   **多仿真器准备**：当前 GitHub-hosted 主要跑 Verilator，同时已为 Questa (含 UVM) 自托管运行器预留接入与预检逻辑。
 *   **统一入口**：通过统一的入口脚本管理复杂的测试配置（32/64位、不同测试集），降低使用门槛。
 *   **全面回归**：以 Verilator 为主的 CI 目标是覆盖尽可能多的已有 testcases，确保对核心功能的回归能力。
 
@@ -50,12 +50,16 @@
 *   **目的**：统一所有仿真器的调用接口。Verilator 特有的 `SPIKE_TANDEM` 逻辑也在此处处理。
 
 ### 4.4. `run_test_suite.sh` (调度层)
-*   **作用**：用户友好的前端接口。将简单的测试套件名称（如 `smoke`, `arch`, `benchmarks`）映射到具体的复杂脚本文件。
+*   **作用**：用户友好的前端接口。将简单的测试套件名称（如 `smoke`, `arch`, `benchmarks`）映射到具体的复杂脚本文件，并做必要的兼容性检查。
 *   **目的**：简化 CI 配置文件，并根据配置（32位或64位）自动选择正确的测试脚本。
 
 ### 4.5. `.github/workflows/verilator-apu-ci.yml` (CI 配置)
 *   **作用**：GitHub Actions 的入口文件。定义了 `matrix`（矩阵），并行运行多种配置和测试套件的组合。
 *   **目的**：自动化触发上述脚本。
+
+### 4.6. `.github/workflows/questa-apu-ci.yml` (自托管 CI 配置)
+*   **作用**：为 AWS self-hosted runner 准备的 Questa/UVM 工作流入口，默认 `workflow_dispatch` 手动触发。
+*   **目的**：在自托管可用时快速启用 UVM/商业仿真器回归，不阻塞 PR 流程。
 
 ## 5. 本次新增/修订点 (What Changed)
 
@@ -82,6 +86,7 @@
 * **架构测试**：RISC-V 官方/衍生测试列表。
 * **基准测试**：Coremark、Dhrystone 与其他 benchmark。
 * **全量回归**：覆盖更大范围的 testlist，并尽可能接近“官方 CI 的覆盖范围”。
+* **特性回归**：PMP/CSR/Interrupt 等 UVM 套件（自托管）。
 
 实现策略是：
 1. **所有测试入口统一走 `verif/regress/*.sh`**，与官方脚本保持一致。
@@ -150,11 +155,29 @@
 #### 添加新的测试套件
 1.  找到 `verif/regress/` 下的目标脚本。
 2.  编辑 `ci/openhw/aws/run_test_suite.sh`。
-3.  在 `case "$SUITE_NAME" in` 块中添加新的分支，指定对应的脚本名。
+3.  在 `case "$SUITE_NAME" in` 块中添加新的分支，指定对应的脚本名与必要的兼容性检查。
 
 #### 添加新的仿真器 (如 Questa/DSim)
 1.  编辑 `ci/openhw/aws/env_setup.sh`：添加该仿真器的环境变量（如 `QUESTASIM_HOME`）。
 2.  编辑 `ci/openhw/aws/run_verification.sh`：
-    *   在 `# --- Simulator Logic ---` 部分添加逻辑。
-    *   设置对应的 `DV_SIMULATORS` 变量（例如 `vcs` 或 `questa`）。
+    *   在 `normalize_simulator` 中加入映射。
+    *   设置对应的 `DV_SIMULATORS` 变量（例如 `questa-uvm,spike`）。
 3.  在 CI 配置文件或命令行中调用时，将第三个参数从 `verilator` 改为新的仿真器名。
+
+### 7.6 套件与兼容性速查
+当前可用套件：
+* smoke, arch, compliance, benchmarks, coremark, dhrystone, full, issue
+* pmp, smoke-gen, csr-embedded, interrupt
+* mmu (仅支持目标 `cv32a6_imac_sv32`)
+
+兼容性要点：
+* **Verilator**：建议跑 `smoke/arch/compliance/benchmarks` 等 testharness 套件。
+* **Questa-UVM**：用于 `pmp/smoke-gen/csr-embedded/interrupt` 等 UVM 套件。
+* **cv32a65x 限定**：`pmp/smoke-gen/csr-embedded/interrupt` 目前限定在 `cv32a65x`。
+
+### 7.7 自托管 runner 预检与环境变量
+* `CVA6_CI_REQUIRE_LICENSE=1` 可启用许可证检查（需设置 `LM_LICENSE_FILE`/`SALT_LICENSE_SERVER`/`MGLS_LICENSE_FILE` 之一）。
+* `CVA6_CI_SKIP_APT=1` 可跳过 apt 安装（适合自托管预装环境）。
+* `CVA6_CI_SKIP_VERILATOR=1` 可跳过 Verilator 安装（Questa-only 任务）。
+* `CVA6_CI_SKIP_TOOLCHAIN=1` 可跳过工具链安装（需自托管预装并设置 `RISCV`）。
+* `CVA6_CI_SKIP_SPIKE=1` 可跳过 Spike 安装（需自托管预装并设置 `SPIKE_INSTALL_DIR`）。

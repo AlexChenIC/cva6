@@ -1,0 +1,92 @@
+name: Questa APU CI (Self-hosted)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  questa-testharness:
+    name: Questa testharness / ${{ matrix.suite }} / ${{ matrix.target }}
+    runs-on: [self-hosted, linux, questa]
+    env:
+      NUM_JOBS: 4
+      CVA6_CI_SKIP_APT: 1
+      CVA6_CI_SKIP_VERILATOR: 1
+      CVA6_CI_REQUIRE_LICENSE: 1
+      QUESTASIM_HOME: ${{ vars.QUESTASIM_HOME }}
+      QUESTA_HOME: ${{ vars.QUESTA_HOME }}
+      LM_LICENSE_FILE: ${{ secrets.LM_LICENSE_FILE }}
+      SALT_LICENSE_SERVER: ${{ secrets.SALT_LICENSE_SERVER }}
+      MGLS_LICENSE_FILE: ${{ secrets.MGLS_LICENSE_FILE }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [cv32a65x, cv64a6_imafdc_sv39]
+        suite:  [smoke, arch, compliance, benchmarks]
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Permission Fix
+        run: chmod +x ci/openhw/aws/*.sh
+
+      - name: Build Infrastructure
+        run: ./ci/openhw/aws/build_infrastructure.sh
+
+      - name: Run ${{ matrix.suite }} on ${{ matrix.target }}
+        run: |
+          ./ci/openhw/aws/run_test_suite.sh ${{ matrix.suite }} ${{ matrix.target }} questa-testharness
+
+      - name: Upload Logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: logs-questa-testharness-${{ matrix.target }}-${{ matrix.suite }}
+          path: verif/sim/out_*/
+          retention-days: 7
+
+  questa-uvm:
+    name: Questa UVM / ${{ matrix.suite }} / ${{ matrix.target }}
+    runs-on: [self-hosted, linux, questa]
+    env:
+      NUM_JOBS: 4
+      CVA6_CI_SKIP_APT: 1
+      CVA6_CI_SKIP_VERILATOR: 1
+      CVA6_CI_REQUIRE_LICENSE: 1
+      QUESTASIM_HOME: ${{ vars.QUESTASIM_HOME }}
+      QUESTA_HOME: ${{ vars.QUESTA_HOME }}
+      LM_LICENSE_FILE: ${{ secrets.LM_LICENSE_FILE }}
+      SALT_LICENSE_SERVER: ${{ secrets.SALT_LICENSE_SERVER }}
+      MGLS_LICENSE_FILE: ${{ secrets.MGLS_LICENSE_FILE }}
+
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        target: [cv32a65x]
+        suite:  [pmp, smoke-gen, csr-embedded, interrupt]
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Permission Fix
+        run: chmod +x ci/openhw/aws/*.sh
+
+      - name: Build Infrastructure
+        run: ./ci/openhw/aws/build_infrastructure.sh
+
+      - name: Run ${{ matrix.suite }} on ${{ matrix.target }}
+        run: |
+          ./ci/openhw/aws/run_test_suite.sh ${{ matrix.suite }} ${{ matrix.target }} questa-uvm
+
+      - name: Upload Logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: logs-questa-uvm-${{ matrix.target }}-${{ matrix.suite }}
+          path: verif/sim/out_*/
+          retention-days: 7
