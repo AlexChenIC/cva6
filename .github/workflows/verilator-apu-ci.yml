@@ -1,0 +1,84 @@
+name: Verilator APU CI
+
+on:
+  push:
+    branches: [ master, main ]
+  pull_request:
+    branches: [ master, main ]
+  workflow_dispatch:
+
+jobs:
+  verilator-apu-matrix:
+    name: ${{ matrix.suite }} / ${{ matrix.target }}
+    runs-on: ubuntu-latest
+    env:
+      NUM_JOBS: 4
+      VERILATOR_INSTALL_DIR: tools/verilator
+      SPIKE_INSTALL_DIR: tools/spike
+      SPIKE_SRC_DIR: verif/core-v-verif/vendor/riscv/riscv-isa-sim
+
+    strategy:
+      fail-fast: false
+      matrix:
+        # Define the testing matrix
+        target: [cv32a65x, cv64a6_imafdc_sv39]
+        suite:  [smoke, arch, benchmarks] 
+        # Note: 'full' suite is excluded from PRs by default to save time, 
+        # but can be added or triggered manually.
+
+    steps:
+      # 1. Checkout Code
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      # 2. Submodule Hash Calculation
+      - name: Get core-v-verif hash
+        id: submodule-hash
+        run: |
+          cd verif/core-v-verif
+          echo "hash=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
+
+      # 3. Cache Toolchain
+      - name: Cache RISC-V Toolchain
+        uses: actions/cache@v3
+        with:
+          path: tools/riscv-toolchain/
+          key: ${{ runner.os }}-riscv-${{ hashFiles('ci/install-toolchain.sh') }}
+
+      # 4. Cache Verilator
+      - name: Cache Verilator
+        uses: actions/cache@v3
+        with:
+          path: tools/verilator/
+          key: ${{ runner.os }}-verilator-${{ hashFiles('verif/regress/install-verilator.sh') }}
+
+      # 5. Cache Spike
+      - name: Cache Spike
+        uses: actions/cache@v3
+        with:
+          path: tools/spike/
+          key: ${{ runner.os }}-spike-${{ hashFiles('verif/regress/install-spike.sh') }}-${{ steps.submodule-hash.outputs.hash }}
+
+      # 6. Permission Fix
+      - name: Permission Fix
+        run: chmod +x ci/openhw/aws/*.sh
+
+      # 7. Build/Prepare Infrastructure
+      - name: Build Infrastructure
+        run: ./ci/openhw/aws/build_infrastructure.sh
+
+      # 8. Run Test Suite
+      # Uses the new Suite Dispatcher script
+      - name: Run ${{ matrix.suite }} on ${{ matrix.target }}
+        run: |
+          ./ci/openhw/aws/run_test_suite.sh ${{ matrix.suite }} ${{ matrix.target }} verilator
+
+      # 9. Archive Artifacts
+      - name: Upload Logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: logs-${{ matrix.target }}-${{ matrix.suite }}
+          path: verif/sim/out_*/
+          retention-days: 5
