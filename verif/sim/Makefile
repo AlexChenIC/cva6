@@ -155,6 +155,7 @@ DSIM_IMAGE              ?= dsim.out
 DSIM_ACC_FLAGS          ?= +acc+b
 DSIM_DMP_FILE           ?= dsim.fst
 DSIM_DMP_FLAGS          ?= -waves $(DSIM_DMP_FILE)
+DSIM_RUN_FLAGS          ?= -iter-limit 10000000
 DSIM                   ?= dsim
 
 # Use UVM DPI only when DSIM_LIB_PATH is set
@@ -496,6 +497,7 @@ dsim-testharness:
 	    -genimage dsim_image; \
 	$(DSIM) +permissive \
 	    $(DSIM_ACC_FLAGS) \
+	    $(DSIM_RUN_FLAGS) \
 	    $(DSIM_DMP_FLAGS) \
 	    -l $(log).dsim \
 	    -image dsim_image \

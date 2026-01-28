@@ -677,6 +677,8 @@ module ariane_testharness #(
     end
   end
 
+`ifndef DSIM_MINIMAL_TRACE
+    // Optional: mask ITI/trace pipeline to isolate zero-delay loops.
     cva6_iti #(
         .CVA6Cfg   (CVA6Cfg),
         .CAUSE_LEN  (iti_pkg::CAUSE_LEN),
@@ -696,7 +698,7 @@ module ariane_testharness #(
     );
 
     logic                    packet_valid;
-    te_pkg::it_packet_type_e packet_type;
+    te_pkg::it_packet_type_e [0:0] packet_type;
     logic [te_pkg::P_LEN-1:0] packet_length;
     logic [te_pkg::PAYLOAD_LEN-1:0] packet_payload;
 
@@ -788,6 +790,7 @@ module ariane_testharness #(
         .slice_o           (slice),
         .done_o            (encap_fifo_pop)
     );
+`endif
 
   cva6_rvfi #(
       .CVA6Cfg   (CVA6Cfg),
