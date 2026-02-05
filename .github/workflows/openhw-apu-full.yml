@@ -1,0 +1,604 @@
+# Copyright 2026 OpenHW Group
+# Licensed under the Apache License, Version 2.0, see LICENSE for details.
+# SPDX-License-Identifier: Apache-2.0
+
+# OpenHW Full APU Test Suite
+# Comprehensive Verilator regression tests for CVA6 APU configurations
+#
+# Current supported targets:
+#   - cv32a65x (32-bit, dual-issue)
+#   - cv64a6_imafdc_sv39 (64-bit, IMAFDC)
+#
+# Future expansion (disabled):
+#   - cv32a60x (32-bit, single-issue) - requires toolchain with atomic support
+#   - cv32a6_imac_sv32 (32-bit, MMU)
+#   - Additional 64-bit variants
+
+name: openhw-apu-full
+
+on:
+  # Manual trigger - primary usage
+  workflow_dispatch:
+    inputs:
+      test_suite:
+        description: 'Test suite to run'
+        required: true
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - smoke-tests
+          - arch-test
+          - riscv-tests
+          - riscv-compliance
+          - custom-tests
+      target_arch:
+        description: 'Target architecture'
+        required: true
+        default: 'both'
+        type: choice
+        options:
+          - both
+          - rv32
+          - rv64
+  # Scheduled weekly regression (optional - uncomment to enable)
+  # schedule:
+  #   - cron: '0 2 * * 0'  # Every Sunday at 2:00 AM UTC
+
+# Cancel in-progress runs for the same branch
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  SPIKE_TANDEM: 1
+  NUM_JOBS: 8
+  # ============================================================
+  # Target Configuration - Edit here to add/remove targets
+  # ============================================================
+  # Current supported targets
+  RV32_TARGET: cv32a65x
+  RV64_TARGET: cv64a6_imafdc_sv39
+  # Future targets (for reference)
+  # RV32_TARGET_ALT: cv32a60x
+  # RV32_TARGET_MMU: cv32a6_imac_sv32
+  # RV64_TARGET_HPD: cv64a6_imafdc_sv39_hpdcache
+
+jobs:
+  # ============================================================
+  # Stage 1: Setup and cache tools
+  # ============================================================
+  setup-tools:
+    name: Setup Tools
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Setup CVA6 Environment
+        uses: ./.github/actions/setup-cva6-env
+        with:
+          install-tools: 'true'
+
+  # ============================================================
+  # Stage 2: Smoke Tests (Quick Validation)
+  # ============================================================
+  smoke-tests-rv32:
+    name: Smoke RV32 ${{ matrix.config }}
+    runs-on: ubuntu-latest
+    needs: setup-tools
+    if: |
+      github.event.inputs.test_suite == 'all' ||
+      github.event.inputs.test_suite == 'smoke-tests' ||
+      github.event.inputs.target_arch == 'both' ||
+      github.event.inputs.target_arch == 'rv32'
+    strategy:
+      fail-fast: false
+      matrix:
+        config:
+          - cv32a65x
+          # Future: Add more RV32 targets here
+          # - cv32a60x
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Setup CVA6 Environment
+        uses: ./.github/actions/setup-cva6-env
+
+      - name: Install prerequisites
+        run: source ci/install-prereq.sh
+
+      - name: Run Smoke Tests
+        run: |
+          set -x
+          source verif/sim/setup-env.sh
+          DV_SIMULATORS=veri-testharness,spike \
+          DV_TARGET=${{ matrix.config }} \
+            bash verif/regress/smoke-tests-${{ matrix.config }}.sh
+
+      - name: Upload Results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-rv32-${{ matrix.config }}
+          path: verif/sim/out*/
+          retention-days: 14
+
+  smoke-tests-rv64:
+    name: Smoke RV64 ${{ matrix.config }}
+    runs-on: ubuntu-latest
+    needs: setup-tools
+    if: |
+      github.event.inputs.test_suite == 'all' ||
+      github.event.inputs.test_suite == 'smoke-tests' ||
+      github.event.inputs.target_arch == 'both' ||
+      github.event.inputs.target_arch == 'rv64'
+    strategy:
+      fail-fast: false
+      matrix:
+        config:
+          - cv64a6_imafdc_sv39
+          # Future: Add more RV64 targets here
+          # - cv64a6_imafdc_sv39_hpdcache
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Setup CVA6 Environment
+        uses: ./.github/actions/setup-cva6-env
+
+      - name: Install prerequisites
+        run: source ci/install-prereq.sh
+
+      - name: Run Smoke Tests
+        run: |
+          set -x
+          source verif/sim/setup-env.sh
+          DV_SIMULATORS=veri-testharness,spike \
+          DV_TARGET=${{ matrix.config }} \
+            bash verif/regress/smoke-tests-${{ matrix.config }}.sh
+
+      - name: Upload Results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-rv64-${{ matrix.config }}
+          path: verif/sim/out*/
+          retention-days: 14
+
+  # ============================================================
+  # Stage 3: RISC-V Architecture Tests
+  # ============================================================
+  arch-test-rv32:
+    name: Arch-Test RV32 ${{ matrix.config }}
+    runs-on: ubuntu-latest
+    needs: setup-tools
+    if: |
+      github.event.inputs.test_suite == 'all' ||
+      github.event.inputs.test_suite == 'arch-test' ||
+      github.event.inputs.target_arch == 'both' ||
+      github.event.inputs.target_arch == 'rv32'
+    strategy:
+      fail-fast: false
+      matrix:
+        config:
+          - cv32a65x
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Setup CVA6 Environment
+        uses: ./.github/actions/setup-cva6-env
+
+      - name: Install prerequisites
+        run: source ci/install-prereq.sh
+
+      - name: Run RISC-V Arch Tests
+        run: |
+          set -x
+          source verif/sim/setup-env.sh
+          DV_SIMULATORS=veri-testharness,spike \
+          DV_TARGET=${{ matrix.config }} \
+            bash verif/regress/dv-riscv-arch-test.sh
+
+      - name: Upload Results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: arch-test-rv32-${{ matrix.config }}
+          path: verif/sim/out*/
+          retention-days: 14
+
+  arch-test-rv64:
+    name: Arch-Test RV64 ${{ matrix.config }}
+    runs-on: ubuntu-latest
+    needs: setup-tools
+    if: |
+      github.event.inputs.test_suite == 'all' ||
+      github.event.inputs.test_suite == 'arch-test' ||
+      github.event.inputs.target_arch == 'both' ||
+      github.event.inputs.target_arch == 'rv64'
+    strategy:
+      fail-fast: false
+      matrix:
+        config:
+          - cv64a6_imafdc_sv39
+          # Future: Add hpdcache variants
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Setup CVA6 Environment
+        uses: ./.github/actions/setup-cva6-env
+
+      - name: Install prerequisites
+        run: source ci/install-prereq.sh
+
+      - name: Run RISC-V Arch Tests
+        run: |
+          set -x
+          source verif/sim/setup-env.sh
+          DV_SIMULATORS=veri-testharness,spike \
+          DV_TARGET=${{ matrix.config }} \
+            bash verif/regress/dv-riscv-arch-test.sh
+
+      - name: Upload Results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: arch-test-rv64-${{ matrix.config }}
+          path: verif/sim/out*/
+          retention-days: 14
+
+  # ============================================================
+  # Stage 4: RISC-V Standard Tests
+  # ============================================================
+  riscv-tests-rv32:
+    name: RISCV-Tests RV32 ${{ matrix.config }}
+    runs-on: ubuntu-latest
+    needs: setup-tools
+    if: |
+      github.event.inputs.test_suite == 'all' ||
+      github.event.inputs.test_suite == 'riscv-tests' ||
+      github.event.inputs.target_arch == 'both' ||
+      github.event.inputs.target_arch == 'rv32'
+    strategy:
+      fail-fast: false
+      matrix:
+        config:
+          - cv32a65x
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Setup CVA6 Environment
+        uses: ./.github/actions/setup-cva6-env
+
+      - name: Install prerequisites
+        run: source ci/install-prereq.sh
+
+      - name: Run RISC-V Tests
+        run: |
+          set -x
+          source verif/sim/setup-env.sh
+          DV_SIMULATORS=veri-testharness,spike \
+          DV_TARGET=${{ matrix.config }} \
+            bash verif/regress/dv-riscv-tests.sh
+
+      - name: Upload Results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: riscv-tests-rv32-${{ matrix.config }}
+          path: verif/sim/out*/
+          retention-days: 14
+
+  riscv-tests-rv64:
+    name: RISCV-Tests RV64 ${{ matrix.config }}
+    runs-on: ubuntu-latest
+    needs: setup-tools
+    if: |
+      github.event.inputs.test_suite == 'all' ||
+      github.event.inputs.test_suite == 'riscv-tests' ||
+      github.event.inputs.target_arch == 'both' ||
+      github.event.inputs.target_arch == 'rv64'
+    strategy:
+      fail-fast: false
+      matrix:
+        config:
+          - cv64a6_imafdc_sv39
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Setup CVA6 Environment
+        uses: ./.github/actions/setup-cva6-env
+
+      - name: Install prerequisites
+        run: source ci/install-prereq.sh
+
+      - name: Run RISC-V Tests
+        run: |
+          set -x
+          source verif/sim/setup-env.sh
+          DV_SIMULATORS=veri-testharness,spike \
+          DV_TARGET=${{ matrix.config }} \
+            bash verif/regress/dv-riscv-tests.sh
+
+      - name: Upload Results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: riscv-tests-rv64-${{ matrix.config }}
+          path: verif/sim/out*/
+          retention-days: 14
+
+  # ============================================================
+  # Stage 5: RISC-V Compliance Tests
+  # ============================================================
+  compliance-rv32:
+    name: Compliance RV32 ${{ matrix.config }}
+    runs-on: ubuntu-latest
+    needs: setup-tools
+    if: |
+      github.event.inputs.test_suite == 'all' ||
+      github.event.inputs.test_suite == 'riscv-compliance' ||
+      github.event.inputs.target_arch == 'both' ||
+      github.event.inputs.target_arch == 'rv32'
+    strategy:
+      fail-fast: false
+      matrix:
+        config:
+          - cv32a65x
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Setup CVA6 Environment
+        uses: ./.github/actions/setup-cva6-env
+
+      - name: Install prerequisites
+        run: source ci/install-prereq.sh
+
+      - name: Run RISC-V Compliance Tests
+        run: |
+          set -x
+          source verif/sim/setup-env.sh
+          DV_SIMULATORS=veri-testharness,spike \
+          DV_TARGET=${{ matrix.config }} \
+            bash verif/regress/dv-riscv-compliance.sh
+
+      - name: Upload Results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: compliance-rv32-${{ matrix.config }}
+          path: verif/sim/out*/
+          retention-days: 14
+
+  compliance-rv64:
+    name: Compliance RV64 ${{ matrix.config }}
+    runs-on: ubuntu-latest
+    needs: setup-tools
+    if: |
+      github.event.inputs.test_suite == 'all' ||
+      github.event.inputs.test_suite == 'riscv-compliance' ||
+      github.event.inputs.target_arch == 'both' ||
+      github.event.inputs.target_arch == 'rv64'
+    strategy:
+      fail-fast: false
+      matrix:
+        config:
+          - cv64a6_imafdc_sv39
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Setup CVA6 Environment
+        uses: ./.github/actions/setup-cva6-env
+
+      - name: Install prerequisites
+        run: source ci/install-prereq.sh
+
+      - name: Run RISC-V Compliance Tests
+        run: |
+          set -x
+          source verif/sim/setup-env.sh
+          DV_SIMULATORS=veri-testharness,spike \
+          DV_TARGET=${{ matrix.config }} \
+            bash verif/regress/dv-riscv-compliance.sh
+
+      - name: Upload Results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: compliance-rv64-${{ matrix.config }}
+          path: verif/sim/out*/
+          retention-days: 14
+
+  # ============================================================
+  # Stage 6: Custom Tests (CVA6-specific)
+  # ============================================================
+  custom-tests-rv32:
+    name: Custom RV32 ${{ matrix.config }}
+    runs-on: ubuntu-latest
+    needs: setup-tools
+    if: |
+      github.event.inputs.test_suite == 'all' ||
+      github.event.inputs.test_suite == 'custom-tests' ||
+      github.event.inputs.target_arch == 'both' ||
+      github.event.inputs.target_arch == 'rv32'
+    strategy:
+      fail-fast: false
+      matrix:
+        config:
+          - cv32a65x
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Setup CVA6 Environment
+        uses: ./.github/actions/setup-cva6-env
+
+      - name: Install prerequisites
+        run: source ci/install-prereq.sh
+
+      - name: Run Custom Tests
+        run: |
+          set -x
+          source verif/sim/setup-env.sh
+          DV_SIMULATORS=veri-testharness,spike \
+          DV_TARGET=${{ matrix.config }} \
+            bash verif/regress/cv32a6_tests.sh
+
+      - name: Upload Results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: custom-rv32-${{ matrix.config }}
+          path: verif/sim/out*/
+          retention-days: 14
+
+  custom-tests-rv64:
+    name: Custom RV64 ${{ matrix.config }}
+    runs-on: ubuntu-latest
+    needs: setup-tools
+    if: |
+      github.event.inputs.test_suite == 'all' ||
+      github.event.inputs.test_suite == 'custom-tests' ||
+      github.event.inputs.target_arch == 'both' ||
+      github.event.inputs.target_arch == 'rv64'
+    strategy:
+      fail-fast: false
+      matrix:
+        config:
+          - cv64a6_imafdc_sv39
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Setup CVA6 Environment
+        uses: ./.github/actions/setup-cva6-env
+
+      - name: Install prerequisites
+        run: source ci/install-prereq.sh
+
+      - name: Run Custom Tests
+        run: |
+          set -x
+          source verif/sim/setup-env.sh
+          DV_SIMULATORS=veri-testharness,spike \
+          DV_TARGET=${{ matrix.config }} \
+            bash verif/regress/cv64a6_imafdc_tests.sh
+
+      - name: Upload Results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: custom-rv64-${{ matrix.config }}
+          path: verif/sim/out*/
+          retention-days: 14
+
+  # ============================================================
+  # Stage 7: Report Summary
+  # ============================================================
+  report-summary:
+    name: Test Summary
+    runs-on: ubuntu-latest
+    needs:
+      - smoke-tests-rv32
+      - smoke-tests-rv64
+      - arch-test-rv32
+      - arch-test-rv64
+      - riscv-tests-rv32
+      - riscv-tests-rv64
+      - compliance-rv32
+      - compliance-rv64
+      - custom-tests-rv32
+      - custom-tests-rv64
+    if: ${{ always() && !cancelled() }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts/
+
+      - name: Generate Summary Report
+        run: |
+          echo "## OpenHW CVA6 Full APU Test Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Test Suite:** ${{ github.event.inputs.test_suite || 'all' }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Target Arch:** ${{ github.event.inputs.target_arch || 'both' }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Test Suite | Target | Config | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|------------|--------|--------|--------|" >> $GITHUB_STEP_SUMMARY
+
+          # Process each artifact directory
+          for dir in artifacts/*/; do
+            if [ -d "$dir" ]; then
+              name=$(basename "$dir")
+
+              # Parse name: {suite}-{arch}-{config}
+              suite=$(echo "$name" | cut -d'-' -f1-2)
+              arch=$(echo "$name" | cut -d'-' -f2)
+              config=$(echo "$name" | cut -d'-' -f3-)
+
+              # Find iss_regr.log
+              log_file=$(find "$dir" -name "iss_regr.log" 2>/dev/null | head -1)
+
+              if [ -n "$log_file" ] && [ -f "$log_file" ]; then
+                summary_line=$(grep -E "PASSED.*FAILED" "$log_file" | tail -n 1)
+                if [ -n "$summary_line" ]; then
+                  passed=$(printf "%s" "$summary_line" | sed -n 's/.*\([0-9][0-9]*\)[[:space:]]*PASSED.*/\1/p')
+                  failed=$(printf "%s" "$summary_line" | sed -n 's/.*\([0-9][0-9]*\)[[:space:]]*FAILED.*/\1/p')
+                else
+                  passed=""
+                  failed=""
+                fi
+
+                if [ -n "$failed" ] && [ "$failed" -gt 0 ]; then
+                  status="❌ FAIL ($passed passed, $failed failed)"
+                elif [ -n "$passed" ] && [ "$passed" -ge 0 ]; then
+                  status="✅ PASS ($passed tests)"
+                else
+                  status="⚠️ Unknown"
+                fi
+              else
+                status="⚠️ No log"
+              fi
+
+              echo "| ${suite} | ${arch} | ${config} | ${status} |" >> $GITHUB_STEP_SUMMARY
+            fi
+          done
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "---" >> $GITHUB_STEP_SUMMARY
+          echo "*Generated by OpenHW CVA6 Full APU CI*" >> $GITHUB_STEP_SUMMARY
+
+      - name: Check for failures
+        run: |
+          failed=0
+          for dir in artifacts/*/; do
+            if [ -d "$dir" ]; then
+              log_file=$(find "$dir" -name "iss_regr.log" 2>/dev/null | head -1)
+              if [ -n "$log_file" ] && [ -f "$log_file" ]; then
+                summary_line=$(grep -E "PASSED.*FAILED" "$log_file" | tail -n 1)
+                if [ -n "$summary_line" ]; then
+                  failed_count=$(printf "%s" "$summary_line" | sed -n 's/.*\([0-9][0-9]*\)[[:space:]]*FAILED.*/\1/p')
+                  if [ -n "$failed_count" ] && [ "$failed_count" -gt 0 ]; then
+                    echo "::error::Test failures in $(basename "$dir")"
+                    failed=1
+                  fi
+                fi
+              fi
+            fi
+          done
+
+          if [ "$failed" -eq 1 ]; then
+            exit 1
+          fi
+
+          echo "All tests passed!"
