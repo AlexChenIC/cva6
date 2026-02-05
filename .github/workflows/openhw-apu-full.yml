@@ -41,6 +41,12 @@ on:
           - both
           - rv32
           - rv64
+  # TEMP: Enable push trigger for testing (remove after validation)
+  push:
+    branches:
+      - 'task/**'
+      - 'feature/**'
+      - 'openhw/**'
   # Scheduled weekly regression (optional - uncomment to enable)
   # schedule:
   #   - cron: '0 2 * * 0'  # Every Sunday at 2:00 AM UTC
