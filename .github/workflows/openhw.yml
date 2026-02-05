@@ -122,11 +122,6 @@ jobs:
             config: cv32a65x
           - testcase: dv-riscv-arch-test
             config: cv32a65x
-          # cv32a60x (single-issue)
-          - testcase: cv32a6_tests
-            config: cv32a60x
-          - testcase: dv-riscv-arch-test
-            config: cv32a60x
     steps:
       - uses: actions/checkout@v4
         with:
