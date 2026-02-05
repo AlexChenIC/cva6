@@ -45,6 +45,9 @@ jobs:
     name: Setup Tools
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
       - name: Setup CVA6 Environment
         uses: ./.github/actions/setup-cva6-env
         with:
@@ -79,6 +82,9 @@ jobs:
           - testcase: dv-riscv-arch-test
             config: cv64a6_imafdc_sv39_hpdcache_wb
     steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
       - name: Setup CVA6 Environment
         uses: ./.github/actions/setup-cva6-env
 
@@ -122,6 +128,9 @@ jobs:
           - testcase: dv-riscv-arch-test
             config: cv32a60x
     steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
       - name: Setup CVA6 Environment
         uses: ./.github/actions/setup-cva6-env
 
@@ -156,6 +165,9 @@ jobs:
           - cv32a65x
           - cv64a6_imafdc_sv39
     steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
       - name: Setup CVA6 Environment
         uses: ./.github/actions/setup-cva6-env
 
