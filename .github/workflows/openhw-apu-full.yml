@@ -59,6 +59,10 @@ concurrency:
 env:
   SPIKE_TANDEM: 1
   NUM_JOBS: 8
+  # TEMP: allow push runs to use workflow_dispatch defaults.
+  # Remove or tighten when push trigger is no longer needed.
+  SELECTED_TEST_SUITE: ${{ github.event.inputs.test_suite || 'all' }}
+  SELECTED_TARGET_ARCH: ${{ github.event.inputs.target_arch || 'both' }}
   # ============================================================
   # Target Configuration - Edit here to add/remove targets
   # ============================================================
@@ -94,10 +98,10 @@ jobs:
     runs-on: ubuntu-latest
     needs: setup-tools
     if: |
-      github.event.inputs.test_suite == 'all' ||
-      github.event.inputs.test_suite == 'smoke-tests' ||
-      github.event.inputs.target_arch == 'both' ||
-      github.event.inputs.target_arch == 'rv32'
+      env.SELECTED_TEST_SUITE == 'all' ||
+      env.SELECTED_TEST_SUITE == 'smoke-tests' ||
+      env.SELECTED_TARGET_ARCH == 'both' ||
+      env.SELECTED_TARGET_ARCH == 'rv32'
     strategy:
       fail-fast: false
       matrix:
@@ -136,10 +140,10 @@ jobs:
     runs-on: ubuntu-latest
     needs: setup-tools
     if: |
-      github.event.inputs.test_suite == 'all' ||
-      github.event.inputs.test_suite == 'smoke-tests' ||
-      github.event.inputs.target_arch == 'both' ||
-      github.event.inputs.target_arch == 'rv64'
+      env.SELECTED_TEST_SUITE == 'all' ||
+      env.SELECTED_TEST_SUITE == 'smoke-tests' ||
+      env.SELECTED_TARGET_ARCH == 'both' ||
+      env.SELECTED_TARGET_ARCH == 'rv64'
     strategy:
       fail-fast: false
       matrix:
@@ -181,10 +185,10 @@ jobs:
     runs-on: ubuntu-latest
     needs: setup-tools
     if: |
-      github.event.inputs.test_suite == 'all' ||
-      github.event.inputs.test_suite == 'arch-test' ||
-      github.event.inputs.target_arch == 'both' ||
-      github.event.inputs.target_arch == 'rv32'
+      env.SELECTED_TEST_SUITE == 'all' ||
+      env.SELECTED_TEST_SUITE == 'arch-test' ||
+      env.SELECTED_TARGET_ARCH == 'both' ||
+      env.SELECTED_TARGET_ARCH == 'rv32'
     strategy:
       fail-fast: false
       matrix:
@@ -221,10 +225,10 @@ jobs:
     runs-on: ubuntu-latest
     needs: setup-tools
     if: |
-      github.event.inputs.test_suite == 'all' ||
-      github.event.inputs.test_suite == 'arch-test' ||
-      github.event.inputs.target_arch == 'both' ||
-      github.event.inputs.target_arch == 'rv64'
+      env.SELECTED_TEST_SUITE == 'all' ||
+      env.SELECTED_TEST_SUITE == 'arch-test' ||
+      env.SELECTED_TARGET_ARCH == 'both' ||
+      env.SELECTED_TARGET_ARCH == 'rv64'
     strategy:
       fail-fast: false
       matrix:
@@ -265,10 +269,10 @@ jobs:
     runs-on: ubuntu-latest
     needs: setup-tools
     if: |
-      github.event.inputs.test_suite == 'all' ||
-      github.event.inputs.test_suite == 'riscv-tests' ||
-      github.event.inputs.target_arch == 'both' ||
-      github.event.inputs.target_arch == 'rv32'
+      env.SELECTED_TEST_SUITE == 'all' ||
+      env.SELECTED_TEST_SUITE == 'riscv-tests' ||
+      env.SELECTED_TARGET_ARCH == 'both' ||
+      env.SELECTED_TARGET_ARCH == 'rv32'
     strategy:
       fail-fast: false
       matrix:
@@ -305,10 +309,10 @@ jobs:
     runs-on: ubuntu-latest
     needs: setup-tools
     if: |
-      github.event.inputs.test_suite == 'all' ||
-      github.event.inputs.test_suite == 'riscv-tests' ||
-      github.event.inputs.target_arch == 'both' ||
-      github.event.inputs.target_arch == 'rv64'
+      env.SELECTED_TEST_SUITE == 'all' ||
+      env.SELECTED_TEST_SUITE == 'riscv-tests' ||
+      env.SELECTED_TARGET_ARCH == 'both' ||
+      env.SELECTED_TARGET_ARCH == 'rv64'
     strategy:
       fail-fast: false
       matrix:
@@ -348,10 +352,10 @@ jobs:
     runs-on: ubuntu-latest
     needs: setup-tools
     if: |
-      github.event.inputs.test_suite == 'all' ||
-      github.event.inputs.test_suite == 'riscv-compliance' ||
-      github.event.inputs.target_arch == 'both' ||
-      github.event.inputs.target_arch == 'rv32'
+      env.SELECTED_TEST_SUITE == 'all' ||
+      env.SELECTED_TEST_SUITE == 'riscv-compliance' ||
+      env.SELECTED_TARGET_ARCH == 'both' ||
+      env.SELECTED_TARGET_ARCH == 'rv32'
     strategy:
       fail-fast: false
       matrix:
@@ -388,10 +392,10 @@ jobs:
     runs-on: ubuntu-latest
     needs: setup-tools
     if: |
-      github.event.inputs.test_suite == 'all' ||
-      github.event.inputs.test_suite == 'riscv-compliance' ||
-      github.event.inputs.target_arch == 'both' ||
-      github.event.inputs.target_arch == 'rv64'
+      env.SELECTED_TEST_SUITE == 'all' ||
+      env.SELECTED_TEST_SUITE == 'riscv-compliance' ||
+      env.SELECTED_TARGET_ARCH == 'both' ||
+      env.SELECTED_TARGET_ARCH == 'rv64'
     strategy:
       fail-fast: false
       matrix:
@@ -431,10 +435,10 @@ jobs:
     runs-on: ubuntu-latest
     needs: setup-tools
     if: |
-      github.event.inputs.test_suite == 'all' ||
-      github.event.inputs.test_suite == 'custom-tests' ||
-      github.event.inputs.target_arch == 'both' ||
-      github.event.inputs.target_arch == 'rv32'
+      env.SELECTED_TEST_SUITE == 'all' ||
+      env.SELECTED_TEST_SUITE == 'custom-tests' ||
+      env.SELECTED_TARGET_ARCH == 'both' ||
+      env.SELECTED_TARGET_ARCH == 'rv32'
     strategy:
       fail-fast: false
       matrix:
@@ -471,10 +475,10 @@ jobs:
     runs-on: ubuntu-latest
     needs: setup-tools
     if: |
-      github.event.inputs.test_suite == 'all' ||
-      github.event.inputs.test_suite == 'custom-tests' ||
-      github.event.inputs.target_arch == 'both' ||
-      github.event.inputs.target_arch == 'rv64'
+      env.SELECTED_TEST_SUITE == 'all' ||
+      env.SELECTED_TEST_SUITE == 'custom-tests' ||
+      env.SELECTED_TARGET_ARCH == 'both' ||
+      env.SELECTED_TARGET_ARCH == 'rv64'
     strategy:
       fail-fast: false
       matrix:
