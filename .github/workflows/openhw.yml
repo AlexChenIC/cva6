@@ -1,0 +1,257 @@
+# Copyright 2026 OpenHW Group
+# Licensed under the Apache License, Version 2.0, see LICENSE for details.
+# SPDX-License-Identifier: Apache-2.0
+
+# OpenHW Enhanced CVA6 CI - Modular Verilator Regression
+# This is a refactored CI workflow with improved structure and expanded test coverage
+
+name: openhw-ci
+
+on:
+  # Manual trigger for testing
+  workflow_dispatch:
+    inputs:
+      run_smoke_only:
+        description: 'Run only smoke tests (faster)'
+        required: false
+        default: 'false'
+        type: boolean
+  # Trigger on task branches for development/testing
+  push:
+    branches:
+      - 'task/**'
+      - 'fix/**'
+      - 'openhw/**'
+  pull_request:
+    branches:
+      - 'task/**'
+      - 'fix/**'
+      - 'openhw/**'
+
+# Cancel in-progress runs for the same branch
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  SPIKE_TANDEM: 1
+  NUM_JOBS: 8
+
+jobs:
+  # ============================================================
+  # Stage 1: Setup and cache tools
+  # ============================================================
+  setup-tools:
+    name: Setup Tools
+    runs-on: ubuntu-latest
+    steps:
+      - name: Setup CVA6 Environment
+        uses: ./.github/actions/setup-cva6-env
+        with:
+          install-tools: 'true'
+
+  # ============================================================
+  # Stage 2: Test execution (parallel matrix jobs)
+  # ============================================================
+
+  # --- 64-bit Tests ---
+  execute-riscv64-tests:
+    name: RV64 ${{ matrix.config }} / ${{ matrix.testcase }}
+    runs-on: ubuntu-latest
+    needs: setup-tools
+    if: ${{ github.event.inputs.run_smoke_only != 'true' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # cv64a6_imafdc_tests - all 4 configs
+          - testcase: cv64a6_imafdc_tests
+            config: cv64a6_imafdc_sv39
+          - testcase: cv64a6_imafdc_tests
+            config: cv64a6_imafdc_sv39_wb
+          - testcase: cv64a6_imafdc_tests
+            config: cv64a6_imafdc_sv39_hpdcache
+          - testcase: cv64a6_imafdc_tests
+            config: cv64a6_imafdc_sv39_hpdcache_wb
+          # dv-riscv-arch-test - hpdcache configs
+          - testcase: dv-riscv-arch-test
+            config: cv64a6_imafdc_sv39_hpdcache
+          - testcase: dv-riscv-arch-test
+            config: cv64a6_imafdc_sv39_hpdcache_wb
+    steps:
+      - name: Setup CVA6 Environment
+        uses: ./.github/actions/setup-cva6-env
+
+      - name: Install prerequisites
+        run: source ci/install-prereq.sh
+
+      - name: Run ${{ matrix.testcase }}
+        run: |
+          set -x
+          source verif/sim/setup-env.sh
+          DV_SIMULATORS=veri-testharness,spike \
+          DV_TARGET=${{ matrix.config }} \
+            bash verif/regress/${{ matrix.testcase }}.sh
+
+      - name: Upload Results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rv64-${{ matrix.config }}-${{ matrix.testcase }}
+          path: verif/sim/out*/
+          retention-days: 10
+
+  # --- 32-bit Tests ---
+  execute-riscv32-tests:
+    name: RV32 ${{ matrix.config }} / ${{ matrix.testcase }}
+    runs-on: ubuntu-latest
+    needs: setup-tools
+    if: ${{ github.event.inputs.run_smoke_only != 'true' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # cv32a65x (dual-issue)
+          - testcase: cv32a6_tests
+            config: cv32a65x
+          - testcase: dv-riscv-arch-test
+            config: cv32a65x
+          # cv32a60x (single-issue)
+          - testcase: cv32a6_tests
+            config: cv32a60x
+          - testcase: dv-riscv-arch-test
+            config: cv32a60x
+    steps:
+      - name: Setup CVA6 Environment
+        uses: ./.github/actions/setup-cva6-env
+
+      - name: Install prerequisites
+        run: source ci/install-prereq.sh
+
+      - name: Run ${{ matrix.testcase }}
+        run: |
+          set -x
+          source verif/sim/setup-env.sh
+          DV_SIMULATORS=veri-testharness,spike \
+          DV_TARGET=${{ matrix.config }} \
+            bash verif/regress/${{ matrix.testcase }}.sh
+
+      - name: Upload Results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rv32-${{ matrix.config }}-${{ matrix.testcase }}
+          path: verif/sim/out*/
+          retention-days: 10
+
+  # --- Smoke Tests (Quick Validation) ---
+  smoke-tests:
+    name: Smoke ${{ matrix.config }}
+    runs-on: ubuntu-latest
+    needs: setup-tools
+    strategy:
+      fail-fast: false
+      matrix:
+        config:
+          - cv32a65x
+          - cv64a6_imafdc_sv39
+    steps:
+      - name: Setup CVA6 Environment
+        uses: ./.github/actions/setup-cva6-env
+
+      - name: Install prerequisites
+        run: source ci/install-prereq.sh
+
+      - name: Run Smoke Tests
+        run: |
+          set -x
+          source verif/sim/setup-env.sh
+          DV_SIMULATORS=veri-testharness,spike \
+          DV_TARGET=${{ matrix.config }} \
+            bash verif/regress/smoke-tests-${{ matrix.config }}.sh
+
+      - name: Upload Results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-${{ matrix.config }}
+          path: verif/sim/out*/
+          retention-days: 10
+
+  # ============================================================
+  # Stage 3: Report summary
+  # ============================================================
+  report-summary:
+    name: Test Summary
+    runs-on: ubuntu-latest
+    needs: [execute-riscv64-tests, execute-riscv32-tests, smoke-tests]
+    if: ${{ always() && !cancelled() }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts/
+
+      - name: Generate Summary Report
+        run: |
+          echo "## OpenHW CVA6 CI Test Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Test Suite | Config | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|------------|--------|--------|" >> $GITHUB_STEP_SUMMARY
+
+          # Process each artifact directory
+          for dir in artifacts/*/; do
+            if [ -d "$dir" ]; then
+              name=$(basename "$dir")
+
+              # Find iss_regr.log in subdirectories
+              log_file=$(find "$dir" -name "iss_regr.log" 2>/dev/null | head -1)
+
+              if [ -n "$log_file" ] && [ -f "$log_file" ]; then
+                # Count PASSED and FAILED
+                passed=$(grep -c "PASSED" "$log_file" 2>/dev/null || echo "0")
+                failed=$(grep -c "FAILED" "$log_file" 2>/dev/null || echo "0")
+
+                if [ "$failed" -gt 0 ]; then
+                  status="❌ FAIL ($passed passed, $failed failed)"
+                elif [ "$passed" -gt 0 ]; then
+                  status="✅ PASS ($passed tests)"
+                else
+                  status="⚠️ Unknown"
+                fi
+              else
+                status="⚠️ No log found"
+              fi
+
+              # Parse name: rv64-config-testcase or smoke-config
+              echo "| ${name} | - | ${status} |" >> $GITHUB_STEP_SUMMARY
+            fi
+          done
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "---" >> $GITHUB_STEP_SUMMARY
+          echo "*Generated by OpenHW CVA6 CI*" >> $GITHUB_STEP_SUMMARY
+
+      - name: Check for failures
+        id: check-failures
+        run: |
+          failed=0
+          for dir in artifacts/*/; do
+            if [ -d "$dir" ]; then
+              log_file=$(find "$dir" -name "iss_regr.log" 2>/dev/null | head -1)
+              if [ -n "$log_file" ] && [ -f "$log_file" ]; then
+                if grep -q "FAILED" "$log_file" 2>/dev/null; then
+                  echo "::error::Test failures found in $(basename "$dir")"
+                  failed=1
+                fi
+              fi
+            fi
+          done
+
+          if [ "$failed" -eq 1 ]; then
+            exit 1
+          fi
+
+          echo "All tests passed!"
