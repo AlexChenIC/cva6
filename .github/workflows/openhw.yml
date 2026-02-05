@@ -217,13 +217,19 @@ jobs:
               log_file=$(find "$dir" -name "iss_regr.log" 2>/dev/null | head -1)
 
               if [ -n "$log_file" ] && [ -f "$log_file" ]; then
-                # Count PASSED and FAILED
-                passed=$(grep -c "PASSED" "$log_file" 2>/dev/null || echo "0")
-                failed=$(grep -c "FAILED" "$log_file" 2>/dev/null || echo "0")
+                # Parse final summary like: "6 PASSED, 0 FAILED"
+                summary_line=$(grep -E "PASSED.*FAILED" "$log_file" | tail -n 1)
+                if [ -n "$summary_line" ]; then
+                  passed=$(printf "%s" "$summary_line" | sed -n 's/.*\([0-9][0-9]*\)[[:space:]]*PASSED.*/\1/p')
+                  failed=$(printf "%s" "$summary_line" | sed -n 's/.*\([0-9][0-9]*\)[[:space:]]*FAILED.*/\1/p')
+                else
+                  passed=""
+                  failed=""
+                fi
 
-                if [ "$failed" -gt 0 ]; then
+                if [ -n "$failed" ] && [ "$failed" -gt 0 ]; then
                   status="❌ FAIL ($passed passed, $failed failed)"
-                elif [ "$passed" -gt 0 ]; then
+                elif [ -n "$passed" ] && [ "$passed" -ge 0 ]; then
                   status="✅ PASS ($passed tests)"
                 else
                   status="⚠️ Unknown"
@@ -249,9 +255,13 @@ jobs:
             if [ -d "$dir" ]; then
               log_file=$(find "$dir" -name "iss_regr.log" 2>/dev/null | head -1)
               if [ -n "$log_file" ] && [ -f "$log_file" ]; then
-                if grep -q "FAILED" "$log_file" 2>/dev/null; then
-                  echo "::error::Test failures found in $(basename "$dir")"
-                  failed=1
+                summary_line=$(grep -E "PASSED.*FAILED" "$log_file" | tail -n 1)
+                if [ -n "$summary_line" ]; then
+                  failed_count=$(printf "%s" "$summary_line" | sed -n 's/.*\([0-9][0-9]*\)[[:space:]]*FAILED.*/\1/p')
+                  if [ -n "$failed_count" ] && [ "$failed_count" -gt 0 ]; then
+                    echo "::error::Test failures found in $(basename "$dir")"
+                    failed=1
+                  fi
                 fi
               fi
             fi
