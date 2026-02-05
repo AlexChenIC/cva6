@@ -98,10 +98,10 @@ jobs:
     runs-on: ubuntu-latest
     needs: setup-tools
     if: |
-      env.SELECTED_TEST_SUITE == 'all' ||
-      env.SELECTED_TEST_SUITE == 'smoke-tests' ||
-      env.SELECTED_TARGET_ARCH == 'both' ||
-      env.SELECTED_TARGET_ARCH == 'rv32'
+      (github.event.inputs.test_suite || 'all') == 'all' ||
+      (github.event.inputs.test_suite || 'all') == 'smoke-tests' ||
+      (github.event.inputs.target_arch || 'both') == 'both' ||
+      (github.event.inputs.target_arch || 'both') == 'rv32'
     strategy:
       fail-fast: false
       matrix:
@@ -140,10 +140,10 @@ jobs:
     runs-on: ubuntu-latest
     needs: setup-tools
     if: |
-      env.SELECTED_TEST_SUITE == 'all' ||
-      env.SELECTED_TEST_SUITE == 'smoke-tests' ||
-      env.SELECTED_TARGET_ARCH == 'both' ||
-      env.SELECTED_TARGET_ARCH == 'rv64'
+      (github.event.inputs.test_suite || 'all') == 'all' ||
+      (github.event.inputs.test_suite || 'all') == 'smoke-tests' ||
+      (github.event.inputs.target_arch || 'both') == 'both' ||
+      (github.event.inputs.target_arch || 'both') == 'rv64'
     strategy:
       fail-fast: false
       matrix:
@@ -185,10 +185,10 @@ jobs:
     runs-on: ubuntu-latest
     needs: setup-tools
     if: |
-      env.SELECTED_TEST_SUITE == 'all' ||
-      env.SELECTED_TEST_SUITE == 'arch-test' ||
-      env.SELECTED_TARGET_ARCH == 'both' ||
-      env.SELECTED_TARGET_ARCH == 'rv32'
+      (github.event.inputs.test_suite || 'all') == 'all' ||
+      (github.event.inputs.test_suite || 'all') == 'arch-test' ||
+      (github.event.inputs.target_arch || 'both') == 'both' ||
+      (github.event.inputs.target_arch || 'both') == 'rv32'
     strategy:
       fail-fast: false
       matrix:
@@ -225,10 +225,10 @@ jobs:
     runs-on: ubuntu-latest
     needs: setup-tools
     if: |
-      env.SELECTED_TEST_SUITE == 'all' ||
-      env.SELECTED_TEST_SUITE == 'arch-test' ||
-      env.SELECTED_TARGET_ARCH == 'both' ||
-      env.SELECTED_TARGET_ARCH == 'rv64'
+      (github.event.inputs.test_suite || 'all') == 'all' ||
+      (github.event.inputs.test_suite || 'all') == 'arch-test' ||
+      (github.event.inputs.target_arch || 'both') == 'both' ||
+      (github.event.inputs.target_arch || 'both') == 'rv64'
     strategy:
       fail-fast: false
       matrix:
@@ -269,10 +269,10 @@ jobs:
     runs-on: ubuntu-latest
     needs: setup-tools
     if: |
-      env.SELECTED_TEST_SUITE == 'all' ||
-      env.SELECTED_TEST_SUITE == 'riscv-tests' ||
-      env.SELECTED_TARGET_ARCH == 'both' ||
-      env.SELECTED_TARGET_ARCH == 'rv32'
+      (github.event.inputs.test_suite || 'all') == 'all' ||
+      (github.event.inputs.test_suite || 'all') == 'riscv-tests' ||
+      (github.event.inputs.target_arch || 'both') == 'both' ||
+      (github.event.inputs.target_arch || 'both') == 'rv32'
     strategy:
       fail-fast: false
       matrix:
@@ -309,10 +309,10 @@ jobs:
     runs-on: ubuntu-latest
     needs: setup-tools
     if: |
-      env.SELECTED_TEST_SUITE == 'all' ||
-      env.SELECTED_TEST_SUITE == 'riscv-tests' ||
-      env.SELECTED_TARGET_ARCH == 'both' ||
-      env.SELECTED_TARGET_ARCH == 'rv64'
+      (github.event.inputs.test_suite || 'all') == 'all' ||
+      (github.event.inputs.test_suite || 'all') == 'riscv-tests' ||
+      (github.event.inputs.target_arch || 'both') == 'both' ||
+      (github.event.inputs.target_arch || 'both') == 'rv64'
     strategy:
       fail-fast: false
       matrix:
@@ -352,10 +352,10 @@ jobs:
     runs-on: ubuntu-latest
     needs: setup-tools
     if: |
-      env.SELECTED_TEST_SUITE == 'all' ||
-      env.SELECTED_TEST_SUITE == 'riscv-compliance' ||
-      env.SELECTED_TARGET_ARCH == 'both' ||
-      env.SELECTED_TARGET_ARCH == 'rv32'
+      (github.event.inputs.test_suite || 'all') == 'all' ||
+      (github.event.inputs.test_suite || 'all') == 'riscv-compliance' ||
+      (github.event.inputs.target_arch || 'both') == 'both' ||
+      (github.event.inputs.target_arch || 'both') == 'rv32'
     strategy:
       fail-fast: false
       matrix:
@@ -392,10 +392,10 @@ jobs:
     runs-on: ubuntu-latest
     needs: setup-tools
     if: |
-      env.SELECTED_TEST_SUITE == 'all' ||
-      env.SELECTED_TEST_SUITE == 'riscv-compliance' ||
-      env.SELECTED_TARGET_ARCH == 'both' ||
-      env.SELECTED_TARGET_ARCH == 'rv64'
+      (github.event.inputs.test_suite || 'all') == 'all' ||
+      (github.event.inputs.test_suite || 'all') == 'riscv-compliance' ||
+      (github.event.inputs.target_arch || 'both') == 'both' ||
+      (github.event.inputs.target_arch || 'both') == 'rv64'
     strategy:
       fail-fast: false
       matrix:
@@ -435,10 +435,10 @@ jobs:
     runs-on: ubuntu-latest
     needs: setup-tools
     if: |
-      env.SELECTED_TEST_SUITE == 'all' ||
-      env.SELECTED_TEST_SUITE == 'custom-tests' ||
-      env.SELECTED_TARGET_ARCH == 'both' ||
-      env.SELECTED_TARGET_ARCH == 'rv32'
+      (github.event.inputs.test_suite || 'all') == 'all' ||
+      (github.event.inputs.test_suite || 'all') == 'custom-tests' ||
+      (github.event.inputs.target_arch || 'both') == 'both' ||
+      (github.event.inputs.target_arch || 'both') == 'rv32'
     strategy:
       fail-fast: false
       matrix:
@@ -475,10 +475,10 @@ jobs:
     runs-on: ubuntu-latest
     needs: setup-tools
     if: |
-      env.SELECTED_TEST_SUITE == 'all' ||
-      env.SELECTED_TEST_SUITE == 'custom-tests' ||
-      env.SELECTED_TARGET_ARCH == 'both' ||
-      env.SELECTED_TARGET_ARCH == 'rv64'
+      (github.event.inputs.test_suite || 'all') == 'all' ||
+      (github.event.inputs.test_suite || 'all') == 'custom-tests' ||
+      (github.event.inputs.target_arch || 'both') == 'both' ||
+      (github.event.inputs.target_arch || 'both') == 'rv64'
     strategy:
       fail-fast: false
       matrix:
