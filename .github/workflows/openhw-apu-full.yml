@@ -6,11 +6,18 @@
 # Comprehensive Verilator regression tests for CVA6 APU configurations
 #
 # Test coverage (all Verilator-compatible test suites):
-#   RV64 (cv64a6_imafdc_sv39):
-#     - smoke-tests          : Quick sanity check (~5 tests)
+#
+#   RV64 configs:
+#     - cv64a6_imafdc_sv39             (base)
+#     - cv64a6_imafdc_sv39_hpdcache    (HPDcache)
+#     - cv64a6_imafdc_sv39_hpdcache_wb (HPDcache + Write-back)
+#     - cv64a6_imafdc_sv39_wb          (Write-back)
+#
+#   RV64 test suites per config:
+#     - smoke-tests          : Quick sanity check (~6 tests) [sv39 only]
 #     - dv-riscv-arch-test   : RISC-V architecture compliance (~221 tests)
 #     - dv-riscv-tests       : Standard RISC-V tests, p+v mode (~229 tests)
-#     - dv-riscv-compliance  : RISC-V compliance suite (~183 tests)
+#     - dv-riscv-compliance  : RISC-V compliance suite (~183 tests) [sv39 only]
 #     - cv64a6_imafdc_tests  : CVA6-specific directed tests (~6 tests)
 #     - benchmark            : Performance benchmarks (~12 programs)
 #
@@ -20,16 +27,23 @@
 #     - dv-riscv-tests       : Standard RISC-V tests, p-mode only (~94 tests)
 #     - dv-riscv-compliance  : RISC-V compliance suite (~183 tests)
 #     - cv32a6_tests         : CVA6-specific directed tests (~6 tests)
-#     - dv-riscv-csr-access-test : CSR access verification tests
+#     - dv-riscv-csr-access-test : CSR access verification tests (~9 tests)
 #     - benchmark            : Performance benchmarks (~12 programs)
 #
-#   Total: ~1057+ individual tests across 13 parallel jobs
+#   Total: ~2471+ individual test executions across 25 parallel jobs
+#     - RV64: 18 jobs (6 base + 12 variant configs)
+#     - RV32: 7 jobs
 #
 # Not included (require VCS-UVM, not Verilator-compatible):
 #   - dv-generated-tests, dv-generated-xif-tests, dv-interrupt-test
 #   - smoke-gen_tests, debug_test, pmp_cv32a65x_tests
 #   - dhrystone, coremark (hwconfig mode)
 #   - cvxif_verif_regression
+#
+# Note: smoke-tests and dv-riscv-compliance run only on sv39 base config
+# because their scripts hardcode target/testlist paths. The hpdcache/wb
+# variants share the same sv39 testlists for arch-test, riscv-tests,
+# cv64a6_imafdc_tests, and benchmark.
 
 name: openhw-apu-full
 
@@ -85,7 +99,7 @@ jobs:
   # Stage 2: RV64 Test Execution (parallel matrix jobs)
   # ============================================================
   execute-rv64-tests:
-    name: RV64 ${{ matrix.testcase }}
+    name: RV64 ${{ matrix.testcase }} (${{ matrix.config }})
     runs-on: ubuntu-latest
     needs: setup-tools
     if: (github.event.inputs.target_arch || 'both') == 'both' || (github.event.inputs.target_arch || 'both') == 'rv64'
@@ -93,7 +107,10 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # Smoke tests - quick sanity check
+          # ============================================================
+          # cv64a6_imafdc_sv39 (base config)
+          # ============================================================
+          # Smoke tests - quick sanity check (~6 tests)
           - testcase: smoke-tests-cv64a6_imafdc_sv39
             config: cv64a6_imafdc_sv39
           # Architecture compliance tests (~221 tests)
@@ -111,6 +128,46 @@ jobs:
           # Performance benchmarks (~12 programs)
           - testcase: benchmark
             config: cv64a6_imafdc_sv39
+
+          # ============================================================
+          # cv64a6_imafdc_sv39_hpdcache (HPDcache variant)
+          # Note: smoke-tests/compliance skipped (hardcoded target/testlist)
+          # ============================================================
+          - testcase: dv-riscv-arch-test
+            config: cv64a6_imafdc_sv39_hpdcache
+          - testcase: dv-riscv-tests
+            config: cv64a6_imafdc_sv39_hpdcache
+            testlists: "../tests/testlist_riscv-tests-cv64a6_imafdc_sv39-p.yaml ../tests/testlist_riscv-tests-cv64a6_imafdc_sv39-v.yaml"
+          - testcase: cv64a6_imafdc_tests
+            config: cv64a6_imafdc_sv39_hpdcache
+          - testcase: benchmark
+            config: cv64a6_imafdc_sv39_hpdcache
+
+          # ============================================================
+          # cv64a6_imafdc_sv39_hpdcache_wb (HPDcache + Write-back)
+          # ============================================================
+          - testcase: dv-riscv-arch-test
+            config: cv64a6_imafdc_sv39_hpdcache_wb
+          - testcase: dv-riscv-tests
+            config: cv64a6_imafdc_sv39_hpdcache_wb
+            testlists: "../tests/testlist_riscv-tests-cv64a6_imafdc_sv39-p.yaml ../tests/testlist_riscv-tests-cv64a6_imafdc_sv39-v.yaml"
+          - testcase: cv64a6_imafdc_tests
+            config: cv64a6_imafdc_sv39_hpdcache_wb
+          - testcase: benchmark
+            config: cv64a6_imafdc_sv39_hpdcache_wb
+
+          # ============================================================
+          # cv64a6_imafdc_sv39_wb (Write-back variant)
+          # ============================================================
+          - testcase: dv-riscv-arch-test
+            config: cv64a6_imafdc_sv39_wb
+          - testcase: dv-riscv-tests
+            config: cv64a6_imafdc_sv39_wb
+            testlists: "../tests/testlist_riscv-tests-cv64a6_imafdc_sv39-p.yaml ../tests/testlist_riscv-tests-cv64a6_imafdc_sv39-v.yaml"
+          - testcase: cv64a6_imafdc_tests
+            config: cv64a6_imafdc_sv39_wb
+          - testcase: benchmark
+            config: cv64a6_imafdc_sv39_wb
     steps:
       - uses: actions/checkout@v4
         with:
@@ -125,6 +182,10 @@ jobs:
         run: |
           set -x
           source verif/sim/setup-env.sh
+          # Override testlists when specified (hpdcache/wb variants share sv39 testlists)
+          if [ -n "${{ matrix.testlists }}" ]; then
+            export DV_TESTLISTS="${{ matrix.testlists }}"
+          fi
           DV_SIMULATORS=veri-testharness,spike \
           DV_TARGET=${{ matrix.config }} \
             bash verif/regress/${{ matrix.testcase }}.sh
@@ -241,19 +302,25 @@ jobs:
               total_jobs=$((total_jobs + 1))
 
               # Parse name: {arch}-{config}-{testcase}
+              # Config names use underscores, testcase names start with hyphen
+              # so split on first hyphen after the arch prefix
               arch=$(echo "$name" | cut -d'-' -f1)
-              # Extract config and testcase from the name
               remainder=$(echo "$name" | sed "s/^${arch}-//")
-              if [[ "$remainder" == cv64a6_imafdc_sv39-* ]]; then
+              # Match longest config prefix first (order matters!)
+              if [[ "$remainder" == cv64a6_imafdc_sv39_hpdcache_wb-* ]]; then
+                config="cv64a6_imafdc_sv39_hpdcache_wb"
+              elif [[ "$remainder" == cv64a6_imafdc_sv39_hpdcache-* ]]; then
+                config="cv64a6_imafdc_sv39_hpdcache"
+              elif [[ "$remainder" == cv64a6_imafdc_sv39_wb-* ]]; then
+                config="cv64a6_imafdc_sv39_wb"
+              elif [[ "$remainder" == cv64a6_imafdc_sv39-* ]]; then
                 config="cv64a6_imafdc_sv39"
-                testcase=$(echo "$remainder" | sed "s/^cv64a6_imafdc_sv39-//")
               elif [[ "$remainder" == cv32a65x-* ]]; then
                 config="cv32a65x"
-                testcase=$(echo "$remainder" | sed "s/^cv32a65x-//")
               else
-                config="$remainder"
-                testcase="-"
+                config="unknown"
               fi
+              testcase=$(echo "$remainder" | sed "s/^${config}-//")
 
               # Find iss_regr.log
               log_file=$(find "$dir" -name "iss_regr.log" 2>/dev/null | head -1)
