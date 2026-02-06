@@ -915,11 +915,20 @@ module axi_riscv_amos #(
      */
 
     assign big_endian     = (atop_q[3] == axi_pkg::ATOP_BIG_END);
-    assign op_a           = big_endian ? {<<8{r_data_q & strb_ext}} : (r_data_q & strb_ext);
-    assign op_b           = big_endian ? {<<8{w_data_q & strb_ext}} : (w_data_q & strb_ext);
+    // DSIM fix: use intermediate signals for streaming operators to avoid bitstream/logic type mismatch
+    logic [AXI_DATA_WIDTH-1:0] op_a_be, op_b_be, op_a_le, op_b_le;
+    logic [AXI_DATA_WIDTH-1:0] alu_result_be, alu_result_le;
+    assign op_a_be = {<<8{r_data_q & strb_ext}};
+    assign op_b_be = {<<8{w_data_q & strb_ext}};
+    assign op_a_le = r_data_q & strb_ext;
+    assign op_b_le = w_data_q & strb_ext;
+    assign op_a    = big_endian ? op_a_be : op_a_le;
+    assign op_b    = big_endian ? op_b_be : op_b_le;
     assign sign_a         = |(op_a & ~(strb_ext >> 1));
     assign sign_b         = |(op_b & ~(strb_ext >> 1));
-    assign alu_result_ext = big_endian ? {<<8{res}} : res;
+    assign alu_result_be = {<<8{res}};
+    assign alu_result_le = res;
+    assign alu_result_ext = big_endian ? alu_result_be : alu_result_le;
 
     generate
         if (AXI_ALU_RATIO == 1 && RISCV_WORD_WIDTH == 32) begin

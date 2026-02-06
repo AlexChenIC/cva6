@@ -146,6 +146,11 @@ CFLAGS += -I$(QUESTASIM_HOME)/include         \
           -I$(RISCV)/include                  \
           -I$(SPIKE_INSTALL_DIR)/include      \
           -std=c++17 -I$(CVA6_REPO_DIR)/corev_apu/tb/dpi -O3
+          
+# DSIM DPI headers (for svdpi.h)
+DSIM_DPI_INCLUDE ?= $(shell dirname $(shell which dsim))/../include
+CFLAGS += -I$(DSIM_DPI_INCLUDE)
+
 
 ifdef XCELIUM_HOME
 CFLAGS += -I$(XCELIUM_HOME)/tools/include
@@ -310,6 +315,11 @@ fpga_src := $(addprefix $(root-dir), $(fpga_src))
 tbs := $(top_level_path) corev_apu/tb/ariane_testharness.sv core/cva6_rvfi.sv
 
 tbs := $(addprefix $(root-dir), $(tbs))
+
+# DSIM testbench sources, avoid duplicate cva6_rvfi (already in Flist.cva6)
+tbs_dsim := $(filter-out $(CVA6_REPO_DIR)/core/cva6_rvfi.sv,$(tbs))
+# DSIM sources: avoid duplicate lzc module, keep common_cells version from Flist.cva6
+dsim_src_sv := $(filter-out $(CVA6_REPO_DIR)/corev_apu/instr_tracing/rv_tracer-main/rtl/lzc.sv,$(filter %.sv,$(src)))
 
 # RISCV asm tests and benchmark setup (used for CI)
 # there is a defined test-list with selected CI tests
@@ -520,6 +530,75 @@ run-benchmarks: $(riscv-benchmarks)
 
 check-benchmarks:
 	ci/check-tests.sh tmp/riscv-benchmarks- $(shell wc -l $(riscv-benchmarks-list) | awk -F " " '{ print $1 }')
+	
+#####################################
+# dsim-specific commands, variables
+#####################################
+DSIM               ?= dsim
+DSIM_RESULTS_DIR   ?= dsim_results
+DSIM_WORK_DIR      ?= dsim_work
+DSIM_IMAGE         ?= dsim.out
+DSIM_COMPL_LOG     ?= dsim_compl.log
+DSIM_ACC_FLAGS     ?= +acc+rwb
+DSIM_DISABLED_WARNINGS ?= -suppress EnumMustBePositive -suppress DupModuleDefn \
+	-suppress ArgMustBeIntegral -suppress PortTypeMismatch \
+	-suppress PortWidthMismatch -suppress ExprStmtNotVoid
+DSIM_UVMHOME_ARG   :=
+
+ifdef UVM_HOME
+DSIM_UVMHOME_ARG   = +incdir+$(UVM_HOME)/src $(UVM_HOME)/src/uvm_pkg.sv
+endif
+
+DSIM_WORK_PATH    ?= $(DSIM_RESULTS_DIR)/$(DSIM_WORK_DIR)
+DSIM_IMAGE_PATH   ?= $(DSIM_WORK_PATH)/$(DSIM_IMAGE)
+
+DSIM_COMP_FLAGS  ?= -sv -timescale 1ns/1ps -work $(DSIM_WORK_PATH) -genimage $(DSIM_IMAGE_PATH) -top $(top_level)
+
+DSIM_COMP = $(DSIM_COMP_FLAGS) \
+	$(DSIM_ACC_FLAGS) \
+	$(DSIM_DISABLED_WARNINGS) \
+	$(DSIM_UVMHOME_ARG) \
+	$(if $(defines),+define+$(defines)) +define+DSIM \
+	$(list_incdir) \
+	-f $(flist) \
+	-f $(CVA6_REPO_DIR)/verif/tb/core/Flist.cva6_tb \
+	corev_apu/register_interface/src/reg_intf.sv \
+	$(uart_src_sv) \
+	$(dsim_src_sv) \
+	$(tbs_dsim) \
+	corev_apu/tb/common/mock_uart.sv
+
+
+dsim_comp: $(dpi-library)/ariane_dpi.so
+	@echo "[DSIM] Building Model"
+	mkdir -p $(DSIM_RESULTS_DIR)
+	mkdir -p $(DSIM_WORK_PATH)
+	$(DSIM) \
+		$(DSIM_COMP) \
+		-l $(DSIM_RESULTS_DIR)/$(DSIM_COMPL_LOG)
+
+.PHONY: dsim_flist
+dsim_flist:
+	@if [ -z "$(DSIM_FLIST)" ]; then \
+		echo "Error: DSIM_FLIST is not set"; \
+		exit 1; \
+	fi
+	@mkdir -p $(dir $(DSIM_FLIST))
+	@envsubst '$${CVA6_REPO_DIR} $${CVA6_TB_DIR} $${HPDCACHE_DIR} $${TARGET_CFG}' < $(flist) > $(DSIM_FLIST)
+	@envsubst '$${CVA6_REPO_DIR} $${CVA6_TB_DIR} $${HPDCACHE_DIR} $${TARGET_CFG}' < $(CVA6_REPO_DIR)/verif/tb/core/Flist.cva6_tb >> $(DSIM_FLIST)
+	@printf "%s\n" $(list_incdir) >> $(DSIM_FLIST)
+	@printf "%s\n" $(CVA6_REPO_DIR)/corev_apu/register_interface/src/reg_intf.sv >> $(DSIM_FLIST)
+	@printf "%s\n" $(uart_src_sv) >> $(DSIM_FLIST)
+	@printf "%s\n" $(dsim_src_sv) >> $(DSIM_FLIST)
+	@printf "%s\n" $(tbs_dsim) >> $(DSIM_FLIST)
+	@printf "%s\n" $(CVA6_REPO_DIR)/corev_apu/tb/common/mock_uart.sv >> $(DSIM_FLIST)
+	@awk '!seen[$$0]++' $(DSIM_FLIST) > $(DSIM_FLIST).tmp && mv $(DSIM_FLIST).tmp $(DSIM_FLIST)
+
+dsim_clean:
+	@echo "[DSIM] clean up"
+	rm -rf $(DSIM_RESULTS_DIR)
+	
+	
 #####################################
 # xrun-specific commands, variables
 #####################################
@@ -673,7 +752,7 @@ verilate_command := $(verilator) --no-timing verilator_config.vlt               
                     $(filter-out core/fpu_wrap.sv, $(filter-out %.vhd, $(filter-out %_config_pkg.sv, $(src))))   \
                     +define+$(defines)$(if $(TRACE_FAST),+VM_TRACE)$(if $(TRACE_COMPACT),+VM_TRACE+VM_TRACE_FST) \
                     corev_apu/tb/common/mock_uart.sv                                                             \
-                    +incdir+corev_apu/axi_node                                                                   \
+                    +incdir+vendor/pulp-platform/axi_riscv_atomics/src                                         \
                     $(if $(verilator_threads), --threads $(verilator_threads))                                   \
                     --unroll-count 256                                                                           \
                     -Wall                                                                                        \
@@ -842,6 +921,7 @@ clean:
 	rm -rf $(riscv-torture-dir)/output/test*
 	rm -rf $(library)/ $(dpi-library)/ $(ver-library)/ $(vcs-library)/
 	rm -f tmp/*.ucdb tmp/*.log *.wlf *vstf wlft* *.ucdb
+	rm -rf $(DSIM_RESULTS_DIR)
 	$(MAKE) -C corev_apu/fpga clean
 	$(MAKE) -C corev_apu/fpga/src/bootrom BOARD=$(BOARD) XLEN=$(XLEN) clean
 

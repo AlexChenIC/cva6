@@ -129,6 +129,15 @@ ${CVA6_REPO_DIR}/vendor/pulp-platform/common_cells/src/exp_backoff.sv
 ${CVA6_REPO_DIR}/vendor/pulp-platform/common_cells/src/counter.sv
 ${CVA6_REPO_DIR}/vendor/pulp-platform/common_cells/src/delta_counter.sv
 
+// AXI RISC-V atomics
+${CVA6_REPO_DIR}/vendor/pulp-platform/axi_riscv_atomics/src/axi_res_tbl.sv
+${CVA6_REPO_DIR}/vendor/pulp-platform/axi_riscv_atomics/src/axi_riscv_amos_alu.sv
+${CVA6_REPO_DIR}/vendor/pulp-platform/axi_riscv_atomics/src/axi_riscv_amos.sv
+${CVA6_REPO_DIR}/vendor/pulp-platform/axi_riscv_atomics/src/axi_riscv_lrsc.sv
+${CVA6_REPO_DIR}/vendor/pulp-platform/axi_riscv_atomics/src/axi_riscv_atomics.sv
+${CVA6_REPO_DIR}/vendor/pulp-platform/axi_riscv_atomics/src/axi_riscv_lrsc_wrap.sv
+${CVA6_REPO_DIR}/vendor/pulp-platform/axi_riscv_atomics/src/axi_riscv_atomics_wrap.sv
+
 // Top-level source files (not necessarily instantiated at the top of the cva6).
 ${CVA6_REPO_DIR}/core/cva6.sv
 ${CVA6_REPO_DIR}/core/cva6_rvfi_probes.sv
