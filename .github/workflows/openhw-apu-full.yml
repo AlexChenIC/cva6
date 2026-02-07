@@ -181,21 +181,33 @@ jobs:
       - name: Run ${{ matrix.testcase }}
         run: |
           set -x
+          # Create result tracking directory (before anything else)
+          mkdir -p ci-results
+          echo "1" > ci-results/exit_code
           source verif/sim/setup-env.sh
           # Override testlists when specified (hpdcache/wb variants share sv39 testlists)
           if [ -n "${{ matrix.testlists }}" ]; then
             export DV_TESTLISTS="${{ matrix.testlists }}"
           fi
+          # Run test and capture exit code
+          rc=0
           DV_SIMULATORS=veri-testharness,spike \
           DV_TARGET=${{ matrix.config }} \
-            bash verif/regress/${{ matrix.testcase }}.sh
+            bash verif/regress/${{ matrix.testcase }}.sh || rc=$?
+          # Save result (persists even if test cleans output)
+          echo "$rc" > ci-results/exit_code
+          # Copy iss_regr.log if available (some scripts delete output)
+          find verif/sim -name "iss_regr.log" -exec cp {} ci-results/ \; 2>/dev/null || true
+          exit $rc
 
       - name: Upload Results
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: rv64-${{ matrix.config }}-${{ matrix.testcase }}
-          path: verif/sim/out*/
+          path: |
+            ci-results/
+            verif/sim/out*/
           retention-days: 14
 
   # ============================================================
@@ -246,21 +258,33 @@ jobs:
       - name: Run ${{ matrix.testcase }}
         run: |
           set -x
+          # Create result tracking directory (before anything else)
+          mkdir -p ci-results
+          echo "1" > ci-results/exit_code
           source verif/sim/setup-env.sh
           # Override testlists when specified (e.g., cv32a65x has no v-mode tests)
           if [ -n "${{ matrix.testlists }}" ]; then
             export DV_TESTLISTS="${{ matrix.testlists }}"
           fi
+          # Run test and capture exit code
+          rc=0
           DV_SIMULATORS=veri-testharness,spike \
           DV_TARGET=${{ matrix.config }} \
-            bash verif/regress/${{ matrix.testcase }}.sh
+            bash verif/regress/${{ matrix.testcase }}.sh || rc=$?
+          # Save result (persists even if test cleans output)
+          echo "$rc" > ci-results/exit_code
+          # Copy iss_regr.log if available (some scripts delete output)
+          find verif/sim -name "iss_regr.log" -exec cp {} ci-results/ \; 2>/dev/null || true
+          exit $rc
 
       - name: Upload Results
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: rv32-${{ matrix.config }}-${{ matrix.testcase }}
-          path: verif/sim/out*/
+          path: |
+            ci-results/
+            verif/sim/out*/
           retention-days: 14
 
   # ============================================================
@@ -294,63 +318,95 @@ jobs:
           total_passed=0
           total_failed=0
           total_jobs=0
+          any_failure=0
 
           # Process each artifact directory
           for dir in artifacts/*/; do
-            if [ -d "$dir" ]; then
-              name=$(basename "$dir")
-              total_jobs=$((total_jobs + 1))
-
-              # Parse name: {arch}-{config}-{testcase}
-              # Config names use underscores, testcase names start with hyphen
-              # so split on first hyphen after the arch prefix
-              arch=$(echo "$name" | cut -d'-' -f1)
-              remainder=$(echo "$name" | sed "s/^${arch}-//")
-              # Match longest config prefix first (order matters!)
-              if [[ "$remainder" == cv64a6_imafdc_sv39_hpdcache_wb-* ]]; then
-                config="cv64a6_imafdc_sv39_hpdcache_wb"
-              elif [[ "$remainder" == cv64a6_imafdc_sv39_hpdcache-* ]]; then
-                config="cv64a6_imafdc_sv39_hpdcache"
-              elif [[ "$remainder" == cv64a6_imafdc_sv39_wb-* ]]; then
-                config="cv64a6_imafdc_sv39_wb"
-              elif [[ "$remainder" == cv64a6_imafdc_sv39-* ]]; then
-                config="cv64a6_imafdc_sv39"
-              elif [[ "$remainder" == cv32a65x-* ]]; then
-                config="cv32a65x"
-              else
-                config="unknown"
-              fi
-              testcase=$(echo "$remainder" | sed "s/^${config}-//")
-
-              # Find iss_regr.log
-              log_file=$(find "$dir" -name "iss_regr.log" 2>/dev/null | head -1)
-
-              if [ -n "$log_file" ] && [ -f "$log_file" ]; then
-                summary_line=$(grep -E "PASSED.*FAILED" "$log_file" | tail -n 1)
-                if [ -n "$summary_line" ]; then
-                  passed=$(printf "%s" "$summary_line" | sed -n 's/.*\([0-9][0-9]*\)[[:space:]]*PASSED.*/\1/p')
-                  failed=$(printf "%s" "$summary_line" | sed -n 's/.*\([0-9][0-9]*\)[[:space:]]*FAILED.*/\1/p')
-                else
-                  passed=""
-                  failed=""
-                fi
-
-                if [ -n "$failed" ] && [ "$failed" -gt 0 ]; then
-                  status="FAIL ($passed passed, $failed failed)"
-                  total_failed=$((total_failed + failed))
-                  total_passed=$((total_passed + ${passed:-0}))
-                elif [ -n "$passed" ] && [ "$passed" -ge 0 ]; then
-                  status="PASS ($passed tests)"
-                  total_passed=$((total_passed + passed))
-                else
-                  status="Unknown"
-                fi
-              else
-                status="No log"
-              fi
-
-              echo "| ${arch} | ${testcase} | ${config} | ${status} |" >> $GITHUB_STEP_SUMMARY
+            if [ ! -d "$dir" ]; then
+              continue
             fi
+            name=$(basename "$dir")
+            total_jobs=$((total_jobs + 1))
+
+            # Parse name: {arch}-{config}-{testcase}
+            arch=$(echo "$name" | cut -d'-' -f1)
+            remainder=$(echo "$name" | sed "s/^${arch}-//")
+            # Match longest config prefix first (order matters!)
+            if [[ "$remainder" == cv64a6_imafdc_sv39_hpdcache_wb-* ]]; then
+              config="cv64a6_imafdc_sv39_hpdcache_wb"
+            elif [[ "$remainder" == cv64a6_imafdc_sv39_hpdcache-* ]]; then
+              config="cv64a6_imafdc_sv39_hpdcache"
+            elif [[ "$remainder" == cv64a6_imafdc_sv39_wb-* ]]; then
+              config="cv64a6_imafdc_sv39_wb"
+            elif [[ "$remainder" == cv64a6_imafdc_sv39-* ]]; then
+              config="cv64a6_imafdc_sv39"
+            elif [[ "$remainder" == cv32a65x-* ]]; then
+              config="cv32a65x"
+            else
+              config="unknown"
+            fi
+            testcase=$(echo "$remainder" | sed "s/^${config}-//")
+
+            # 1. Check exit code from result marker (primary source of truth)
+            exit_code="missing"
+            exit_code_file="$dir/ci-results/exit_code"
+            if [ -f "$exit_code_file" ]; then
+              exit_code=$(cat "$exit_code_file" | tr -d '[:space:]')
+            fi
+
+            # 2. Parse iss_regr.log for detailed test counts
+            passed=""
+            failed=""
+            log_file="$dir/ci-results/iss_regr.log"
+            if [ ! -f "$log_file" ]; then
+              log_file=$(find "$dir" -name "iss_regr.log" 2>/dev/null | head -1)
+            fi
+            if [ -n "$log_file" ] && [ -f "$log_file" ]; then
+              summary_line=$(grep -E "PASSED.*FAILED" "$log_file" | tail -n 1)
+              if [ -n "$summary_line" ]; then
+                passed=$(printf "%s" "$summary_line" | sed -n 's/.*\([0-9][0-9]*\)[[:space:]]*PASSED.*/\1/p')
+                failed=$(printf "%s" "$summary_line" | sed -n 's/.*\([0-9][0-9]*\)[[:space:]]*FAILED.*/\1/p')
+              fi
+            fi
+
+            # 3. Determine status (exit code takes priority over log parsing)
+            if [ "$exit_code" = "0" ]; then
+              # Job exited successfully
+              if [ -n "$failed" ] && [ "$failed" -gt 0 ]; then
+                # Exit 0 but log shows failures (shouldn't happen, but catch it)
+                status="FAIL ($passed passed, $failed failed)"
+                total_failed=$((total_failed + failed))
+                total_passed=$((total_passed + ${passed:-0}))
+                any_failure=1
+              elif [ -n "$passed" ]; then
+                status="PASS ($passed tests)"
+                total_passed=$((total_passed + passed))
+              else
+                # Exit 0, no detailed log (e.g., benchmark tests)
+                status="PASS"
+              fi
+            elif [ "$exit_code" = "missing" ]; then
+              # No result marker at all
+              status="UNKNOWN (no result marker)"
+              any_failure=1
+            else
+              # Non-zero exit code = definite failure
+              any_failure=1
+              if [ -n "$failed" ] && [ "$failed" -gt 0 ]; then
+                status="FAIL ($passed passed, $failed failed)"
+                total_failed=$((total_failed + failed))
+                total_passed=$((total_passed + ${passed:-0}))
+              elif [ -n "$passed" ]; then
+                status="FAIL (exit $exit_code, $passed tests ran)"
+                total_failed=$((total_failed + 1))
+                total_passed=$((total_passed + passed))
+              else
+                status="FAIL (exit $exit_code)"
+                total_failed=$((total_failed + 1))
+              fi
+            fi
+
+            echo "| ${arch} | ${testcase} | ${config} | ${status} |" >> $GITHUB_STEP_SUMMARY
           done
 
           echo "" >> $GITHUB_STEP_SUMMARY
@@ -358,30 +414,52 @@ jobs:
           echo "- **Total Jobs:** ${total_jobs}" >> $GITHUB_STEP_SUMMARY
           echo "- **Total Passed:** ${total_passed}" >> $GITHUB_STEP_SUMMARY
           echo "- **Total Failed:** ${total_failed}" >> $GITHUB_STEP_SUMMARY
+          if [ "$any_failure" -eq 1 ]; then
+            echo "- **Overall: FAILED**" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "- **Overall: ALL PASSED**" >> $GITHUB_STEP_SUMMARY
+          fi
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "---" >> $GITHUB_STEP_SUMMARY
           echo "*Generated by OpenHW CVA6 Full APU CI*" >> $GITHUB_STEP_SUMMARY
 
       - name: Check for failures
         run: |
-          failed=0
+          any_failed=0
+
+          # Check each artifact's exit code
           for dir in artifacts/*/; do
-            if [ -d "$dir" ]; then
-              log_file=$(find "$dir" -name "iss_regr.log" 2>/dev/null | head -1)
-              if [ -n "$log_file" ] && [ -f "$log_file" ]; then
-                summary_line=$(grep -E "PASSED.*FAILED" "$log_file" | tail -n 1)
-                if [ -n "$summary_line" ]; then
-                  failed_count=$(printf "%s" "$summary_line" | sed -n 's/.*\([0-9][0-9]*\)[[:space:]]*FAILED.*/\1/p')
-                  if [ -n "$failed_count" ] && [ "$failed_count" -gt 0 ]; then
-                    echo "::error::Test failures in $(basename "$dir")"
-                    failed=1
-                  fi
-                fi
+            if [ ! -d "$dir" ]; then
+              continue
+            fi
+            name=$(basename "$dir")
+            exit_code_file="$dir/ci-results/exit_code"
+            if [ -f "$exit_code_file" ]; then
+              ec=$(cat "$exit_code_file" | tr -d '[:space:]')
+              if [ "$ec" != "0" ]; then
+                echo "::error::Test failed: ${name} (exit code: ${ec})"
+                any_failed=1
               fi
+            else
+              echo "::error::Missing result marker: ${name}"
+              any_failed=1
             fi
           done
 
-          if [ "$failed" -eq 1 ]; then
+          # Also check if the matrix jobs themselves reported failure
+          rv64_result="${{ needs.execute-rv64-tests.result }}"
+          rv32_result="${{ needs.execute-rv32-tests.result }}"
+          if [ "$rv64_result" = "failure" ] && [ "$any_failed" -eq 0 ]; then
+            echo "::error::RV64 matrix job reported failure but no individual failures detected in artifacts"
+            any_failed=1
+          fi
+          if [ "$rv32_result" = "failure" ] && [ "$any_failed" -eq 0 ]; then
+            echo "::error::RV32 matrix job reported failure but no individual failures detected in artifacts"
+            any_failed=1
+          fi
+
+          if [ "$any_failed" -eq 1 ]; then
+            echo "::error::One or more tests failed. See summary above for details."
             exit 1
           fi
 
