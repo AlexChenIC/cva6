@@ -16,8 +16,9 @@
 #   RV64 test suites per config:
 #     - smoke-tests          : Quick sanity check (~6 tests) [sv39 only]
 #     - dv-riscv-arch-test   : RISC-V architecture compliance (~221 tests)
+#                              _wb uses filtered testlist (~184, no K ext)
 #     - dv-riscv-tests       : Standard RISC-V tests, p+v mode (~229 tests)
-#     - dv-riscv-compliance  : RISC-V compliance suite (~183 tests) [sv39 only]
+#     - dv-riscv-compliance  : RISC-V compliance suite (~183 tests)
 #     - cv64a6_imafdc_tests  : CVA6-specific directed tests (~6 tests)
 #     - benchmark            : Performance benchmarks (~12 programs)
 #
@@ -28,11 +29,12 @@
 #     - dv-riscv-compliance  : RISC-V compliance suite (~183 tests)
 #     - cv32a6_tests         : CVA6-specific directed tests (~6 tests)
 #     - dv-riscv-csr-access-test : CSR access verification tests (~9 tests)
+#     - dv-csr-embedded-tests: Embedded CSR tests (~5 tests)
 #     - benchmark            : Performance benchmarks (~12 programs)
 #
-#   Total: ~2250+ individual test executions across 24 parallel jobs
-#     - RV64: 17 jobs (6 base + 11 variant configs)
-#     - RV32: 7 jobs
+#   Total: ~2,988 individual test executions across 29 parallel jobs
+#     - RV64: 21 jobs (6 base + 15 variant configs)
+#     - RV32: 8 jobs
 #
 # Not included (require VCS-UVM, not Verilator-compatible):
 #   - dv-generated-tests, dv-generated-xif-tests, dv-interrupt-test
@@ -40,13 +42,12 @@
 #   - dhrystone, coremark (hwconfig mode)
 #   - cvxif_verif_regression
 #
-# Note: smoke-tests and dv-riscv-compliance run only on sv39 base config
-# because their scripts hardcode target/testlist paths. The hpdcache/wb
-# variants share the same sv39 testlists for riscv-tests,
-# cv64a6_imafdc_tests, and benchmark.
-# Note: dv-riscv-arch-test is excluded for cv64a6_imafdc_sv39_wb because
-# that config has ZKN disabled (ZKN: bit'(0)) but the shared testlist
-# includes K extension tests requiring zbkb (unsupported by CI toolchain).
+# Note: smoke-tests runs only on sv39 base config (script hardcodes target).
+# dv-riscv-compliance uses symlinked testlists for hpdcache/wb variants
+# (all share the same sv39 compliance test content).
+# Note: cv64a6_imafdc_sv39_wb uses a filtered arch-test testlist (no-zkn)
+# because that config has ZKN disabled (ZKN: bit'(0)). The 37 K extension
+# tests (pack, AES, SHA) are excluded; 184 non-K tests still run.
 
 name: openhw-apu-full
 
@@ -134,13 +135,19 @@ jobs:
 
           # ============================================================
           # cv64a6_imafdc_sv39_hpdcache (HPDcache variant)
-          # Note: smoke-tests/compliance skipped (hardcoded target/testlist)
+          # Note: smoke-tests skipped (script hardcodes target)
+          # Compliance uses run_cmd because the script constructs testlist
+          # path from DV_TARGET, but no hpdcache-specific testlist exists.
+          # We reuse the sv39 base testlist directly via cva6.py.
           # ============================================================
           - testcase: dv-riscv-arch-test
             config: cv64a6_imafdc_sv39_hpdcache
           - testcase: dv-riscv-tests
             config: cv64a6_imafdc_sv39_hpdcache
             testlists: "../tests/testlist_riscv-tests-cv64a6_imafdc_sv39-p.yaml ../tests/testlist_riscv-tests-cv64a6_imafdc_sv39-v.yaml"
+          - testcase: dv-riscv-compliance
+            config: cv64a6_imafdc_sv39_hpdcache
+            run_cmd: "python3 cva6.py --testlist=../tests/testlist_riscv-compliance-cv64a6_imafdc_sv39.yaml --target cv64a6_imafdc_sv39_hpdcache --iss_yaml=cva6.yaml --iss=veri-testharness,spike --issrun_opts=+tb_performance_mode+debug_disable=1+UVM_VERBOSITY=UVM_NONE"
           - testcase: cv64a6_imafdc_tests
             config: cv64a6_imafdc_sv39_hpdcache
           - testcase: benchmark
@@ -154,6 +161,9 @@ jobs:
           - testcase: dv-riscv-tests
             config: cv64a6_imafdc_sv39_hpdcache_wb
             testlists: "../tests/testlist_riscv-tests-cv64a6_imafdc_sv39-p.yaml ../tests/testlist_riscv-tests-cv64a6_imafdc_sv39-v.yaml"
+          - testcase: dv-riscv-compliance
+            config: cv64a6_imafdc_sv39_hpdcache_wb
+            run_cmd: "python3 cva6.py --testlist=../tests/testlist_riscv-compliance-cv64a6_imafdc_sv39.yaml --target cv64a6_imafdc_sv39_hpdcache_wb --iss_yaml=cva6.yaml --iss=veri-testharness,spike --issrun_opts=+tb_performance_mode+debug_disable=1+UVM_VERBOSITY=UVM_NONE"
           - testcase: cv64a6_imafdc_tests
             config: cv64a6_imafdc_sv39_hpdcache_wb
           - testcase: benchmark
@@ -161,14 +171,19 @@ jobs:
 
           # ============================================================
           # cv64a6_imafdc_sv39_wb (Write-back variant)
-          # Note: dv-riscv-arch-test skipped - this config has ZKN disabled
-          # (ZKN: bit'(0) in config_pkg.sv), but the shared testlist includes
-          # K extension tests (pack, AES, SHA) requiring zbkb. The GitHub
-          # Actions toolchain doesn't support zbkb, causing compile failures.
+          # arch-test: ZKN disabled (ZKN: bit'(0)), so K ext tests are
+          # filtered out on-the-fly via sed (37 tests removed, 184 remain).
+          # compliance: reuses sv39 base testlist via run_cmd.
           # ============================================================
+          - testcase: dv-riscv-arch-test
+            config: cv64a6_imafdc_sv39_wb
+            run_cmd: "sed '/^[[:space:]]*#K$/,$d' ../tests/testlist_riscv-arch-test-cv64a6_imafdc_sv39.yaml > /tmp/testlist-no-zkn.yaml && python3 cva6.py --testlist=/tmp/testlist-no-zkn.yaml --target cv64a6_imafdc_sv39_wb --iss_yaml=cva6.yaml --iss=veri-testharness,spike --issrun_opts=+tb_performance_mode+debug_disable=1+UVM_VERBOSITY=UVM_NONE --linker=../tests/riscv-arch-test/riscv-target/spike/link.ld"
           - testcase: dv-riscv-tests
             config: cv64a6_imafdc_sv39_wb
             testlists: "../tests/testlist_riscv-tests-cv64a6_imafdc_sv39-p.yaml ../tests/testlist_riscv-tests-cv64a6_imafdc_sv39-v.yaml"
+          - testcase: dv-riscv-compliance
+            config: cv64a6_imafdc_sv39_wb
+            run_cmd: "python3 cva6.py --testlist=../tests/testlist_riscv-compliance-cv64a6_imafdc_sv39.yaml --target cv64a6_imafdc_sv39_wb --iss_yaml=cva6.yaml --iss=veri-testharness,spike --issrun_opts=+tb_performance_mode+debug_disable=1+UVM_VERBOSITY=UVM_NONE"
           - testcase: cv64a6_imafdc_tests
             config: cv64a6_imafdc_sv39_wb
           - testcase: benchmark
@@ -196,9 +211,24 @@ jobs:
           fi
           # Run test and capture exit code
           rc=0
-          DV_SIMULATORS=veri-testharness,spike \
-          DV_TARGET=${{ matrix.config }} \
-            bash verif/regress/${{ matrix.testcase }}.sh || rc=$?
+          if [ -n "${{ matrix.run_cmd }}" ]; then
+            # Custom command: bypass script to use different testlist/config.
+            # Install the same tools the standard script would install.
+            source verif/regress/install-verilator.sh
+            source verif/regress/install-spike.sh
+            if [[ "${{ matrix.testcase }}" == "dv-riscv-arch-test" ]]; then
+              source verif/regress/install-riscv-arch-test.sh
+            elif [[ "${{ matrix.testcase }}" == "dv-riscv-compliance" ]]; then
+              source verif/regress/install-riscv-compliance.sh
+            fi
+            cd verif/sim
+            ${{ matrix.run_cmd }} || rc=$?
+            cd -
+          else
+            DV_SIMULATORS=veri-testharness,spike \
+            DV_TARGET=${{ matrix.config }} \
+              bash verif/regress/${{ matrix.testcase }}.sh || rc=$?
+          fi
           # Save result (persists even if test cleans output)
           echo "$rc" > ci-results/exit_code
           # Copy iss_regr.log if available (some scripts delete output)
@@ -246,6 +276,9 @@ jobs:
             config: cv32a65x
           # CSR access verification tests
           - testcase: dv-riscv-csr-access-test
+            config: cv32a65x
+          # CSR embedded tests (~5 tests)
+          - testcase: dv-csr-embedded-tests
             config: cv32a65x
           # Performance benchmarks (~12 programs)
           - testcase: benchmark
