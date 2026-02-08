@@ -224,8 +224,7 @@ jobs:
             fi
             cd verif/sim
             # Write run_cmd to temp script via heredoc to preserve quoting
-            # (heredoc with quoted delimiter avoids shell expansion of $, ',
-            #  while GitHub Actions ${{ }} expansion happens before bash)
+            # (quoted heredoc delimiter prevents shell expansion of $ and ')
             cat > /tmp/run_cmd.sh <<'RUNCMD_EOF'
           ${{ matrix.run_cmd }}
           RUNCMD_EOF
