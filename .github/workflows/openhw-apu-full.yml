@@ -43,8 +43,9 @@
 #   - cvxif_verif_regression
 #
 # Note: smoke-tests runs only on sv39 base config (script hardcodes target).
-# dv-riscv-compliance uses symlinked testlists for hpdcache/wb variants
-# (all share the same sv39 compliance test content).
+# dv-riscv-compliance for hpdcache/wb variants uses run_cmd to call cva6.py
+# directly with the sv39 base testlist (the script constructs path from
+# DV_TARGET, but no variant-specific testlist exists).
 # Note: cv64a6_imafdc_sv39_wb uses a filtered arch-test testlist (no-zkn)
 # because that config has ZKN disabled (ZKN: bit'(0)). The 37 K extension
 # tests (pack, AES, SHA) are excluded; 184 non-K tests still run.
@@ -222,7 +223,13 @@ jobs:
               source verif/regress/install-riscv-compliance.sh
             fi
             cd verif/sim
-            ${{ matrix.run_cmd }} || rc=$?
+            # Write run_cmd to temp script via heredoc to preserve quoting
+            # (heredoc with quoted delimiter avoids shell expansion of $, ',
+            #  while GitHub Actions ${{ }} expansion happens before bash)
+            cat > /tmp/run_cmd.sh <<'RUNCMD_EOF'
+          ${{ matrix.run_cmd }}
+          RUNCMD_EOF
+            bash /tmp/run_cmd.sh || rc=$?
             cd -
           else
             DV_SIMULATORS=veri-testharness,spike \
