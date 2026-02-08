@@ -30,8 +30,8 @@
 #     - dv-riscv-csr-access-test : CSR access verification tests (~9 tests)
 #     - benchmark            : Performance benchmarks (~12 programs)
 #
-#   Total: ~2471+ individual test executions across 25 parallel jobs
-#     - RV64: 18 jobs (6 base + 12 variant configs)
+#   Total: ~2250+ individual test executions across 24 parallel jobs
+#     - RV64: 17 jobs (6 base + 11 variant configs)
 #     - RV32: 7 jobs
 #
 # Not included (require VCS-UVM, not Verilator-compatible):
@@ -42,8 +42,11 @@
 #
 # Note: smoke-tests and dv-riscv-compliance run only on sv39 base config
 # because their scripts hardcode target/testlist paths. The hpdcache/wb
-# variants share the same sv39 testlists for arch-test, riscv-tests,
+# variants share the same sv39 testlists for riscv-tests,
 # cv64a6_imafdc_tests, and benchmark.
+# Note: dv-riscv-arch-test is excluded for cv64a6_imafdc_sv39_wb because
+# that config has ZKN disabled (ZKN: bit'(0)) but the shared testlist
+# includes K extension tests requiring zbkb (unsupported by CI toolchain).
 
 name: openhw-apu-full
 
@@ -158,9 +161,11 @@ jobs:
 
           # ============================================================
           # cv64a6_imafdc_sv39_wb (Write-back variant)
+          # Note: dv-riscv-arch-test skipped - this config has ZKN disabled
+          # (ZKN: bit'(0) in config_pkg.sv), but the shared testlist includes
+          # K extension tests (pack, AES, SHA) requiring zbkb. The GitHub
+          # Actions toolchain doesn't support zbkb, causing compile failures.
           # ============================================================
-          - testcase: dv-riscv-arch-test
-            config: cv64a6_imafdc_sv39_wb
           - testcase: dv-riscv-tests
             config: cv64a6_imafdc_sv39_wb
             testlists: "../tests/testlist_riscv-tests-cv64a6_imafdc_sv39-p.yaml ../tests/testlist_riscv-tests-cv64a6_imafdc_sv39-v.yaml"
