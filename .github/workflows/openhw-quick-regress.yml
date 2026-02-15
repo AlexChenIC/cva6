@@ -1,0 +1,482 @@
+# Copyright 2026 OpenHW Group
+# Licensed under the Apache License, Version 2.0, see LICENSE for details.
+# SPDX-License-Identifier: Apache-2.0
+
+# OpenHW Quick Regression - Three-Tier Fast-Feedback CI
+#
+# Provides faster feedback than ci.yml (~51min) and openhw-apu-full.yml (~116min):
+#   Tier 1 (~10min): Quick sanity - smoke tests + benchmarks on base configs
+#   Tier 2 (~20min): Core coverage - adds variant configs and directed tests
+#   Tier 3 (~30min): Extended - adds compliance and arch-test suites
+#
+# Tier selection:
+#   push         -> Tier 1 (fastest feedback for development)
+#   pull_request -> Tier 2 (thorough check before merge)
+#   schedule     -> Tier 3 (nightly extended regression)
+#   manual       -> User-selected (default Tier 2)
+
+name: openhw-quick-regress
+
+on:
+  push:
+    branches:
+      - 'task/**'
+      - 'feature/**'
+      - 'openhw/**'
+  pull_request:
+    branches: [master, main]
+  workflow_dispatch:
+    inputs:
+      tier:
+        description: 'Regression tier (1=quick sanity, 2=core, 3=extended)'
+        required: true
+        default: '2'
+        type: choice
+        options:
+          - '1'
+          - '2'
+          - '3'
+  schedule:
+    - cron: '0 2 * * 1-5'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  SPIKE_TANDEM: 1
+  NUM_JOBS: 8
+
+jobs:
+  # ============================================================
+  # Stage 0: Determine regression tier from event type
+  # ============================================================
+  resolve-tier:
+    name: Resolve Tier
+    runs-on: ubuntu-latest
+    outputs:
+      tier: ${{ steps.set-tier.outputs.tier }}
+    steps:
+      - name: Determine tier
+        id: set-tier
+        run: |
+          EVENT="${{ github.event_name }}"
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+            TIER="${{ github.event.inputs.tier }}"
+          elif [ "$EVENT" = "push" ]; then
+            TIER="1"
+          elif [ "$EVENT" = "pull_request" ]; then
+            TIER="2"
+          elif [ "$EVENT" = "schedule" ]; then
+            TIER="3"
+          else
+            TIER="2"
+          fi
+          echo "tier=$TIER" >> "$GITHUB_OUTPUT"
+          echo "Selected tier: $TIER (event: $EVENT)"
+
+  # ============================================================
+  # Stage 1: Build dynamic matrix based on tier
+  # ============================================================
+  prepare-matrix:
+    name: Prepare Matrix
+    runs-on: ubuntu-latest
+    needs: resolve-tier
+    outputs:
+      rv64_matrix: ${{ steps.build.outputs.rv64_matrix }}
+      rv32_matrix: ${{ steps.build.outputs.rv32_matrix }}
+    steps:
+      - name: Build matrix JSON
+        id: build
+        run: |
+          TIER=${{ needs.resolve-tier.outputs.tier }}
+          echo "Building matrix for tier $TIER"
+
+          # --- RV64 matrix ---
+          rv64='[]'
+
+          # Tier 1: base sanity
+          rv64=$(echo "$rv64" | jq '. +
+            [
+              {"testcase":"smoke-tests-cv64a6_imafdc_sv39","config":"cv64a6_imafdc_sv39"},
+              {"testcase":"cv64a6_imafdc_tests","config":"cv64a6_imafdc_sv39"},
+              {"testcase":"benchmark","config":"cv64a6_imafdc_sv39"}
+            ]')
+
+          # Tier 2 additions
+          if [ "$TIER" -ge 2 ]; then
+            rv64=$(echo "$rv64" | jq '. +
+              [
+                {"testcase":"cv64a6_imafdc_tests","config":"cv64a6_imafdc_sv39_hpdcache"},
+                {"testcase":"benchmark","config":"cv64a6_imafdc_sv39_hpdcache"}
+              ]')
+          fi
+
+          # Tier 3 additions
+          if [ "$TIER" -ge 3 ]; then
+            rv64=$(echo "$rv64" | jq '. +
+              [
+                {"testcase":"dv-riscv-compliance","config":"cv64a6_imafdc_sv39"},
+                {"testcase":"dv-riscv-compliance","config":"cv64a6_imafdc_sv39_hpdcache","run_cmd":"python3 cva6.py --testlist=../tests/testlist_riscv-compliance-cv64a6_imafdc_sv39.yaml --target cv64a6_imafdc_sv39_hpdcache --iss_yaml=cva6.yaml --iss=veri-testharness,spike --issrun_opts=+tb_performance_mode+debug_disable=1+UVM_VERBOSITY=UVM_NONE"}
+              ]')
+          fi
+
+          rv64_matrix=$(echo "$rv64" | jq -c '{"include":.}')
+          echo "rv64_matrix=$rv64_matrix" >> "$GITHUB_OUTPUT"
+          echo "RV64 matrix ($(echo "$rv64" | jq length) jobs): $rv64_matrix"
+
+          # --- RV32 matrix ---
+          rv32='[]'
+
+          # Tier 1: base sanity
+          rv32=$(echo "$rv32" | jq '. +
+            [
+              {"testcase":"smoke-tests-cv32a65x","config":"cv32a65x"},
+              {"testcase":"benchmark","config":"cv32a65x"}
+            ]')
+
+          # Tier 2 additions
+          if [ "$TIER" -ge 2 ]; then
+            rv32=$(echo "$rv32" | jq '. +
+              [
+                {"testcase":"dv-riscv-tests","config":"cv32a65x","testlists":"../tests/testlist_riscv-tests-cv32a65x-p.yaml"},
+                {"testcase":"cv32a6_tests","config":"cv32a65x"},
+                {"testcase":"dv-csr-embedded-tests","config":"cv32a65x"},
+                {"testcase":"dv-riscv-csr-access-test","config":"cv32a65x"},
+                {"testcase":"dv-riscv-tests","config":"cv32a6_imac_sv32","testlists":"../tests/testlist_riscv-tests-rv32ima-p.yaml ../tests/testlist_riscv-tests-rv32ima-v.yaml"},
+                {"testcase":"dv-riscv-mmu-sv32-test","config":"cv32a6_imac_sv32"},
+                {"testcase":"benchmark","config":"cv32a6_imac_sv32"}
+              ]')
+          fi
+
+          # Tier 3 additions
+          if [ "$TIER" -ge 3 ]; then
+            rv32=$(echo "$rv32" | jq '. +
+              [
+                {"testcase":"dv-riscv-compliance","config":"cv32a65x"},
+                {"testcase":"dv-riscv-arch-test","config":"cv32a65x"},
+                {"testcase":"dv-riscv-compliance","config":"cv32a6_imac_sv32","run_cmd":"python3 cva6.py --testlist=../tests/testlist_riscv-compliance-rv32ima.yaml --target cv32a6_imac_sv32 --iss_yaml=cva6.yaml --iss=veri-testharness,spike --issrun_opts=+tb_performance_mode+debug_disable=1+UVM_VERBOSITY=UVM_NONE"}
+              ]')
+          fi
+
+          rv32_matrix=$(echo "$rv32" | jq -c '{"include":.}')
+          echo "rv32_matrix=$rv32_matrix" >> "$GITHUB_OUTPUT"
+          echo "RV32 matrix ($(echo "$rv32" | jq length) jobs): $rv32_matrix"
+
+  # ============================================================
+  # Stage 2: Setup and cache tools
+  # ============================================================
+  setup-tools:
+    name: Setup Tools
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Setup CVA6 Environment
+        uses: ./.github/actions/setup-cva6-env
+        with:
+          install-tools: 'true'
+
+  # ============================================================
+  # Stage 3: RV64 Test Execution (parallel matrix jobs)
+  # ============================================================
+  execute-rv64-tests:
+    name: RV64 ${{ matrix.testcase }} (${{ matrix.config }})
+    runs-on: ubuntu-latest
+    needs: [setup-tools, prepare-matrix]
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.prepare-matrix.outputs.rv64_matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Setup CVA6 Environment
+        uses: ./.github/actions/setup-cva6-env
+
+      - name: Install prerequisites
+        run: source ci/install-prereq.sh
+
+      - name: Run ${{ matrix.testcase }}
+        run: |
+          set -x
+          mkdir -p ci-results
+          echo "1" > ci-results/exit_code
+          source verif/sim/setup-env.sh
+          if [ -n "${{ matrix.testlists }}" ]; then
+            export DV_TESTLISTS="${{ matrix.testlists }}"
+          fi
+          rc=0
+          if [ -n "${{ matrix.run_cmd }}" ]; then
+            source verif/regress/install-verilator.sh
+            source verif/regress/install-spike.sh
+            if [[ "${{ matrix.testcase }}" == "dv-riscv-arch-test" ]]; then
+              source verif/regress/install-riscv-arch-test.sh
+            elif [[ "${{ matrix.testcase }}" == "dv-riscv-compliance" ]]; then
+              source verif/regress/install-riscv-compliance.sh
+            fi
+            cd verif/sim
+            cat > /tmp/run_cmd.sh <<'RUNCMD_EOF'
+          ${{ matrix.run_cmd }}
+          RUNCMD_EOF
+            bash /tmp/run_cmd.sh || rc=$?
+            cd -
+          else
+            DV_SIMULATORS=veri-testharness,spike \
+            DV_TARGET=${{ matrix.config }} \
+              bash verif/regress/${{ matrix.testcase }}.sh || rc=$?
+          fi
+          echo "$rc" > ci-results/exit_code
+          find verif/sim -name "iss_regr.log" -exec cp {} ci-results/ \; 2>/dev/null || true
+          exit $rc
+
+      - name: Upload Results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rv64-${{ matrix.config }}-${{ matrix.testcase }}
+          path: |
+            ci-results/
+            verif/sim/out*/
+          retention-days: 14
+
+  # ============================================================
+  # Stage 4: RV32 Test Execution (parallel matrix jobs)
+  # ============================================================
+  execute-rv32-tests:
+    name: RV32 ${{ matrix.testcase }} (${{ matrix.config }})
+    runs-on: ubuntu-latest
+    needs: [setup-tools, prepare-matrix]
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.prepare-matrix.outputs.rv32_matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Setup CVA6 Environment
+        uses: ./.github/actions/setup-cva6-env
+
+      - name: Install prerequisites
+        run: source ci/install-prereq.sh
+
+      - name: Run ${{ matrix.testcase }}
+        run: |
+          set -x
+          mkdir -p ci-results
+          echo "1" > ci-results/exit_code
+          source verif/sim/setup-env.sh
+          if [ -n "${{ matrix.testlists }}" ]; then
+            export DV_TESTLISTS="${{ matrix.testlists }}"
+          fi
+          rc=0
+          if [ -n "${{ matrix.run_cmd }}" ]; then
+            source verif/regress/install-verilator.sh
+            source verif/regress/install-spike.sh
+            if [[ "${{ matrix.testcase }}" == "dv-riscv-arch-test" ]]; then
+              source verif/regress/install-riscv-arch-test.sh
+            elif [[ "${{ matrix.testcase }}" == "dv-riscv-compliance" ]]; then
+              source verif/regress/install-riscv-compliance.sh
+            elif [[ "${{ matrix.testcase }}" == "dv-riscv-tests" ]]; then
+              source verif/regress/install-riscv-tests.sh
+            fi
+            cd verif/sim
+            cat > /tmp/run_cmd.sh <<'RUNCMD_EOF'
+          ${{ matrix.run_cmd }}
+          RUNCMD_EOF
+            bash /tmp/run_cmd.sh || rc=$?
+            cd -
+          else
+            DV_SIMULATORS=veri-testharness,spike \
+            DV_TARGET=${{ matrix.config }} \
+              bash verif/regress/${{ matrix.testcase }}.sh || rc=$?
+          fi
+          echo "$rc" > ci-results/exit_code
+          find verif/sim -name "iss_regr.log" -exec cp {} ci-results/ \; 2>/dev/null || true
+          exit $rc
+
+      - name: Upload Results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rv32-${{ matrix.config }}-${{ matrix.testcase }}
+          path: |
+            ci-results/
+            verif/sim/out*/
+          retention-days: 14
+
+  # ============================================================
+  # Stage 5: Report Summary
+  # ============================================================
+  report-summary:
+    name: Test Summary
+    runs-on: ubuntu-latest
+    needs:
+      - resolve-tier
+      - execute-rv64-tests
+      - execute-rv32-tests
+    if: ${{ always() && !cancelled() }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts/
+
+      - name: Generate Summary Report
+        run: |
+          TIER="${{ needs.resolve-tier.outputs.tier }}"
+          echo "## OpenHW CVA6 Quick Regression Results (Tier ${TIER})" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Commit:** \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Event:** ${{ github.event_name }} | **Tier:** ${TIER}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Arch | Test Suite | Config | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|------|------------|--------|--------|" >> $GITHUB_STEP_SUMMARY
+
+          total_passed=0
+          total_failed=0
+          total_jobs=0
+          any_failure=0
+
+          for dir in artifacts/*/; do
+            if [ ! -d "$dir" ]; then
+              continue
+            fi
+            name=$(basename "$dir")
+            total_jobs=$((total_jobs + 1))
+
+            # Parse name: {arch}-{config}-{testcase}
+            arch=$(echo "$name" | cut -d'-' -f1)
+            remainder=$(echo "$name" | sed "s/^${arch}-//")
+            # Match longest config prefix first (order matters!)
+            if [[ "$remainder" == cv64a6_imafdc_sv39_hpdcache_wb-* ]]; then
+              config="cv64a6_imafdc_sv39_hpdcache_wb"
+            elif [[ "$remainder" == cv64a6_imafdc_sv39_hpdcache-* ]]; then
+              config="cv64a6_imafdc_sv39_hpdcache"
+            elif [[ "$remainder" == cv64a6_imafdc_sv39_wb-* ]]; then
+              config="cv64a6_imafdc_sv39_wb"
+            elif [[ "$remainder" == cv64a6_imafdc_sv39-* ]]; then
+              config="cv64a6_imafdc_sv39"
+            elif [[ "$remainder" == cv32a6_imac_sv32-* ]]; then
+              config="cv32a6_imac_sv32"
+            elif [[ "$remainder" == cv32a65x-* ]]; then
+              config="cv32a65x"
+            else
+              config="unknown"
+            fi
+            testcase=$(echo "$remainder" | sed "s/^${config}-//")
+
+            # 1. Check exit code from result marker (primary source of truth)
+            exit_code="missing"
+            exit_code_file="$dir/ci-results/exit_code"
+            if [ -f "$exit_code_file" ]; then
+              exit_code=$(cat "$exit_code_file" | tr -d '[:space:]')
+            fi
+
+            # 2. Parse iss_regr.log for detailed test counts
+            passed=""
+            failed=""
+            log_file="$dir/ci-results/iss_regr.log"
+            if [ ! -f "$log_file" ]; then
+              log_file=$(find "$dir" -name "iss_regr.log" 2>/dev/null | head -1)
+            fi
+            if [ -n "$log_file" ] && [ -f "$log_file" ]; then
+              summary_line=$(grep -E "PASSED.*FAILED" "$log_file" | tail -n 1)
+              if [ -n "$summary_line" ]; then
+                passed=$(printf "%s" "$summary_line" | sed -n 's/.*\([0-9][0-9]*\)[[:space:]]*PASSED.*/\1/p')
+                failed=$(printf "%s" "$summary_line" | sed -n 's/.*\([0-9][0-9]*\)[[:space:]]*FAILED.*/\1/p')
+              fi
+            fi
+
+            # 3. Determine status (exit code takes priority over log parsing)
+            if [ "$exit_code" = "0" ]; then
+              if [ -n "$failed" ] && [ "$failed" -gt 0 ]; then
+                status="FAIL ($passed passed, $failed failed)"
+                total_failed=$((total_failed + failed))
+                total_passed=$((total_passed + ${passed:-0}))
+                any_failure=1
+              elif [ -n "$passed" ]; then
+                status="PASS ($passed tests)"
+                total_passed=$((total_passed + passed))
+              else
+                status="PASS"
+              fi
+            elif [ "$exit_code" = "missing" ]; then
+              status="UNKNOWN (no result marker)"
+              any_failure=1
+            else
+              any_failure=1
+              if [ -n "$failed" ] && [ "$failed" -gt 0 ]; then
+                status="FAIL ($passed passed, $failed failed)"
+                total_failed=$((total_failed + failed))
+                total_passed=$((total_passed + ${passed:-0}))
+              elif [ -n "$passed" ]; then
+                status="FAIL (exit $exit_code, $passed tests ran)"
+                total_failed=$((total_failed + 1))
+                total_passed=$((total_passed + passed))
+              else
+                status="FAIL (exit $exit_code)"
+                total_failed=$((total_failed + 1))
+              fi
+            fi
+
+            echo "| ${arch} | ${testcase} | ${config} | ${status} |" >> $GITHUB_STEP_SUMMARY
+          done
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Summary" >> $GITHUB_STEP_SUMMARY
+          echo "- **Tier:** ${TIER}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Total Jobs:** ${total_jobs}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Total Passed:** ${total_passed}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Total Failed:** ${total_failed}" >> $GITHUB_STEP_SUMMARY
+          if [ "$any_failure" -eq 1 ]; then
+            echo "- **Overall: FAILED**" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "- **Overall: ALL PASSED**" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "---" >> $GITHUB_STEP_SUMMARY
+          echo "*Generated by OpenHW CVA6 Quick Regression CI (Tier ${TIER})*" >> $GITHUB_STEP_SUMMARY
+
+      - name: Check for failures
+        run: |
+          any_failed=0
+
+          for dir in artifacts/*/; do
+            if [ ! -d "$dir" ]; then
+              continue
+            fi
+            name=$(basename "$dir")
+            exit_code_file="$dir/ci-results/exit_code"
+            if [ -f "$exit_code_file" ]; then
+              ec=$(cat "$exit_code_file" | tr -d '[:space:]')
+              if [ "$ec" != "0" ]; then
+                echo "::error::Test failed: ${name} (exit code: ${ec})"
+                any_failed=1
+              fi
+            else
+              echo "::error::Missing result marker: ${name}"
+              any_failed=1
+            fi
+          done
+
+          rv64_result="${{ needs.execute-rv64-tests.result }}"
+          rv32_result="${{ needs.execute-rv32-tests.result }}"
+          if [ "$rv64_result" = "failure" ] && [ "$any_failed" -eq 0 ]; then
+            echo "::error::RV64 matrix job reported failure but no individual failures detected in artifacts"
+            any_failed=1
+          fi
+          if [ "$rv32_result" = "failure" ] && [ "$any_failed" -eq 0 ]; then
+            echo "::error::RV32 matrix job reported failure but no individual failures detected in artifacts"
+            any_failed=1
+          fi
+
+          if [ "$any_failed" -eq 1 ]; then
+            echo "::error::One or more tests failed. See summary above for details."
+            exit 1
+          fi
+
+          echo "All tests passed!"
