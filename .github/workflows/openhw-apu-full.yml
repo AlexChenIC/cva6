@@ -66,6 +66,8 @@ name: openhw-apu-full
 on:
   # Manual trigger
   workflow_dispatch:
+  # Temporary: trigger full suite on PRs for validation
+  pull_request:
   # Nightly full regression at Europe midnight (00:00 CET = 23:00 UTC)
   schedule:
     - cron: '0 23 * * *'
