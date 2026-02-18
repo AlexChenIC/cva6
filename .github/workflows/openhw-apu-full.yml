@@ -404,6 +404,7 @@ jobs:
     name: Test Summary
     runs-on: ubuntu-latest
     needs:
+      - setup-tools
       - execute-rv64-tests
       - execute-rv32-tests
     if: ${{ always() && !cancelled() }}
@@ -428,7 +429,11 @@ jobs:
           total_passed=0
           total_failed=0
           total_jobs=0
+          expected_jobs=36
           any_failure=0
+          setup_result="${{ needs.setup-tools.result }}"
+          rv64_result="${{ needs.execute-rv64-tests.result }}"
+          rv32_result="${{ needs.execute-rv32-tests.result }}"
 
           # Process each artifact directory
           for dir in artifacts/*/; do
@@ -494,12 +499,19 @@ jobs:
                 status="PASS ($passed tests)"
                 total_passed=$((total_passed + passed))
               else
-                # Exit 0, no detailed log (e.g., benchmark tests)
-                status="PASS"
+                # Exit 0 but no parsed summary line
+                if [[ "$name" == *-benchmark ]]; then
+                  status="PASS"
+                else
+                  status="UNKNOWN (no test summary log)"
+                  total_failed=$((total_failed + 1))
+                  any_failure=1
+                fi
               fi
             elif [ "$exit_code" = "missing" ]; then
               # No result marker at all
               status="UNKNOWN (no result marker)"
+              total_failed=$((total_failed + 1))
               any_failure=1
             else
               # Non-zero exit code = definite failure
@@ -521,11 +533,36 @@ jobs:
             echo "| ${arch} | ${testcase} | ${config} | ${status} |" >> $GITHUB_STEP_SUMMARY
           done
 
+          if [ "$total_jobs" -ne "$expected_jobs" ]; then
+            any_failure=1
+            echo "| infra | artifact-count | n/a | FAIL (${total_jobs}/${expected_jobs}) |" >> $GITHUB_STEP_SUMMARY
+          fi
+          if [ "$total_jobs" -eq 0 ]; then
+            any_failure=1
+            echo "| infra | artifact-collection | n/a | FAIL (no artifacts produced) |" >> $GITHUB_STEP_SUMMARY
+          fi
+          if [ "$setup_result" != "success" ]; then
+            any_failure=1
+            echo "| infra | setup-tools | n/a | FAIL (${setup_result}) |" >> $GITHUB_STEP_SUMMARY
+          fi
+          if [ "$rv64_result" != "success" ]; then
+            any_failure=1
+            echo "| infra | execute-rv64-tests | n/a | FAIL (${rv64_result}) |" >> $GITHUB_STEP_SUMMARY
+          fi
+          if [ "$rv32_result" != "success" ]; then
+            any_failure=1
+            echo "| infra | execute-rv32-tests | n/a | FAIL (${rv32_result}) |" >> $GITHUB_STEP_SUMMARY
+          fi
+
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Summary" >> $GITHUB_STEP_SUMMARY
           echo "- **Total Jobs:** ${total_jobs}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Expected Jobs:** ${expected_jobs}" >> $GITHUB_STEP_SUMMARY
           echo "- **Total Passed:** ${total_passed}" >> $GITHUB_STEP_SUMMARY
           echo "- **Total Failed:** ${total_failed}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Setup Tools Job:** ${setup_result}" >> $GITHUB_STEP_SUMMARY
+          echo "- **RV64 Matrix Job:** ${rv64_result}" >> $GITHUB_STEP_SUMMARY
+          echo "- **RV32 Matrix Job:** ${rv32_result}" >> $GITHUB_STEP_SUMMARY
           if [ "$any_failure" -eq 1 ]; then
             echo "- **Overall: FAILED**" >> $GITHUB_STEP_SUMMARY
           else
@@ -538,19 +575,46 @@ jobs:
       - name: Check for failures
         run: |
           any_failed=0
+          found_artifact=0
+          artifact_count=0
+          expected_jobs=36
 
           # Check each artifact's exit code
           for dir in artifacts/*/; do
             if [ ! -d "$dir" ]; then
               continue
             fi
+            found_artifact=1
+            artifact_count=$((artifact_count + 1))
             name=$(basename "$dir")
             exit_code_file="$dir/ci-results/exit_code"
+            log_file="$dir/ci-results/iss_regr.log"
+            if [ ! -f "$log_file" ]; then
+              log_file=$(find "$dir" -name "iss_regr.log" 2>/dev/null | head -1)
+            fi
             if [ -f "$exit_code_file" ]; then
               ec=$(cat "$exit_code_file" | tr -d '[:space:]')
               if [ "$ec" != "0" ]; then
                 echo "::error::Test failed: ${name} (exit code: ${ec})"
                 any_failed=1
+              else
+                # Successful exit must still provide valid summary for non-benchmark tests
+                if [ -n "$log_file" ] && [ -f "$log_file" ]; then
+                  summary_line=$(grep -E "PASSED.*FAILED" "$log_file" | tail -n 1)
+                  if [ -n "$summary_line" ]; then
+                    failed_count=$(printf "%s" "$summary_line" | sed -n 's/.*\([0-9][0-9]*\)[[:space:]]*FAILED.*/\1/p')
+                    if [ -n "$failed_count" ] && [ "$failed_count" -gt 0 ]; then
+                      echo "::error::Test failed per summary log: ${name} (${failed_count} failed)"
+                      any_failed=1
+                    fi
+                  elif [[ "$name" != *-benchmark ]]; then
+                    echo "::error::Missing PASSED/FAILED summary line for non-benchmark job: ${name}"
+                    any_failed=1
+                  fi
+                elif [[ "$name" != *-benchmark ]]; then
+                  echo "::error::Missing iss_regr.log for non-benchmark job: ${name}"
+                  any_failed=1
+                fi
               fi
             else
               echo "::error::Missing result marker: ${name}"
@@ -558,15 +622,29 @@ jobs:
             fi
           done
 
-          # Also check if the matrix jobs themselves reported failure
-          rv64_result="${{ needs.execute-rv64-tests.result }}"
-          rv32_result="${{ needs.execute-rv32-tests.result }}"
-          if [ "$rv64_result" = "failure" ] && [ "$any_failed" -eq 0 ]; then
-            echo "::error::RV64 matrix job reported failure but no individual failures detected in artifacts"
+          if [ "$found_artifact" -eq 0 ]; then
+            echo "::error::No artifacts found. Upstream setup/matrix jobs likely failed before tests ran."
             any_failed=1
           fi
-          if [ "$rv32_result" = "failure" ] && [ "$any_failed" -eq 0 ]; then
-            echo "::error::RV32 matrix job reported failure but no individual failures detected in artifacts"
+          if [ "$artifact_count" -ne "$expected_jobs" ]; then
+            echo "::error::Unexpected artifact count: ${artifact_count}/${expected_jobs}"
+            any_failed=1
+          fi
+
+          # Also check if upstream jobs are all successful
+          setup_result="${{ needs.setup-tools.result }}"
+          rv64_result="${{ needs.execute-rv64-tests.result }}"
+          rv32_result="${{ needs.execute-rv32-tests.result }}"
+          if [ "$setup_result" != "success" ]; then
+            echo "::error::setup-tools job result is ${setup_result}"
+            any_failed=1
+          fi
+          if [ "$rv64_result" != "success" ]; then
+            echo "::error::RV64 matrix job result is ${rv64_result}"
+            any_failed=1
+          fi
+          if [ "$rv32_result" != "success" ]; then
+            echo "::error::RV32 matrix job result is ${rv32_result}"
             any_failed=1
           fi
 
