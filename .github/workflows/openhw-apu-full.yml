@@ -64,6 +64,10 @@
 name: openhw-apu-full
 
 on:
+  # Temporary: trigger full suite on pushes to dev branch
+  push:
+    branches:
+      - task/ci_flow
   # Manual trigger
   workflow_dispatch:
   # Temporary: trigger full suite on PRs for validation
