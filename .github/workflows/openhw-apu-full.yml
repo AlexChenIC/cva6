@@ -5,7 +5,7 @@
 # OpenHW Full APU Test Suite
 # Comprehensive Verilator regression tests for CVA6 APU configurations
 #
-# Test coverage (all Verilator-compatible test suites):
+# Test coverage (all Verilator-compatible suites used by this workflow):
 #
 #   RV64 configs:
 #     - cv64a6_imafdc_sv39             (base)
@@ -16,7 +16,6 @@
 #   RV64 test suites per config:
 #     - smoke-tests          : Quick sanity check (~6 tests) [sv39 only]
 #     - dv-riscv-arch-test   : RISC-V architecture compliance (~221 tests)
-#                              _wb uses filtered testlist (~184, no K ext)
 #     - dv-riscv-tests       : Standard RISC-V tests, p+v mode (~229 tests)
 #     - dv-riscv-compliance  : RISC-V compliance suite (~183 tests)
 #     - cv64a6_imafdc_tests  : CVA6-specific directed tests (~6 tests)
@@ -33,21 +32,25 @@
 #     - benchmark            : Performance benchmarks (~12 programs)
 #
 #   RV32 (cv32a6_imac_sv32):
-#     - dv-riscv-mmu-sv32-test : SV32 MMU page table tests (~54 tests)
+#     - smoke-tests          : Quick sanity check (~4 tests)
+#     - dv-riscv-mmu-sv32-test : SV32 MMU page table tests (~60 tests)
 #     - dv-riscv-tests       : Standard RISC-V tests, p+v mode (~173 tests)
-#                              Uses generic rv32ima testlists (no config-specific)
 #     - dv-riscv-compliance  : RISC-V compliance suite (~183 tests)
-#                              Uses rv32ima testlist via run_cmd
 #     - benchmark            : Performance benchmarks (~12 programs)
 #
-#   Total: ~3,410 individual test executions across 33 parallel jobs
-#     - RV64: 21 jobs (6 base + 15 variant configs)
-#     - RV32: 12 jobs (8 cv32a65x + 4 cv32a6_imac_sv32)
+#   Extended hwconfig/perf (cv32a65x):
+#     - hwconfig_tests       : hwconfig toolchain sanity
+#     - coremark             : coremark-on-hwconfig benchmark
 #
-# Not included (require VCS-UVM, not Verilator-compatible):
+#   Total: ~3,420 individual test executions across 36 parallel jobs
+#     - RV64: 21 jobs (6 base + 15 variant configs)
+#     - RV32: 13 jobs (8 cv32a65x + 5 cv32a6_imac_sv32)
+#     - Extended: 2 jobs (hwconfig/coremark)
+#
+# Not included in this workflow (VCS-UVM-only or out-of-scope):
 #   - dv-generated-tests, dv-generated-xif-tests, dv-interrupt-test
 #   - smoke-gen_tests, debug_test, pmp_cv32a65x_tests
-#   - dhrystone, coremark (hwconfig mode)
+#   - dhrystone (hwconfig mode)
 #   - cvxif_verif_regression
 #
 # Note: smoke-tests runs only on sv39 base config (script hardcodes target).
@@ -61,27 +64,11 @@
 name: openhw-apu-full
 
 on:
-  # Manual trigger - primary usage
+  # Manual trigger
   workflow_dispatch:
-    inputs:
-      target_arch:
-        description: 'Target architecture to test'
-        required: true
-        default: 'both'
-        type: choice
-        options:
-          - both
-          - rv32
-          - rv64
-  # TEMP: Enable push trigger for testing (remove after validation)
-  push:
-    branches:
-      - 'task/**'
-      - 'feature/**'
-      - 'openhw/**'
-  # Scheduled weekly regression (optional - uncomment to enable)
-  # schedule:
-  #   - cron: '0 2 * * 0'  # Every Sunday at 2:00 AM UTC
+  # Nightly full regression at Europe midnight (00:00 CET = 23:00 UTC)
+  schedule:
+    - cron: '0 23 * * *'
 
 # Cancel in-progress runs for the same branch
 concurrency:
@@ -115,7 +102,6 @@ jobs:
     name: RV64 ${{ matrix.testcase }} (${{ matrix.config }})
     runs-on: ubuntu-latest
     needs: setup-tools
-    if: (github.event.inputs.target_arch || 'both') == 'both' || (github.event.inputs.target_arch || 'both') == 'rv64'
     strategy:
       fail-fast: false
       matrix:
@@ -266,7 +252,6 @@ jobs:
     name: RV32 ${{ matrix.testcase }} (${{ matrix.config }})
     runs-on: ubuntu-latest
     needs: setup-tools
-    if: (github.event.inputs.target_arch || 'both') == 'both' || (github.event.inputs.target_arch || 'both') == 'rv32'
     strategy:
       fail-fast: false
       matrix:
@@ -302,7 +287,10 @@ jobs:
           # No config-specific testlists exist for tests/compliance.
           # Uses generic rv32ima testlists. Has SV32 MMU so v-mode works.
           # ============================================================
-          # MMU SV32 architecture tests (~54 tests)
+          # Smoke tests - quick sanity for SV32 MMU config
+          - testcase: smoke-tests-cv32a6_imac_sv32
+            config: cv32a6_imac_sv32
+          # MMU SV32 architecture tests (~60 tests)
           - testcase: dv-riscv-mmu-sv32-test
             config: cv32a6_imac_sv32
           # Standard RISC-V tests - p-mode + v-mode (~173 tests)
@@ -383,6 +371,56 @@ jobs:
           retention-days: 14
 
   # ============================================================
+  # Stage 3.5: Extended hwconfig/perf checks (part of full run)
+  # ============================================================
+  execute-extended-perf:
+    name: Extended ${{ matrix.testcase }} (${{ matrix.config }})
+    runs-on: ubuntu-latest
+    needs: setup-tools
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - testcase: hwconfig_tests
+            config: cv32a65x
+          - testcase: coremark
+            config: cv32a65x
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Setup CVA6 Environment
+        uses: ./.github/actions/setup-cva6-env
+
+      - name: Install prerequisites
+        run: source ci/install-prereq.sh
+
+      - name: Run ${{ matrix.testcase }}
+        run: |
+          set -x
+          mkdir -p ci-results
+          echo "1" > ci-results/exit_code
+          source verif/sim/setup-env.sh
+          rc=0
+          DV_SIMULATORS=veri-testharness,spike \
+          DV_TARGET=${{ matrix.config }} \
+          DV_HWCONFIG_OPTS=${{ matrix.config }} \
+            bash verif/regress/${{ matrix.testcase }}.sh || rc=$?
+          echo "$rc" > ci-results/exit_code
+          find verif/sim -name "iss_regr.log" -exec cp {} ci-results/ \; 2>/dev/null || true
+          exit $rc
+
+      - name: Upload Results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: extended-${{ matrix.config }}-${{ matrix.testcase }}
+          path: |
+            ci-results/
+            verif/sim/out*/
+          retention-days: 14
+
+  # ============================================================
   # Stage 4: Report Summary
   # ============================================================
   report-summary:
@@ -391,6 +429,7 @@ jobs:
     needs:
       - execute-rv64-tests
       - execute-rv32-tests
+      - execute-extended-perf
     if: ${{ always() && !cancelled() }}
     steps:
       - uses: actions/checkout@v4
@@ -405,7 +444,7 @@ jobs:
           echo "## OpenHW CVA6 Full APU Test Results" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Commit:** \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "**Target Arch:** ${{ github.event.inputs.target_arch || 'both' }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Trigger:** ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "| Arch | Test Suite | Config | Status |" >> $GITHUB_STEP_SUMMARY
           echo "|------|------------|--------|--------|" >> $GITHUB_STEP_SUMMARY
@@ -546,12 +585,17 @@ jobs:
           # Also check if the matrix jobs themselves reported failure
           rv64_result="${{ needs.execute-rv64-tests.result }}"
           rv32_result="${{ needs.execute-rv32-tests.result }}"
+          ext_result="${{ needs.execute-extended-perf.result }}"
           if [ "$rv64_result" = "failure" ] && [ "$any_failed" -eq 0 ]; then
             echo "::error::RV64 matrix job reported failure but no individual failures detected in artifacts"
             any_failed=1
           fi
           if [ "$rv32_result" = "failure" ] && [ "$any_failed" -eq 0 ]; then
             echo "::error::RV32 matrix job reported failure but no individual failures detected in artifacts"
+            any_failed=1
+          fi
+          if [ "$ext_result" = "failure" ] && [ "$any_failed" -eq 0 ]; then
+            echo "::error::Extended matrix job reported failure but no individual failures detected in artifacts"
             any_failed=1
           fi
 
