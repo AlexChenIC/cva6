@@ -77,6 +77,9 @@ jobs:
     name: Setup Tools
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
       - name: Setup CVA6 Environment
         uses: ./.github/actions/setup-cva6-env
         with:
@@ -164,6 +167,9 @@ jobs:
           - testcase: benchmark
             config: cv64a6_imafdc_sv39_wb
     steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
       - name: Setup CVA6 Environment
         uses: ./.github/actions/setup-cva6-env
 
@@ -287,6 +293,9 @@ jobs:
           - testcase: benchmark
             config: cv32a6_imac_sv32
     steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
       - name: Setup CVA6 Environment
         uses: ./.github/actions/setup-cva6-env
 
