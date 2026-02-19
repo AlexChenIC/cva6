@@ -44,12 +44,6 @@
 #     - RV64: 21 jobs (6 base + 15 variant configs)
 #     - RV32: 15 jobs (10 cv32a65x + 5 cv32a6_imac_sv32)
 #
-# Not included in this workflow (VCS-UVM-only or out-of-scope):
-#   - dv-generated-tests, dv-generated-xif-tests, dv-interrupt-test
-#   - smoke-gen_tests, debug_test, pmp_cv32a65x_tests
-#   - dhrystone (hwconfig mode)
-#   - cvxif_verif_regression
-#
 # Note: coremark in this workflow is run with veri-testharness only (no spike)
 # to avoid Spike timeout in CI runtime-constrained environments.
 
@@ -83,9 +77,6 @@ jobs:
     name: Setup Tools
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: recursive
       - name: Setup CVA6 Environment
         uses: ./.github/actions/setup-cva6-env
         with:
@@ -105,31 +96,27 @@ jobs:
           # ============================================================
           # cv64a6_imafdc_sv39 (base config)
           # ============================================================
-          # Smoke tests - quick sanity check (~6 tests)
+          # Smoke tests - quick sanity check
           - testcase: smoke-tests-cv64a6_imafdc_sv39
             config: cv64a6_imafdc_sv39
-          # Architecture compliance tests (~221 tests)
+          # Architecture compliance tests
           - testcase: dv-riscv-arch-test
             config: cv64a6_imafdc_sv39
-          # Standard RISC-V tests - p-mode + v-mode (~229 tests)
+          # Standard RISC-V tests - p-mode + v-mode
           - testcase: dv-riscv-tests
             config: cv64a6_imafdc_sv39
-          # RISC-V compliance suite (~183 tests)
+          # RISC-V compliance suite
           - testcase: dv-riscv-compliance
             config: cv64a6_imafdc_sv39
-          # CVA6-specific directed tests (~6 tests)
+          # CVA6-specific directed tests
           - testcase: cv64a6_imafdc_tests
             config: cv64a6_imafdc_sv39
-          # Performance benchmarks (~12 programs)
+          # Performance benchmarks
           - testcase: benchmark
             config: cv64a6_imafdc_sv39
 
           # ============================================================
           # cv64a6_imafdc_sv39_hpdcache (HPDcache variant)
-          # Note: smoke-tests skipped (script hardcodes target)
-          # Compliance uses run_cmd because the script constructs testlist
-          # path from DV_TARGET, but no hpdcache-specific testlist exists.
-          # We reuse the sv39 base testlist directly via cva6.py.
           # ============================================================
           - testcase: dv-riscv-arch-test
             config: cv64a6_imafdc_sv39_hpdcache
@@ -162,9 +149,6 @@ jobs:
 
           # ============================================================
           # cv64a6_imafdc_sv39_wb (Write-back variant)
-          # arch-test: ZKN disabled (ZKN: bit'(0)), so K ext tests are
-          # filtered out on-the-fly via sed (37 tests removed, 184 remain).
-          # compliance: reuses sv39 base testlist via run_cmd.
           # ============================================================
           - testcase: dv-riscv-arch-test
             config: cv64a6_imafdc_sv39_wb
@@ -180,9 +164,6 @@ jobs:
           - testcase: benchmark
             config: cv64a6_imafdc_sv39_wb
     steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: recursive
       - name: Setup CVA6 Environment
         uses: ./.github/actions/setup-cva6-env
 
@@ -255,27 +236,27 @@ jobs:
           # Smoke tests - quick sanity check
           - testcase: smoke-tests-cv32a65x
             config: cv32a65x
-          # Architecture compliance tests (~105 tests)
+          # Architecture compliance tests
           - testcase: dv-riscv-arch-test
             config: cv32a65x
-          # Standard RISC-V tests - p-mode only (~94 tests)
+          # Standard RISC-V tests - p-mode only
           # Note: cv32a65x has no MMU, so only p-mode testlist exists
           - testcase: dv-riscv-tests
             config: cv32a65x
             testlists: "../tests/testlist_riscv-tests-cv32a65x-p.yaml"
-          # RISC-V compliance suite (~183 tests)
+          # RISC-V compliance suite
           - testcase: dv-riscv-compliance
             config: cv32a65x
-          # CVA6-specific directed tests (~6 tests)
+          # CVA6-specific directed tests
           - testcase: cv32a6_tests
             config: cv32a65x
           # CSR access verification tests
           - testcase: dv-riscv-csr-access-test
             config: cv32a65x
-          # CSR embedded tests (~5 tests)
+          # CSR embedded tests
           - testcase: dv-csr-embedded-tests
             config: cv32a65x
-          # Performance benchmarks (~12 programs)
+          # Performance benchmarks
           - testcase: benchmark
             config: cv32a65x
           # hwconfig configuration sanity tests
@@ -286,33 +267,26 @@ jobs:
             config: cv32a65x
           # ============================================================
           # cv32a6_imac_sv32 (SV32 MMU - unique RV32 MMU coverage)
-          # No config-specific testlists exist for tests/compliance.
-          # Uses generic rv32ima testlists. Has SV32 MMU so v-mode works.
           # ============================================================
-          # Smoke tests - quick sanity for SV32 MMU config
+          # Smoke tests
           - testcase: smoke-tests-cv32a6_imac_sv32
             config: cv32a6_imac_sv32
-          # MMU SV32 architecture tests (~60 tests)
+          # MMU SV32 architecture tests
           - testcase: dv-riscv-mmu-sv32-test
             config: cv32a6_imac_sv32
-          # Standard RISC-V tests - p-mode + v-mode (~173 tests)
-          # cv32a6_imac_sv32 has SV32 MMU, supports v-mode (unlike cv32a65x)
+          # Standard RISC-V tests - p-mode + v-mode
+          # cv32a6_imac_sv32 has SV32 MMU, supports v-mode
           - testcase: dv-riscv-tests
             config: cv32a6_imac_sv32
             testlists: "../tests/testlist_riscv-tests-rv32ima-p.yaml ../tests/testlist_riscv-tests-rv32ima-v.yaml"
-          # RISC-V compliance suite (~183 tests)
-          # dv-riscv-compliance.sh doesn't support DV_TESTLISTS override,
-          # so we use run_cmd to call cva6.py directly with rv32ima testlist.
+          # RISC-V compliance suite
           - testcase: dv-riscv-compliance
             config: cv32a6_imac_sv32
             run_cmd: "python3 cva6.py --testlist=../tests/testlist_riscv-compliance-rv32ima.yaml --target cv32a6_imac_sv32 --iss_yaml=cva6.yaml --iss=veri-testharness --issrun_opts=+tb_performance_mode+debug_disable=1+UVM_VERBOSITY=UVM_NONE"
-          # Performance benchmarks (~12 programs)
+          # Performance benchmarks
           - testcase: benchmark
             config: cv32a6_imac_sv32
     steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: recursive
       - name: Setup CVA6 Environment
         uses: ./.github/actions/setup-cva6-env
 
