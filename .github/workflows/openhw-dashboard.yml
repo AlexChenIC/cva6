@@ -1,0 +1,160 @@
+# Copyright 2026 OpenHW Group
+# SPDX-License-Identifier: Apache-2.0
+
+# CVA6 CI Dashboard — Build and Deploy to GitHub Pages
+#
+# Triggered when any of the three Verilator CI workflows complete,
+# or manually / on a daily schedule. Collects run/job data via
+# GitHub API, renders a static HTML dashboard, and deploys to Pages.
+#
+# Data persistence: JSON history is stored on the gh-pages branch
+# under data/ and merged incrementally on each run.
+
+name: openhw-dashboard
+
+on:
+  # Trigger when CI workflows complete
+  workflow_run:
+    workflows:
+      - ci
+      - openhw-apu-full
+      - openhw-quick-regress
+    types: [completed]
+
+  # Manual trigger
+  workflow_dispatch:
+
+  # Daily refresh (catch any missed events)
+  schedule:
+    - cron: '30 6 * * *'  # 06:30 UTC daily
+
+# Queue runs instead of cancelling — prevents write conflicts on gh-pages
+concurrency:
+  group: dashboard-deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: write    # Push to gh-pages branch
+  pages: write       # Deploy to GitHub Pages
+  id-token: write    # OIDC token for Pages deployment
+
+jobs:
+  # ============================================================
+  # Job 1: Build the dashboard
+  # ============================================================
+  build:
+    name: Build Dashboard
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Restore history data from gh-pages
+        run: |
+          mkdir -p /tmp/dash-data
+          # Try to fetch data/ from gh-pages branch
+          if git ls-remote --heads origin gh-pages | grep -q gh-pages; then
+            git fetch origin gh-pages --depth=1
+            git checkout origin/gh-pages -- data/ 2>/dev/null && \
+              cp -r data/* /tmp/dash-data/ 2>/dev/null || \
+              echo "No existing data on gh-pages, starting fresh"
+          else
+            echo "gh-pages branch does not exist yet, starting fresh"
+          fi
+
+      - name: Collect CI data
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 .github/scripts/dashboard/collect_data.py \
+            --repo "${{ github.repository }}" \
+            --data-dir /tmp/dash-data \
+            --fetch-count 10
+
+      - name: Install Jinja2
+        run: pip install jinja2
+
+      - name: Generate dashboard HTML
+        run: |
+          python3 .github/scripts/dashboard/generate_dashboard.py \
+            --data-dir /tmp/dash-data \
+            --output-dir /tmp/dash-site \
+            --repo "${{ github.repository }}"
+
+      - name: Prepare Pages artifact
+        run: |
+          # Copy data alongside HTML for persistence
+          cp -r /tmp/dash-data /tmp/dash-site/data
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: /tmp/dash-site
+
+      - name: Upload data for persistence job
+        uses: actions/upload-artifact@v4
+        with:
+          name: dashboard-data
+          path: /tmp/dash-data/
+          retention-days: 7
+
+  # ============================================================
+  # Job 2: Deploy to GitHub Pages
+  # ============================================================
+  deploy:
+    name: Deploy to Pages
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+
+  # ============================================================
+  # Job 3: Persist data to gh-pages branch
+  # ============================================================
+  persist-data:
+    name: Persist Data
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout gh-pages branch
+        uses: actions/checkout@v4
+        with:
+          ref: gh-pages
+          fetch-depth: 1
+        continue-on-error: true
+
+      - name: Initialize gh-pages branch if needed
+        run: |
+          if [ ! -d ".git" ]; then
+            git init
+            git remote add origin "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git"
+            git checkout --orphan gh-pages
+            echo "# CVA6 CI Dashboard Data" > README.md
+            git add README.md
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git commit -m "Initialize gh-pages branch"
+          fi
+
+      - name: Download updated data
+        uses: actions/download-artifact@v4
+        with:
+          name: dashboard-data
+          path: data/
+
+      - name: Commit and push data
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/
+          if git diff --cached --quiet; then
+            echo "No data changes to commit"
+          else
+            git commit -m "Update dashboard data [skip ci]"
+            git push origin gh-pages
+          fi
