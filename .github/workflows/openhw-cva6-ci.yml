@@ -50,6 +50,7 @@ concurrency:
 env:
   SPIKE_TANDEM: 1
   NUM_JOBS: 8
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
 jobs:
   setup-tools:
@@ -79,6 +80,8 @@ jobs:
             simulator: veri-testharness,spike
             install_script: ""
             testlist: ""
+            test_name: ""
+            c_test: ""
             linker: ""
 
           - config: cv32a60x
@@ -87,15 +90,19 @@ jobs:
             simulator: veri-testharness,spike
             install_script: install-riscv-arch-test
             testlist: "../tests/testlist_riscv-arch-test-cv32a60x.yaml"
+            test_name: "rv32im-cadd-01"
+            c_test: ""
             linker: ""
 
           - config: cv32a6_ima_sv32_fpga
-            testcase: dv-riscv-mmu-sv32-test
-            mode: testlist
-            simulator: veri-testharness,spike
-            install_script: install-riscv-arch-test
-            testlist: "../tests/testlist_riscv-mmu-sv32-arch-test-cv32a6_imac_sv32.yaml"
-            linker: "../tests/riscv-arch-test/riscv-target/spike/link.ld"
+            testcase: hello-world
+            mode: custom_c_test
+            simulator: spike
+            install_script: ""
+            testlist: ""
+            test_name: ""
+            c_test: "../tests/custom/hello_world/hello_world.c"
+            linker: "../../config/gen_from_riscv_config/linker/link.ld"
 
     steps:
       - uses: actions/checkout@v4
@@ -114,6 +121,7 @@ jobs:
           mkdir -p ci-results
           echo "1" > ci-results/exit_code
           source verif/sim/setup-env.sh
+          CC_OPTS="-static -mcmodel=medany -fvisibility=hidden -nostdlib -nostartfiles -g ../tests/custom/common/syscalls.c ../tests/custom/common/crt.S -I../tests/custom/env -I../tests/custom/common -lgcc"
           rc=0
           if [ "${{ matrix.mode }}" = "testlist" ]; then
             source verif/regress/install-verilator.sh
@@ -128,11 +136,25 @@ jobs:
             cd verif/sim
             python3 cva6.py \
               --testlist=${{ matrix.testlist }} \
+              --test ${{ matrix.test_name }} \
               --target ${{ matrix.config }} \
               --iss_yaml=cva6.yaml \
               --iss=${{ matrix.simulator }} \
               --issrun_opts="+tb_performance_mode+debug_disable=1+UVM_VERBOSITY=UVM_NONE" \
               $LINKER_OPT \
+              || rc=$?
+            cd -
+          elif [ "${{ matrix.mode }}" = "custom_c_test" ]; then
+            source verif/regress/install-spike.sh
+            cd verif/sim
+            python3 cva6.py \
+              --target ${{ matrix.config }} \
+              --iss_yaml=cva6.yaml \
+              --iss=${{ matrix.simulator }} \
+              --c_tests ${{ matrix.c_test }} \
+              --gcc_opts="$CC_OPTS" \
+              --linker=${{ matrix.linker }} \
+              --issrun_opts="+tb_performance_mode+debug_disable=1+UVM_VERBOSITY=UVM_NONE" \
               || rc=$?
             cd -
           else
@@ -168,6 +190,8 @@ jobs:
             simulator: veri-testharness,spike
             install_script: ""
             testlist: ""
+            test_name: ""
+            c_test: ""
             use_linker: ""
 
           - config: cv64a6_imafdc_sv39_hpdcache_wb
@@ -176,46 +200,58 @@ jobs:
             simulator: veri-testharness,spike
             install_script: install-riscv-arch-test
             testlist: "../tests/testlist_riscv-arch-test-cv64a6_imafdc_sv39.yaml"
+            test_name: "rv64i_m-add-01"
+            c_test: ""
             use_linker: "true"
 
           - config: cv64a60ax
-            testcase: dv-riscv-arch-test
-            mode: testlist
-            simulator: veri-testharness,spike
-            install_script: install-riscv-arch-test
-            testlist: "../tests/testlist_riscv-arch-test-cv64a60ax.yaml"
+            testcase: hello-world
+            mode: custom_c_test
+            simulator: spike
+            install_script: ""
+            testlist: ""
+            test_name: ""
+            c_test: "../tests/custom/hello_world/hello_world.c"
             use_linker: "true"
 
           - config: cv64a6_imafdc_sv39_openpiton
-            testcase: cv64a6_imafdc_tests
-            mode: script
-            simulator: veri-testharness,spike
+            testcase: hello-world
+            mode: custom_c_test
+            simulator: spike
             install_script: ""
             testlist: ""
+            test_name: ""
+            c_test: "../tests/custom/hello_world/hello_world.c"
             use_linker: ""
 
           - config: cv64a6_imafdch_sv39
             testcase: cv64a6_imafdc_tests
             mode: script
-            simulator: veri-testharness,spike
+            simulator: spike
             install_script: ""
             testlist: ""
+            test_name: ""
+            c_test: ""
             use_linker: ""
 
           - config: cv64a6_imafdch_sv39_wb
             testcase: cv64a6_imafdc_tests
             mode: script
-            simulator: veri-testharness,spike
+            simulator: spike
             install_script: ""
             testlist: ""
+            test_name: ""
+            c_test: ""
             use_linker: ""
 
           - config: cv64a6_imafdcv_sv39
-            testcase: cv64a6_imafdc_tests
-            mode: script
-            simulator: veri-testharness,spike
+            testcase: hello-world
+            mode: custom_c_test
+            simulator: spike
             install_script: ""
             testlist: ""
+            test_name: ""
+            c_test: "../tests/custom/hello_world/hello_world.c"
             use_linker: ""
 
     steps:
@@ -235,6 +271,7 @@ jobs:
           mkdir -p ci-results
           echo "1" > ci-results/exit_code
           source verif/sim/setup-env.sh
+          CC_OPTS="-static -mcmodel=medany -fvisibility=hidden -nostdlib -nostartfiles -g ../tests/custom/common/syscalls.c ../tests/custom/common/crt.S -I../tests/custom/env -I../tests/custom/common -lgcc"
           rc=0
           if [ "${{ matrix.mode }}" = "testlist" ]; then
             source verif/regress/install-verilator.sh
@@ -249,11 +286,29 @@ jobs:
             cd verif/sim
             python3 cva6.py \
               --testlist=${{ matrix.testlist }} \
+              --test ${{ matrix.test_name }} \
               --target ${{ matrix.config }} \
               --iss_yaml=cva6.yaml \
               --iss=${{ matrix.simulator }} \
               --issrun_opts="+tb_performance_mode+debug_disable=1+UVM_VERBOSITY=UVM_NONE" \
               $LINKER_OPT \
+              || rc=$?
+            cd -
+          elif [ "${{ matrix.mode }}" = "custom_c_test" ]; then
+            source verif/regress/install-spike.sh
+            LINKER_OPT=""
+            if [ "${{ matrix.use_linker }}" = "true" ]; then
+              LINKER_OPT="--linker=../../config/gen_from_riscv_config/linker/link.ld"
+            fi
+            cd verif/sim
+            python3 cva6.py \
+              --target ${{ matrix.config }} \
+              --iss_yaml=cva6.yaml \
+              --iss=${{ matrix.simulator }} \
+              --c_tests ${{ matrix.c_test }} \
+              --gcc_opts="$CC_OPTS" \
+              $LINKER_OPT \
+              --issrun_opts="+tb_performance_mode+debug_disable=1+UVM_VERBOSITY=UVM_NONE" \
               || rc=$?
             cd -
           else
