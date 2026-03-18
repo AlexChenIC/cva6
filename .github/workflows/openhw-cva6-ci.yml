@@ -1,0 +1,276 @@
+# Copyright 2026 OpenHW Group
+# Licensed under the Apache License, Version 2.0, see LICENSE for details.
+# SPDX-License-Identifier: Apache-2.0
+
+# ================================================================================
+# OpenHW CVA6 CI - Green Config Baseline (Manual Discovery)
+# ================================================================================
+#
+# PURPOSE:
+#   - Manual-only baseline discovery workflow for all 9 GREEN configs from
+#     Jérôme Quévremont's color-coded config figure.
+#   - Each config has at least one real testcase; partial failures on first run
+#     are expected baseline discovery behavior.
+#
+# DESIGN INTENT:
+#   This is a manual-only (workflow_dispatch) scaffold. Results go to the
+#   artifact store and dashboard — no inline summary job. Not the final
+#   Tier-1 PR gate; that comes after baseline is confirmed stable.
+#
+# VERIFIED GREEN CONFIGS FROM JEROME'S FIGURE:
+#   RV32:
+#     - cv32a60x            (dv-riscv-arch-test testlist)
+#     - cv32a65x            (smoke-tests-cv32a65x script)
+#     - cv32a6_ima_sv32_fpga (riscv-mmu-sv32 testlist, no C-ext)
+#   RV64:
+#     - cv64a60ax                        (dv-riscv-arch-test testlist)
+#     - cv64a6_imafdc_sv39_hpdcache_wb   (script + arch-test testlist)
+#     - cv64a6_imafdc_sv39_openpiton     (cv64a6_imafdc_tests script)
+#     - cv64a6_imafdch_sv39              (cv64a6_imafdc_tests script)
+#     - cv64a6_imafdch_sv39_wb           (cv64a6_imafdc_tests script)
+#     - cv64a6_imafdcv_sv39              (cv64a6_imafdc_tests script)
+#
+# EXCLUDED FROM THIS WORKFLOW:
+#   - BLUE: cv64a6_imafdc_sv39, cv64a6_imafdc_sv39_hpdcache, cv64a6_imafdc_sv39_wb
+#   - RED : cv32a6_imac_sv32 and deprecated packages marked red in Jérôme's figure
+# ================================================================================
+
+name: openhw-cva6-ci
+
+on:
+  push:
+    branches:
+      - task/ci_flow
+
+
+concurrency:
+  group: openhw-cva6-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  SPIKE_TANDEM: 1
+  NUM_JOBS: 8
+
+jobs:
+  setup-tools:
+    name: Setup Tools
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup CVA6 Environment
+        uses: ./.github/actions/setup-cva6-env
+        with:
+          install-tools: "true"
+
+  execute-rv32-green-baseline:
+    name: RV32 Green ${{ matrix.config }} / ${{ matrix.testcase }}
+    runs-on: ubuntu-latest
+    needs: setup-tools
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - config: cv32a65x
+            testcase: smoke-tests-cv32a65x
+            mode: script
+            simulator: veri-testharness,spike
+            install_script: ""
+            testlist: ""
+            linker: ""
+
+          - config: cv32a60x
+            testcase: dv-riscv-arch-test
+            mode: testlist
+            simulator: veri-testharness,spike
+            install_script: install-riscv-arch-test
+            testlist: "../tests/testlist_riscv-arch-test-cv32a60x.yaml"
+            linker: ""
+
+          - config: cv32a6_ima_sv32_fpga
+            testcase: dv-riscv-mmu-sv32-test
+            mode: testlist
+            simulator: veri-testharness,spike
+            install_script: install-riscv-arch-test
+            testlist: "../tests/testlist_riscv-mmu-sv32-arch-test-cv32a6_imac_sv32.yaml"
+            linker: "../tests/riscv-arch-test/riscv-target/spike/link.ld"
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup CVA6 Environment
+        uses: ./.github/actions/setup-cva6-env
+
+      - name: Install prerequisites
+        run: source ci/install-prereq.sh
+
+      - name: Run baseline for ${{ matrix.config }}
+        run: |
+          set -x
+          mkdir -p ci-results
+          echo "1" > ci-results/exit_code
+          source verif/sim/setup-env.sh
+          rc=0
+          if [ "${{ matrix.mode }}" = "testlist" ]; then
+            source verif/regress/install-verilator.sh
+            source verif/regress/install-spike.sh
+            if [ -n "${{ matrix.install_script }}" ]; then
+              source verif/regress/${{ matrix.install_script }}.sh
+            fi
+            LINKER_OPT=""
+            if [ -n "${{ matrix.linker }}" ]; then
+              LINKER_OPT="--linker=${{ matrix.linker }}"
+            fi
+            cd verif/sim
+            python3 cva6.py \
+              --testlist=${{ matrix.testlist }} \
+              --target ${{ matrix.config }} \
+              --iss_yaml=cva6.yaml \
+              --iss=${{ matrix.simulator }} \
+              --issrun_opts="+tb_performance_mode+debug_disable=1+UVM_VERBOSITY=UVM_NONE" \
+              $LINKER_OPT \
+              || rc=$?
+            cd -
+          else
+            DV_SIMULATORS=${{ matrix.simulator }} \
+            DV_TARGET=${{ matrix.config }} \
+              bash verif/regress/${{ matrix.testcase }}.sh || rc=$?
+          fi
+          echo "$rc" > ci-results/exit_code
+          find verif/sim -name "iss_regr.log" -exec cp {} ci-results/ \; 2>/dev/null || true
+          exit $rc
+
+      - name: Upload Results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: openhw-cva6-ci-rv32-${{ matrix.config }}-${{ matrix.testcase }}
+          path: |
+            ci-results/
+            verif/sim/out*/
+          retention-days: 14
+
+  execute-rv64-green-baseline:
+    name: RV64 Green ${{ matrix.config }} / ${{ matrix.testcase }}
+    runs-on: ubuntu-latest
+    needs: setup-tools
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - config: cv64a6_imafdc_sv39_hpdcache_wb
+            testcase: cv64a6_imafdc_tests
+            mode: script
+            simulator: veri-testharness,spike
+            install_script: ""
+            testlist: ""
+            use_linker: ""
+
+          - config: cv64a6_imafdc_sv39_hpdcache_wb
+            testcase: dv-riscv-arch-test
+            mode: testlist
+            simulator: veri-testharness,spike
+            install_script: install-riscv-arch-test
+            testlist: "../tests/testlist_riscv-arch-test-cv64a6_imafdc_sv39.yaml"
+            use_linker: "true"
+
+          - config: cv64a60ax
+            testcase: dv-riscv-arch-test
+            mode: testlist
+            simulator: veri-testharness,spike
+            install_script: install-riscv-arch-test
+            testlist: "../tests/testlist_riscv-arch-test-cv64a60ax.yaml"
+            use_linker: "true"
+
+          - config: cv64a6_imafdc_sv39_openpiton
+            testcase: cv64a6_imafdc_tests
+            mode: script
+            simulator: veri-testharness,spike
+            install_script: ""
+            testlist: ""
+            use_linker: ""
+
+          - config: cv64a6_imafdch_sv39
+            testcase: cv64a6_imafdc_tests
+            mode: script
+            simulator: veri-testharness,spike
+            install_script: ""
+            testlist: ""
+            use_linker: ""
+
+          - config: cv64a6_imafdch_sv39_wb
+            testcase: cv64a6_imafdc_tests
+            mode: script
+            simulator: veri-testharness,spike
+            install_script: ""
+            testlist: ""
+            use_linker: ""
+
+          - config: cv64a6_imafdcv_sv39
+            testcase: cv64a6_imafdc_tests
+            mode: script
+            simulator: veri-testharness,spike
+            install_script: ""
+            testlist: ""
+            use_linker: ""
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup CVA6 Environment
+        uses: ./.github/actions/setup-cva6-env
+
+      - name: Install prerequisites
+        run: source ci/install-prereq.sh
+
+      - name: Run baseline for ${{ matrix.config }}
+        run: |
+          set -x
+          mkdir -p ci-results
+          echo "1" > ci-results/exit_code
+          source verif/sim/setup-env.sh
+          rc=0
+          if [ "${{ matrix.mode }}" = "testlist" ]; then
+            source verif/regress/install-verilator.sh
+            source verif/regress/install-spike.sh
+            if [ -n "${{ matrix.install_script }}" ]; then
+              source verif/regress/${{ matrix.install_script }}.sh
+            fi
+            LINKER_OPT=""
+            if [ "${{ matrix.use_linker }}" = "true" ]; then
+              LINKER_OPT="--linker=../tests/riscv-arch-test/riscv-target/spike/link.ld"
+            fi
+            cd verif/sim
+            python3 cva6.py \
+              --testlist=${{ matrix.testlist }} \
+              --target ${{ matrix.config }} \
+              --iss_yaml=cva6.yaml \
+              --iss=${{ matrix.simulator }} \
+              --issrun_opts="+tb_performance_mode+debug_disable=1+UVM_VERBOSITY=UVM_NONE" \
+              $LINKER_OPT \
+              || rc=$?
+            cd -
+          else
+            DV_SIMULATORS=${{ matrix.simulator }} \
+            DV_TARGET=${{ matrix.config }} \
+              bash verif/regress/${{ matrix.testcase }}.sh || rc=$?
+          fi
+          echo "$rc" > ci-results/exit_code
+          find verif/sim -name "iss_regr.log" -exec cp {} ci-results/ \; 2>/dev/null || true
+          exit $rc
+
+      - name: Upload Results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: openhw-cva6-ci-rv64-${{ matrix.config }}-${{ matrix.testcase }}
+          path: |
+            ci-results/
+            verif/sim/out*/
+          retention-days: 14
