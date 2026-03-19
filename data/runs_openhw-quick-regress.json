@@ -1,5 +1,82 @@
 [
   {
+    "id": 23288385479,
+    "source": "github-actions",
+    "simulator": "verilator",
+    "run_number": 14,
+    "status": "completed",
+    "conclusion": "cancelled",
+    "html_url": "https://github.com/AlexChenIC/cva6/actions/runs/23288385479",
+    "head_branch": "task/ci_flow",
+    "head_sha": "390d4226",
+    "event": "push",
+    "created_at": "2026-03-19T09:29:07Z",
+    "updated_at": "2026-03-19T09:33:11Z",
+    "run_started_at": "2026-03-19T09:29:07Z",
+    "duration_seconds": 244,
+    "total_jobs": 5,
+    "passed_jobs": 3,
+    "failed_jobs": 0,
+    "skipped_jobs": 2,
+    "jobs": [
+      {
+        "name": "RV32 smoke-tests-cv32a65x (cv32a65x)",
+        "conclusion": "success",
+        "started_at": "2026-03-19T09:30:04Z",
+        "completed_at": "2026-03-19T09:32:20Z",
+        "duration_seconds": 136,
+        "html_url": "https://github.com/AlexChenIC/cva6/actions/runs/23288385479/job/67717554602",
+        "arch": "rv32",
+        "config": "cv32a65x",
+        "testcase": "smoke-tests-cv32a65x"
+      },
+      {
+        "name": "RV64 benchmark (cv64a6_imafdc_sv39)",
+        "conclusion": "success",
+        "started_at": "2026-03-19T09:30:04Z",
+        "completed_at": "2026-03-19T09:31:48Z",
+        "duration_seconds": 104,
+        "html_url": "https://github.com/AlexChenIC/cva6/actions/runs/23288385479/job/67717554603",
+        "arch": "rv64",
+        "config": "cv64a6_imafdc_sv39",
+        "testcase": "benchmark"
+      },
+      {
+        "name": "RV64 smoke-tests-cv64a6_imafdc_sv39 (cv64a6_imafdc_sv39)",
+        "conclusion": "cancelled",
+        "started_at": "2026-03-19T09:30:04Z",
+        "completed_at": "2026-03-19T09:33:10Z",
+        "duration_seconds": 186,
+        "html_url": "https://github.com/AlexChenIC/cva6/actions/runs/23288385479/job/67717554622",
+        "arch": "rv64",
+        "config": "cv64a6_imafdc_sv39",
+        "testcase": "smoke-tests-cv64a6_imafdc_sv39"
+      },
+      {
+        "name": "RV32 benchmark (cv32a65x)",
+        "conclusion": "success",
+        "started_at": "2026-03-19T09:30:04Z",
+        "completed_at": "2026-03-19T09:32:04Z",
+        "duration_seconds": 120,
+        "html_url": "https://github.com/AlexChenIC/cva6/actions/runs/23288385479/job/67717554675",
+        "arch": "rv32",
+        "config": "cv32a65x",
+        "testcase": "benchmark"
+      },
+      {
+        "name": "RV64 cv64a6_imafdc_tests (cv64a6_imafdc_sv39)",
+        "conclusion": "cancelled",
+        "started_at": "2026-03-19T09:30:04Z",
+        "completed_at": "2026-03-19T09:33:10Z",
+        "duration_seconds": 186,
+        "html_url": "https://github.com/AlexChenIC/cva6/actions/runs/23288385479/job/67717554734",
+        "arch": "rv64",
+        "config": "cv64a6_imafdc_sv39",
+        "testcase": "cv64a6_imafdc_tests"
+      }
+    ]
+  },
+  {
     "id": 23243659067,
     "source": "github-actions",
     "simulator": "verilator",
