@@ -50,10 +50,15 @@
 
 name: openhw-cva6-ci-tier2
 
+#on:
+#  workflow_dispatch:
+#  schedule:
+#    - cron: '0 2 * * *'   # Daily at 02:00 UTC
+
 on:
-  workflow_dispatch:
-  schedule:
-    - cron: '0 2 * * *'   # Daily at 02:00 UTC
+  push:
+    branches:
+      - task/ci_flow
 
 concurrency:
   group: openhw-cva6-ci-tier2-${{ github.ref }}
