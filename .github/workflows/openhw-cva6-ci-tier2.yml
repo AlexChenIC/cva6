@@ -1,0 +1,609 @@
+# Copyright 2026 OpenHW Group
+# Licensed under the Apache License, Version 2.0, see LICENSE for details.
+# SPDX-License-Identifier: Apache-2.0
+
+# ================================================================================
+# OpenHW CVA6 CI — Tier 2 Full Coverage Workflow
+# ================================================================================
+#
+# PURPOSE:
+#   Maximum test coverage for all 9 GREEN configs using ALL EXISTING testcases
+#   already present in this repository.  No new testcases are generated here.
+#   This workflow is the successor to the proof-of-life baseline
+#   (openhw-cva6-ci.yml, commit 70ac25e8).
+#
+# BASELINE REFERENCE:
+#   openhw-cva6-ci.yml (commit 70ac25e8)  ← DO NOT MODIFY that file
+#   This file is a separate Tier-2 escalation derived from that baseline.
+#
+# COVERAGE DELTA vs BASELINE:
+#   Baseline  : 1 test/job ("proof-of-life"), RTL simulation on 4/11 jobs
+#   Tier 2    : full testlists (no --test filter), RTL simulation on 17/23 jobs
+#
+#   RTL simulation upgraded configs (vs baseline):
+#     cv64a6_imafdch_sv39     — was spike-only, now veri-testharness,spike
+#     cv64a6_imafdch_sv39_wb  — was spike-only, now veri-testharness,spike
+#     cv64a60ax               — was spike-only hello-world, now RTL arch-test
+#
+#   New testlist jobs added (using existing repo testlists only):
+#     cv32a65x     : cv32a6_tests, dv-riscv-arch-test (full), dv-riscv-compliance
+#     cv32a60x     : cv32a6_tests, dv-riscv-arch-test (full), dv-riscv-compliance
+#     cv32a6_ima_sv32_fpga  : dv-riscv-tests-p (rv32ima physical mode)
+#     hpdcache_wb  : dv-riscv-arch-test (full), dv-riscv-tests-v (SV39 MMU!),
+#                    dv-riscv-tests-p, dv-riscv-compliance
+#     cv64a60ax    : dv-riscv-arch-test (full cv64a60ax testlist, no K)
+#     openpiton    : dv-riscv-tests-v (spike-only, SV39 basic)
+#     imafdch_sv39 : cv64a6_imafdc_tests (RTL), dv-riscv-arch-test (RTL)
+#     imafdch_wb   : cv64a6_imafdc_tests (RTL), dv-riscv-arch-test (RTL)
+#     imafdcv_sv39 : dv-riscv-tests-v (spike-only, basic I/M/A)
+#
+# COVERAGE GAPS (see docs/tier2-gap-analysis.md for full details):
+#   cv32a6_ima_sv32_fpga : SV32 MMU arch-test testlist not yet created
+#   cv64a6_imafdc_sv39_openpiton : rv64gc-only testlist (no B, no K) not yet created
+#   cv64a6_imafdch_sv39[_wb]     : H-extension (hypervisor) testlist not yet created
+#   cv64a6_imafdcv_sv39          : RVV (V-extension) testlist not yet created
+#   All configs                  : CSR-access, PMP tests — linker/simulator gaps
+#
+# TRIGGER:
+#   Manual dispatch + nightly schedule (NOT a PR gate — use Tier 1 for that)
+# ================================================================================
+
+name: openhw-cva6-ci-tier2
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 2 * * *'   # Daily at 02:00 UTC
+
+concurrency:
+  group: openhw-cva6-ci-tier2-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  SPIKE_TANDEM: 1
+  NUM_JOBS: 8
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+jobs:
+  # ─────────────────────────────────────────────────────────────────────────────
+  setup-tools:
+  # ─────────────────────────────────────────────────────────────────────────────
+    name: Setup Tools
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup CVA6 Environment
+        uses: ./.github/actions/setup-cva6-env
+        with:
+          install-tools: "true"
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # RV32 GREEN Configs — Full Coverage
+  # ─────────────────────────────────────────────────────────────────────────────
+  execute-rv32-tier2:
+    name: RV32 Tier2 ${{ matrix.config }} / ${{ matrix.testcase }}
+    runs-on: ubuntu-latest
+    needs: setup-tools
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+
+          # ══════════════════════════════════════════════════════════════
+          # cv32a65x  ISA: rv32imc_zba_zbb_zbs_zbc
+          #   BExtEn=1, CExtEn=1, MMU=no, PMP=8 entries
+          #   Testlist coverage: riscv-tests-p, arch-test, compliance
+          # ══════════════════════════════════════════════════════════════
+
+          # [B1] Baseline smoke test: hello_world (RTL+ISS tandem)
+          - config: cv32a65x
+            testcase: smoke-tests-cv32a65x
+            mode: script
+            simulator: veri-testharness,spike
+            install_script: ""
+            testlist: ""
+            test_name: ""
+            c_test: ""
+            linker: ""
+
+          # [B2] riscv-tests: 5 basic physical-mode tests + hello_world (RTL+ISS)
+          - config: cv32a65x
+            testcase: cv32a6_tests
+            mode: script
+            simulator: veri-testharness,spike
+            install_script: ""
+            testlist: ""
+            test_name: ""
+            c_test: ""
+            linker: ""
+
+          # [B3] arch-test: full testlist — I, M, C, B (Zba/Zbb/Zbs/Zbc) (RTL+ISS)
+          #      ~100 tests covering base ISA + bitmanip extensions
+          - config: cv32a65x
+            testcase: dv-riscv-arch-test
+            mode: testlist
+            simulator: veri-testharness,spike
+            install_script: install-riscv-arch-test
+            testlist: "../tests/testlist_riscv-arch-test-cv32a65x.yaml"
+            test_name: ""
+            c_test: ""
+            linker: "../tests/riscv-arch-test/riscv-target/spike/link.ld"
+
+          # [B4] compliance: full RISC-V compliance suite (RTL+ISS)
+          - config: cv32a65x
+            testcase: dv-riscv-compliance
+            mode: testlist
+            simulator: veri-testharness,spike
+            install_script: install-riscv-compliance
+            testlist: "../tests/testlist_riscv-compliance-cv32a65x.yaml"
+            test_name: ""
+            c_test: ""
+            linker: ""
+
+          # ══════════════════════════════════════════════════════════════
+          # cv32a60x  ISA: rv32imc_zba_zbb_zbs_zbc  (same ISA as cv32a65x)
+          #   BExtEn=1, CExtEn=1, MMU=no, priv=M
+          #   Testlist coverage: riscv-tests-p, arch-test(114), compliance, csr(TODO)
+          # ══════════════════════════════════════════════════════════════
+
+          # [C1] riscv-tests: 5 basic physical-mode tests + hello_world (RTL+ISS)
+          - config: cv32a60x
+            testcase: cv32a6_tests
+            mode: script
+            simulator: veri-testharness,spike
+            install_script: ""
+            testlist: ""
+            test_name: ""
+            c_test: ""
+            linker: ""
+
+          # [C2] arch-test: full 114-test testlist — I, M, C, B (RTL+ISS)
+          #      REMOVED --test filter from baseline; now runs all 114 tests
+          - config: cv32a60x
+            testcase: dv-riscv-arch-test
+            mode: testlist
+            simulator: veri-testharness,spike
+            install_script: install-riscv-arch-test
+            testlist: "../tests/testlist_riscv-arch-test-cv32a60x.yaml"
+            test_name: ""
+            c_test: ""
+            linker: "../tests/riscv-arch-test/riscv-target/spike/link.ld"
+
+          # [C3] compliance: full RISC-V compliance suite (RTL+ISS)
+          - config: cv32a60x
+            testcase: dv-riscv-compliance
+            mode: testlist
+            simulator: veri-testharness,spike
+            install_script: install-riscv-compliance
+            testlist: "../tests/testlist_riscv-compliance-cv32a60x.yaml"
+            test_name: ""
+            c_test: ""
+            linker: ""
+
+          # ══════════════════════════════════════════════════════════════
+          # cv32a6_ima_sv32_fpga  ISA: rv32ima  (NO C extension!)
+          #   CExtEn=0, BExtEn=0, MmuPresent=1(SV32!), FpgaEn=1
+          #   PMP=0 entries, Spike-only (FPGA build not in GH Actions env)
+          #   MAJOR GAP: SV32 MMU testlist missing — see gap report
+          # ══════════════════════════════════════════════════════════════
+
+          # [F1] Baseline hello-world (spike-only, proof-of-life)
+          - config: cv32a6_ima_sv32_fpga
+            testcase: hello-world
+            mode: custom_c_test
+            simulator: spike
+            install_script: ""
+            testlist: ""
+            test_name: ""
+            c_test: "../tests/custom/hello_world/hello_world.c"
+            linker: "../../config/gen_from_riscv_config/linker/link.ld"
+
+          # [F2] riscv-tests physical mode: rv32ima basic I/M/A instructions (spike-only)
+          #      Uses testlist_riscv-tests-rv32ima-p.yaml — only existing testlist
+          #      compatible with rv32ima ISA (no C, no B, no K)
+          - config: cv32a6_ima_sv32_fpga
+            testcase: dv-riscv-tests-p
+            mode: testlist
+            simulator: spike
+            install_script: install-riscv-tests
+            testlist: "../tests/testlist_riscv-tests-rv32ima-p.yaml"
+            test_name: ""
+            c_test: ""
+            linker: ""
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup CVA6 Environment
+        uses: ./.github/actions/setup-cva6-env
+
+      - name: Install prerequisites
+        run: source ci/install-prereq.sh
+
+      - name: Run Tier 2 for ${{ matrix.config }} / ${{ matrix.testcase }}
+        run: |
+          set -x
+          mkdir -p ci-results
+          echo "1" > ci-results/exit_code
+          source verif/sim/setup-env.sh
+          CC_OPTS="-static -mcmodel=medany -fvisibility=hidden -nostdlib -nostartfiles \
+            -g ../tests/custom/common/syscalls.c ../tests/custom/common/crt.S \
+            -I../tests/custom/env -I../tests/custom/common -lgcc"
+          rc=0
+
+          if [ "${{ matrix.mode }}" = "testlist" ]; then
+            # Install verilator only if RTL simulation requested
+            if [[ "${{ matrix.simulator }}" == *"veri-testharness"* ]]; then
+              source verif/regress/install-verilator.sh
+            fi
+            source verif/regress/install-spike.sh
+            if [ -n "${{ matrix.install_script }}" ]; then
+              source verif/regress/${{ matrix.install_script }}.sh
+            fi
+            LINKER_OPT=""
+            if [ -n "${{ matrix.linker }}" ]; then
+              LINKER_OPT="--linker=${{ matrix.linker }}"
+            fi
+            # No --test filter in Tier 2: run full testlist
+            cd verif/sim
+            python3 cva6.py \
+              --testlist=${{ matrix.testlist }} \
+              --target ${{ matrix.config }} \
+              --iss_yaml=cva6.yaml \
+              --iss=${{ matrix.simulator }} \
+              --issrun_opts="+tb_performance_mode+debug_disable=1+UVM_VERBOSITY=UVM_NONE" \
+              $LINKER_OPT \
+              || rc=$?
+            cd -
+
+          elif [ "${{ matrix.mode }}" = "custom_c_test" ]; then
+            source verif/regress/install-spike.sh
+            LINKER_OPT=""
+            if [ -n "${{ matrix.linker }}" ]; then
+              LINKER_OPT="--linker=${{ matrix.linker }}"
+            fi
+            cd verif/sim
+            python3 cva6.py \
+              --target ${{ matrix.config }} \
+              --iss_yaml=cva6.yaml \
+              --iss=${{ matrix.simulator }} \
+              --c_tests ${{ matrix.c_test }} \
+              --gcc_opts="$CC_OPTS" \
+              $LINKER_OPT \
+              --issrun_opts="+tb_performance_mode+debug_disable=1+UVM_VERBOSITY=UVM_NONE" \
+              || rc=$?
+            cd -
+
+          else
+            # script mode: the .sh script handles its own tool installation
+            DV_SIMULATORS=${{ matrix.simulator }} \
+            DV_TARGET=${{ matrix.config }} \
+              bash verif/regress/${{ matrix.testcase }}.sh || rc=$?
+          fi
+
+          echo "$rc" > ci-results/exit_code
+          find verif/sim -name "iss_regr.log" -exec cp {} ci-results/ \; 2>/dev/null || true
+          exit $rc
+
+      - name: Upload Results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tier2-rv32-${{ matrix.config }}-${{ matrix.testcase }}
+          path: |
+            ci-results/
+            verif/sim/out*/
+          retention-days: 14
+
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # RV64 GREEN Configs — Full Coverage
+  # ─────────────────────────────────────────────────────────────────────────────
+  execute-rv64-tier2:
+    name: RV64 Tier2 ${{ matrix.config }} / ${{ matrix.testcase }}
+    runs-on: ubuntu-latest
+    needs: setup-tools
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+
+          # ══════════════════════════════════════════════════════════════
+          # cv64a6_imafdc_sv39_hpdcache_wb
+          #   ISA: rv64gc_zba_zbb_zbs_zbc_zbkb_zbkx_zkne_zknd_zknh
+          #   MmuPresent=1(SV39), DcacheType=WB, BExtEn=1, KExtEn=1
+          #   Best-supported config: all 4 testlist types available
+          # ══════════════════════════════════════════════════════════════
+
+          # [H1] Baseline: 5 riscv-tests-v + hello_world (RTL+ISS)
+          - config: cv64a6_imafdc_sv39_hpdcache_wb
+            testcase: cv64a6_imafdc_tests
+            mode: script
+            simulator: veri-testharness,spike
+            install_script: ""
+            testlist: ""
+            test_name: ""
+            c_test: ""
+            linker: ""
+
+          # [H2] arch-test: full testlist — I, M, C, B, A, D, K (RTL+ISS)
+          #      ~160 tests; includes crypto (AES/SHA/Zbk) extensions
+          #      REMOVED --test filter from baseline
+          - config: cv64a6_imafdc_sv39_hpdcache_wb
+            testcase: dv-riscv-arch-test
+            mode: testlist
+            simulator: veri-testharness,spike
+            install_script: install-riscv-arch-test
+            testlist: "../tests/testlist_riscv-arch-test-cv64a6_imafdc_sv39.yaml"
+            test_name: ""
+            c_test: ""
+            linker: "../tests/riscv-arch-test/riscv-target/spike/link.ld"
+
+          # [H3] riscv-tests virtual mode: SV39 MMU page-table-walk tests (RTL+ISS)
+          #      Tests load/store through SV39 paging — critical for WB cache
+          - config: cv64a6_imafdc_sv39_hpdcache_wb
+            testcase: dv-riscv-tests-v
+            mode: testlist
+            simulator: veri-testharness,spike
+            install_script: install-riscv-tests
+            testlist: "../tests/testlist_riscv-tests-cv64a6_imafdc_sv39-v.yaml"
+            test_name: ""
+            c_test: ""
+            linker: ""
+
+          # [H4] riscv-tests physical mode: direct memory access (RTL+ISS)
+          - config: cv64a6_imafdc_sv39_hpdcache_wb
+            testcase: dv-riscv-tests-p
+            mode: testlist
+            simulator: veri-testharness,spike
+            install_script: install-riscv-tests
+            testlist: "../tests/testlist_riscv-tests-cv64a6_imafdc_sv39-p.yaml"
+            test_name: ""
+            c_test: ""
+            linker: ""
+
+          # [H5] compliance: RISC-V standard compliance suite (RTL+ISS)
+          - config: cv64a6_imafdc_sv39_hpdcache_wb
+            testcase: dv-riscv-compliance
+            mode: testlist
+            simulator: veri-testharness,spike
+            install_script: install-riscv-compliance
+            testlist: "../tests/testlist_riscv-compliance-cv64a6_imafdc_sv39.yaml"
+            test_name: ""
+            c_test: ""
+            linker: ""
+
+          # ══════════════════════════════════════════════════════════════
+          # cv64a60ax  ISA: rv64gc_zba_zbb_zbs_zbc  (no K extension)
+          #   MmuPresent=1(SV39), BExtEn=1, KExtEn=0
+          #   Uses the new cv64a60ax testlist (K tests excluded)
+          # ══════════════════════════════════════════════════════════════
+
+          # [A1] arch-test: full cv64a60ax testlist — I, M, C, B, A, D (RTL+ISS)
+          #      ~120 tests; uses verif/tests/testlist_riscv-arch-test-cv64a60ax.yaml
+          #      (committed alongside this workflow, derived from sv39 without K)
+          - config: cv64a60ax
+            testcase: dv-riscv-arch-test
+            mode: testlist
+            simulator: veri-testharness,spike
+            install_script: install-riscv-arch-test
+            testlist: "../tests/testlist_riscv-arch-test-cv64a60ax.yaml"
+            test_name: ""
+            c_test: ""
+            linker: "../tests/riscv-arch-test/riscv-target/spike/link.ld"
+
+          # ══════════════════════════════════════════════════════════════
+          # cv64a6_imafdc_sv39_openpiton
+          #   ISA: rv64gc  (NO B, NO K — OpenPiton conserves resources)
+          #   HExtEn=0, BExtEn=0, CvxifEn=0
+          #   RTL: veri-testharness NOT usable (OpenPiton NOC bus interface)
+          #   Spike-only. MAJOR GAP: no rv64gc-only testlist exists.
+          # ══════════════════════════════════════════════════════════════
+
+          # [O1] Baseline hello-world (spike-only)
+          - config: cv64a6_imafdc_sv39_openpiton
+            testcase: hello-world
+            mode: custom_c_test
+            simulator: spike
+            install_script: ""
+            testlist: ""
+            test_name: ""
+            c_test: "../tests/custom/hello_world/hello_world.c"
+            linker: ""
+
+          # [O2] riscv-tests virtual mode: SV39 basic tests, spike-only
+          #      riscv-tests do NOT include B/K tests → compatible with rv64gc ISA
+          #      NOTE: requires verification that cva6.py Spike config enables S-mode
+          - config: cv64a6_imafdc_sv39_openpiton
+            testcase: dv-riscv-tests-v
+            mode: testlist
+            simulator: spike
+            install_script: install-riscv-tests
+            testlist: "../tests/testlist_riscv-tests-cv64a6_imafdc_sv39-v.yaml"
+            test_name: ""
+            c_test: ""
+            linker: ""
+
+          # ══════════════════════════════════════════════════════════════
+          # cv64a6_imafdch_sv39  ISA: rv64gch_zba_zbb_zbs_zbc
+          #   HExtEn=1(Hypervisor!), BExtEn=1, CvxifEn=1, ZcbExtEn=1
+          #   NO K extension — cv64a6_imafdc_sv39 testlist incompatible!
+          #   Uses cv64a60ax testlist (I/M/C/B/A/D, no K) — ISA-compatible
+          #   UPGRADE: was spike-only in baseline, now veri-testharness,spike
+          # ══════════════════════════════════════════════════════════════
+
+          # [G1] riscv-tests-v + hello_world — UPGRADED to RTL+ISS tandem
+          - config: cv64a6_imafdch_sv39
+            testcase: cv64a6_imafdc_tests
+            mode: script
+            simulator: veri-testharness,spike
+            install_script: ""
+            testlist: ""
+            test_name: ""
+            c_test: ""
+            linker: ""
+
+          # [G2] arch-test using cv64a60ax testlist (I/M/C/B/A/D, no K) RTL+ISS
+          #      cv64a60ax testlist is ISA-compatible with rv64gch_zba_zbb_zbs_zbc:
+          #      H extension is transparent to non-H guest code; basic tests run fine
+          - config: cv64a6_imafdch_sv39
+            testcase: dv-riscv-arch-test
+            mode: testlist
+            simulator: veri-testharness,spike
+            install_script: install-riscv-arch-test
+            testlist: "../tests/testlist_riscv-arch-test-cv64a60ax.yaml"
+            test_name: ""
+            c_test: ""
+            linker: "../tests/riscv-arch-test/riscv-target/spike/link.ld"
+
+          # ══════════════════════════════════════════════════════════════
+          # cv64a6_imafdch_sv39_wb  ISA: rv64gch_zba_zbb_zbs_zbc  (same as above)
+          #   DcacheType=WB — writeback cache, key hardware differentiator
+          #   UPGRADE: was spike-only in baseline, now veri-testharness,spike
+          #   MAJOR GAP: H-extension testlist missing (see gap report)
+          # ══════════════════════════════════════════════════════════════
+
+          # [W1] riscv-tests-v + hello_world — UPGRADED to RTL+ISS tandem
+          - config: cv64a6_imafdch_sv39_wb
+            testcase: cv64a6_imafdc_tests
+            mode: script
+            simulator: veri-testharness,spike
+            install_script: ""
+            testlist: ""
+            test_name: ""
+            c_test: ""
+            linker: ""
+
+          # [W2] arch-test using cv64a60ax testlist (I/M/C/B/A/D, no K) RTL+ISS
+          #      Writeback cache behavior exercised through RTL+ISS tandem comparison
+          - config: cv64a6_imafdch_sv39_wb
+            testcase: dv-riscv-arch-test
+            mode: testlist
+            simulator: veri-testharness,spike
+            install_script: install-riscv-arch-test
+            testlist: "../tests/testlist_riscv-arch-test-cv64a60ax.yaml"
+            test_name: ""
+            c_test: ""
+            linker: "../tests/riscv-arch-test/riscv-target/spike/link.ld"
+
+          # ══════════════════════════════════════════════════════════════
+          # cv64a6_imafdcv_sv39  ISA: rv64gcv  (V extension, NO B, NO K)
+          #   VExtEn=1, BExtEn=0, NrCommitPorts=2 (superscalar)
+          #   No V-extension testlist exists in repo → spike-only for now
+          #   riscv-tests (-v) compatible: tests only I/M/A — subset of rv64gcv
+          # ══════════════════════════════════════════════════════════════
+
+          # [V1] Baseline hello-world (spike-only, proof-of-life)
+          - config: cv64a6_imafdcv_sv39
+            testcase: hello-world
+            mode: custom_c_test
+            simulator: spike
+            install_script: ""
+            testlist: ""
+            test_name: ""
+            c_test: "../tests/custom/hello_world/hello_world.c"
+            linker: ""
+
+          # [V2] riscv-tests virtual mode: SV39 I/M/A tests, spike-only
+          #      riscv-tests do NOT include B/K/V tests → compatible with rv64gcv
+          #      Provides basic functional coverage until RVV testlist is created
+          - config: cv64a6_imafdcv_sv39
+            testcase: dv-riscv-tests-v
+            mode: testlist
+            simulator: spike
+            install_script: install-riscv-tests
+            testlist: "../tests/testlist_riscv-tests-cv64a6_imafdc_sv39-v.yaml"
+            test_name: ""
+            c_test: ""
+            linker: ""
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup CVA6 Environment
+        uses: ./.github/actions/setup-cva6-env
+
+      - name: Install prerequisites
+        run: source ci/install-prereq.sh
+
+      - name: Run Tier 2 for ${{ matrix.config }} / ${{ matrix.testcase }}
+        run: |
+          set -x
+          mkdir -p ci-results
+          echo "1" > ci-results/exit_code
+          source verif/sim/setup-env.sh
+          CC_OPTS="-static -mcmodel=medany -fvisibility=hidden -nostdlib -nostartfiles \
+            -g ../tests/custom/common/syscalls.c ../tests/custom/common/crt.S \
+            -I../tests/custom/env -I../tests/custom/common -lgcc"
+          rc=0
+
+          if [ "${{ matrix.mode }}" = "testlist" ]; then
+            # Install verilator only if RTL simulation requested
+            if [[ "${{ matrix.simulator }}" == *"veri-testharness"* ]]; then
+              source verif/regress/install-verilator.sh
+            fi
+            source verif/regress/install-spike.sh
+            if [ -n "${{ matrix.install_script }}" ]; then
+              source verif/regress/${{ matrix.install_script }}.sh
+            fi
+            LINKER_OPT=""
+            if [ -n "${{ matrix.linker }}" ]; then
+              LINKER_OPT="--linker=${{ matrix.linker }}"
+            fi
+            # No --test filter in Tier 2: run full testlist
+            cd verif/sim
+            python3 cva6.py \
+              --testlist=${{ matrix.testlist }} \
+              --target ${{ matrix.config }} \
+              --iss_yaml=cva6.yaml \
+              --iss=${{ matrix.simulator }} \
+              --issrun_opts="+tb_performance_mode+debug_disable=1+UVM_VERBOSITY=UVM_NONE" \
+              $LINKER_OPT \
+              || rc=$?
+            cd -
+
+          elif [ "${{ matrix.mode }}" = "custom_c_test" ]; then
+            source verif/regress/install-spike.sh
+            LINKER_OPT=""
+            if [ -n "${{ matrix.linker }}" ]; then
+              LINKER_OPT="--linker=${{ matrix.linker }}"
+            fi
+            cd verif/sim
+            python3 cva6.py \
+              --target ${{ matrix.config }} \
+              --iss_yaml=cva6.yaml \
+              --iss=${{ matrix.simulator }} \
+              --c_tests ${{ matrix.c_test }} \
+              --gcc_opts="$CC_OPTS" \
+              $LINKER_OPT \
+              --issrun_opts="+tb_performance_mode+debug_disable=1+UVM_VERBOSITY=UVM_NONE" \
+              || rc=$?
+            cd -
+
+          else
+            # script mode: the .sh script handles its own tool installation
+            DV_SIMULATORS=${{ matrix.simulator }} \
+            DV_TARGET=${{ matrix.config }} \
+              bash verif/regress/${{ matrix.testcase }}.sh || rc=$?
+          fi
+
+          echo "$rc" > ci-results/exit_code
+          find verif/sim -name "iss_regr.log" -exec cp {} ci-results/ \; 2>/dev/null || true
+          exit $rc
+
+      - name: Upload Results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tier2-rv64-${{ matrix.config }}-${{ matrix.testcase }}
+          path: |
+            ci-results/
+            verif/sim/out*/
+          retention-days: 14
