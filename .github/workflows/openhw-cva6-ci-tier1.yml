@@ -1,0 +1,383 @@
+# Copyright 2026 OpenHW Group
+# Licensed under the Apache License, Version 2.0, see LICENSE for details.
+# SPDX-License-Identifier: Apache-2.0
+
+# ================================================================================
+# OpenHW CVA6 CI — Tier 1 PR Gate Workflow
+# ================================================================================
+#
+# PURPOSE:
+#   Fast PR gate — proof-of-life for 4 core configs, target ≤15 min wall-clock.
+#   Provides quick feedback on PRs before merging to master/main/dev branches.
+#
+# DESIGN:
+#   1 smoke/script test + 1 single arch-test per config (--test filter for speed).
+#   Keeps job count minimal (8 test jobs + 1 setup-tools) to stay within time budget.
+#
+# RTL SIMULATION COVERAGE:
+#   veri-testharness + spike tandem : cv32a65x, cv32a60x, cv64a6_imafdc_sv39_hpdcache_wb
+#   spike-only                      : cv64a60ax (RTL sim not yet validated — AxiDataWidth=128
+#                                     / COPRO_EXAMPLE needs testbench config before RTL sim)
+#
+# SCOPE:
+#   NOT a PR gate for cv64a6_imafdch_sv39[_wb], cv64a6_imafdcv_sv39, openpiton, or
+#   cv32a6_ima_sv32_fpga — use Tier 2 for full coverage of all 9 GREEN configs.
+#
+# REFERENCE:
+#   Tier 2 full coverage: .github/workflows/openhw-cva6-ci-tier2.yml
+#   Baseline legacy CI  : .github/workflows/ci.yml (DO NOT MODIFY)
+#
+# TRIGGER:
+#   pull_request to master/main/dev (PR gate), push to task/ci_flow (dev testing),
+#   workflow_dispatch (manual)
+# ================================================================================
+
+name: openhw-cva6-ci-tier1
+
+on:
+  pull_request:
+    branches:
+      - master
+      - main
+      - dev
+  push:
+    branches:
+      - task/ci_flow
+  workflow_dispatch:
+
+concurrency:
+  group: openhw-cva6-ci-tier1-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  SPIKE_TANDEM: 1
+  NUM_JOBS: 8
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+jobs:
+  # ─────────────────────────────────────────────────────────────────────────────
+  setup-tools:
+  # ─────────────────────────────────────────────────────────────────────────────
+    name: Setup Tools
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup CVA6 Environment
+        uses: ./.github/actions/setup-cva6-env
+        with:
+          install-tools: "true"
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # RV32 Core Configs — Tier 1 PR Gate (fast feedback)
+  # ─────────────────────────────────────────────────────────────────────────────
+  execute-rv32-tier1:
+    name: RV32 Tier1 ${{ matrix.config }} / ${{ matrix.testcase }}
+    runs-on: ubuntu-latest
+    needs: setup-tools
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+
+          # ══════════════════════════════════════════════════════════════
+          # cv32a65x  ISA: rv32imc_zba_zbb_zbs_zbc
+          #   BExtEn=1, CExtEn=1, SuperscalarEn=1, MMU=no, PMP=8 entries
+          #   RTL sim: veri-testharness + spike tandem
+          # ══════════════════════════════════════════════════════════════
+
+          # [B1] Smoke test: hello_world + basic riscv-tests (RTL+ISS tandem)
+          - config: cv32a65x
+            testcase: smoke-tests-cv32a65x
+            mode: script
+            simulator: veri-testharness,spike
+            install_script: ""
+            testlist: ""
+            test_name: ""
+            c_test: ""
+            linker: ""
+
+          # [B2] arch-test: single test via --test filter for PR gate speed (RTL+ISS)
+          #      rv32im-add-01 exercises I+M base — validates ISA decode path
+          - config: cv32a65x
+            testcase: dv-riscv-arch-test
+            mode: testlist
+            simulator: veri-testharness,spike
+            install_script: install-riscv-arch-test
+            testlist: "../tests/testlist_riscv-arch-test-cv32a65x.yaml"
+            test_name: "rv32im-add-01"
+            c_test: ""
+            linker: "../tests/riscv-arch-test/riscv-target/spike/link.ld"
+
+          # ══════════════════════════════════════════════════════════════
+          # cv32a60x  ISA: rv32imc_zba_zbb_zbs_zbc  (same ISA as cv32a65x)
+          #   BExtEn=1, RVA=0, RVS=0, M-mode only
+          #   RTL sim: veri-testharness + spike tandem
+          # ══════════════════════════════════════════════════════════════
+
+          # [C1] riscv-tests: 5 basic physical-mode tests + hello_world (RTL+ISS)
+          - config: cv32a60x
+            testcase: cv32a6_tests
+            mode: script
+            simulator: veri-testharness,spike
+            install_script: ""
+            testlist: ""
+            test_name: ""
+            c_test: ""
+            linker: ""
+
+          # [C2] arch-test: single test via --test filter for PR gate speed (RTL+ISS)
+          #      rv32im-add-01 exercises I+M base — validates ISA decode path
+          - config: cv32a60x
+            testcase: dv-riscv-arch-test
+            mode: testlist
+            simulator: veri-testharness,spike
+            install_script: install-riscv-arch-test
+            testlist: "../tests/testlist_riscv-arch-test-cv32a60x.yaml"
+            test_name: "rv32im-add-01"
+            c_test: ""
+            linker: "../tests/riscv-arch-test/riscv-target/spike/link.ld"
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup CVA6 Environment
+        uses: ./.github/actions/setup-cva6-env
+
+      - name: Install prerequisites
+        run: source ci/install-prereq.sh
+
+      - name: Run Tier 1 for ${{ matrix.config }} / ${{ matrix.testcase }}
+        run: |
+          set -x
+          mkdir -p ci-results
+          echo "1" > ci-results/exit_code
+          source verif/sim/setup-env.sh
+          CC_OPTS="-static -mcmodel=medany -fvisibility=hidden -nostdlib -nostartfiles \
+            -g ../tests/custom/common/syscalls.c ../tests/custom/common/crt.S \
+            -I../tests/custom/env -I../tests/custom/common -lgcc"
+          rc=0
+
+          if [ "${{ matrix.mode }}" = "testlist" ]; then
+            # Install verilator only if RTL simulation requested
+            if [[ "${{ matrix.simulator }}" == *"veri-testharness"* ]]; then
+              source verif/regress/install-verilator.sh
+            fi
+            source verif/regress/install-spike.sh
+            if [ -n "${{ matrix.install_script }}" ]; then
+              source verif/regress/${{ matrix.install_script }}.sh
+            fi
+            LINKER_OPT=""
+            if [ -n "${{ matrix.linker }}" ]; then
+              LINKER_OPT="--linker=${{ matrix.linker }}"
+            fi
+            TEST_OPT=""
+            if [ -n "${{ matrix.test_name }}" ]; then
+              TEST_OPT="--test ${{ matrix.test_name }}"
+            fi
+            cd verif/sim
+            python3 cva6.py \
+              --testlist=${{ matrix.testlist }} \
+              --target ${{ matrix.config }} \
+              --iss_yaml=cva6.yaml \
+              --iss=${{ matrix.simulator }} \
+              --issrun_opts="+tb_performance_mode+debug_disable=1+UVM_VERBOSITY=UVM_NONE" \
+              $LINKER_OPT \
+              ${TEST_OPT} \
+              || rc=$?
+            cd -
+
+          elif [ "${{ matrix.mode }}" = "custom_c_test" ]; then
+            source verif/regress/install-spike.sh
+            LINKER_OPT=""
+            if [ -n "${{ matrix.linker }}" ]; then
+              LINKER_OPT="--linker=${{ matrix.linker }}"
+            fi
+            cd verif/sim
+            python3 cva6.py \
+              --target ${{ matrix.config }} \
+              --iss_yaml=cva6.yaml \
+              --iss=${{ matrix.simulator }} \
+              --c_tests ${{ matrix.c_test }} \
+              --gcc_opts="$CC_OPTS" \
+              $LINKER_OPT \
+              --issrun_opts="+tb_performance_mode+debug_disable=1+UVM_VERBOSITY=UVM_NONE" \
+              || rc=$?
+            cd -
+
+          else
+            # script mode: the .sh script handles its own tool installation
+            DV_SIMULATORS=${{ matrix.simulator }} \
+            DV_TARGET=${{ matrix.config }} \
+              bash verif/regress/${{ matrix.testcase }}.sh || rc=$?
+          fi
+
+          echo "$rc" > ci-results/exit_code
+          find verif/sim -name "iss_regr.log" -exec cp {} ci-results/ \; 2>/dev/null || true
+          exit $rc
+
+      - name: Upload Results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tier1-rv32-${{ matrix.config }}-${{ matrix.testcase }}
+          path: |
+            ci-results/
+            verif/sim/out*/
+          retention-days: 14
+
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # RV64 Core Configs — Tier 1 PR Gate (fast feedback)
+  # ─────────────────────────────────────────────────────────────────────────────
+  execute-rv64-tier1:
+    name: RV64 Tier1 ${{ matrix.config }} / ${{ matrix.testcase }}
+    runs-on: ubuntu-latest
+    needs: setup-tools
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+
+          # ══════════════════════════════════════════════════════════════
+          # cv64a6_imafdc_sv39_hpdcache_wb
+          #   ISA: rv64gc_zba_zbb_zbs_zbc_zbkb_zbkx_zkne_zknd_zknh
+          #   MmuPresent=1(SV39), DcacheType=WB, BExtEn=1, KExtEn=1
+          #   RTL sim: veri-testharness + spike tandem
+          # ══════════════════════════════════════════════════════════════
+
+          # [H1] Baseline: 5 riscv-tests-v + hello_world (RTL+ISS tandem)
+          - config: cv64a6_imafdc_sv39_hpdcache_wb
+            testcase: cv64a6_imafdc_tests
+            mode: script
+            simulator: veri-testharness,spike
+            install_script: ""
+            testlist: ""
+            test_name: ""
+            c_test: ""
+            linker: ""
+
+          # [H2] arch-test: single test via --test filter for PR gate speed (RTL+ISS)
+          #      rv64i_m-add-01 exercises I+M base — validates ISA decode path
+          - config: cv64a6_imafdc_sv39_hpdcache_wb
+            testcase: dv-riscv-arch-test
+            mode: testlist
+            simulator: veri-testharness,spike
+            install_script: install-riscv-arch-test
+            testlist: "../tests/testlist_riscv-arch-test-cv64a6_imafdc_sv39.yaml"
+            test_name: "rv64i_m-add-01"
+            c_test: ""
+            linker: "../tests/riscv-arch-test/riscv-target/spike/link.ld"
+
+          # ══════════════════════════════════════════════════════════════
+          # cv64a60ax  ISA: rv64gc_zba_zbb_zbs_zbc
+          #   AxiDataWidth=128, CoproType=COPRO_EXAMPLE
+          #   RTL sim: spike-only (veri-testharness not yet validated for cv64a60ax)
+          #   Gap: RTL sim validation blocked by AxiDataWidth=128/COPRO_EXAMPLE
+          #        testbench configuration — see Tier 2 gap analysis
+          # ══════════════════════════════════════════════════════════════
+
+          # [A1] hello-world: spike-only proof-of-life (RTL sim gap: see above)
+          - config: cv64a60ax
+            testcase: hello-world
+            mode: custom_c_test
+            simulator: spike
+            install_script: ""
+            testlist: ""
+            test_name: ""
+            c_test: "../tests/custom/hello_world/hello_world.c"
+            linker: ""
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup CVA6 Environment
+        uses: ./.github/actions/setup-cva6-env
+
+      - name: Install prerequisites
+        run: source ci/install-prereq.sh
+
+      - name: Run Tier 1 for ${{ matrix.config }} / ${{ matrix.testcase }}
+        run: |
+          set -x
+          mkdir -p ci-results
+          echo "1" > ci-results/exit_code
+          source verif/sim/setup-env.sh
+          CC_OPTS="-static -mcmodel=medany -fvisibility=hidden -nostdlib -nostartfiles \
+            -g ../tests/custom/common/syscalls.c ../tests/custom/common/crt.S \
+            -I../tests/custom/env -I../tests/custom/common -lgcc"
+          rc=0
+
+          if [ "${{ matrix.mode }}" = "testlist" ]; then
+            # Install verilator only if RTL simulation requested
+            if [[ "${{ matrix.simulator }}" == *"veri-testharness"* ]]; then
+              source verif/regress/install-verilator.sh
+            fi
+            source verif/regress/install-spike.sh
+            if [ -n "${{ matrix.install_script }}" ]; then
+              source verif/regress/${{ matrix.install_script }}.sh
+            fi
+            LINKER_OPT=""
+            if [ -n "${{ matrix.linker }}" ]; then
+              LINKER_OPT="--linker=${{ matrix.linker }}"
+            fi
+            TEST_OPT=""
+            if [ -n "${{ matrix.test_name }}" ]; then
+              TEST_OPT="--test ${{ matrix.test_name }}"
+            fi
+            cd verif/sim
+            python3 cva6.py \
+              --testlist=${{ matrix.testlist }} \
+              --target ${{ matrix.config }} \
+              --iss_yaml=cva6.yaml \
+              --iss=${{ matrix.simulator }} \
+              --issrun_opts="+tb_performance_mode+debug_disable=1+UVM_VERBOSITY=UVM_NONE" \
+              $LINKER_OPT \
+              ${TEST_OPT} \
+              || rc=$?
+            cd -
+
+          elif [ "${{ matrix.mode }}" = "custom_c_test" ]; then
+            source verif/regress/install-spike.sh
+            LINKER_OPT=""
+            if [ -n "${{ matrix.linker }}" ]; then
+              LINKER_OPT="--linker=${{ matrix.linker }}"
+            fi
+            cd verif/sim
+            python3 cva6.py \
+              --target ${{ matrix.config }} \
+              --iss_yaml=cva6.yaml \
+              --iss=${{ matrix.simulator }} \
+              --c_tests ${{ matrix.c_test }} \
+              --gcc_opts="$CC_OPTS" \
+              $LINKER_OPT \
+              --issrun_opts="+tb_performance_mode+debug_disable=1+UVM_VERBOSITY=UVM_NONE" \
+              || rc=$?
+            cd -
+
+          else
+            # script mode: the .sh script handles its own tool installation
+            DV_SIMULATORS=${{ matrix.simulator }} \
+            DV_TARGET=${{ matrix.config }} \
+              bash verif/regress/${{ matrix.testcase }}.sh || rc=$?
+          fi
+
+          echo "$rc" > ci-results/exit_code
+          find verif/sim -name "iss_regr.log" -exec cp {} ci-results/ \; 2>/dev/null || true
+          exit $rc
+
+      - name: Upload Results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tier1-rv64-${{ matrix.config }}-${{ matrix.testcase }}
+          path: |
+            ci-results/
+            verif/sim/out*/
+          retention-days: 14
