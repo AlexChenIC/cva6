@@ -7,25 +7,26 @@
 # ================================================================================
 #
 # PURPOSE:
-#   Fast PR gate — proof-of-life for 4 core configs, target ≤15 min wall-clock.
-#   Provides quick feedback on PRs before merging to master/main/dev branches.
+#   PR gate — proof-of-life for ALL 9 GREEN configs, target ≤15 min wall-clock.
+#   One testcase per config: minimum functional smoke test to confirm the config
+#   compiles and the key simulation path works end-to-end.
 #
 # DESIGN:
-#   1 smoke/script test + 1 single arch-test per config (--test filter for speed).
-#   Keeps job count minimal (8 test jobs + 1 setup-tools) to stay within time budget.
+#   9 configs × 1 testcase = 9 test jobs (+ 1 setup-tools).
+#   Tests are chosen to be fast (script mode or single --test filtered testlist).
 #
 # RTL SIMULATION COVERAGE:
 #   veri-testharness + spike tandem : cv32a65x, cv32a60x, cv64a6_imafdc_sv39_hpdcache_wb
-#   spike-only                      : cv64a60ax (RTL sim not yet validated — AxiDataWidth=128
-#                                     / COPRO_EXAMPLE needs testbench config before RTL sim)
-#
-# SCOPE:
-#   NOT a PR gate for cv64a6_imafdch_sv39[_wb], cv64a6_imafdcv_sv39, openpiton, or
-#   cv32a6_ima_sv32_fpga — use Tier 2 for full coverage of all 9 GREEN configs.
+#   spike-only                      : cv32a6_ima_sv32_fpga (FPGA env not in GH Actions)
+#                                     cv64a60ax (AxiDataWidth=128 testbench not yet validated)
+#                                     cv64a6_imafdc_sv39_openpiton (OpenPiton NOC bus)
+#                                     cv64a6_imafdch_sv39[_wb] (H-ext tandem not yet validated)
+#                                     cv64a6_imafdcv_sv39 (V-ext testbench not yet validated)
 #
 # REFERENCE:
-#   Tier 2 full coverage: .github/workflows/openhw-cva6-ci-tier2.yml
-#   Baseline legacy CI  : .github/workflows/ci.yml (DO NOT MODIFY)
+#   Tier 2 full coverage : .github/workflows/openhw-cva6-ci-tier2.yml
+#   Baseline (v0)        : .github/workflows/openhw-cva6-ci.yml (DO NOT MODIFY)
+#   Legacy CI            : .github/workflows/ci.yml (DO NOT MODIFY)
 #
 # TRIGGER:
 #   pull_request to master/main/dev (PR gate), push to task/ci_flow (dev testing),
@@ -71,7 +72,7 @@ jobs:
           install-tools: "true"
 
   # ─────────────────────────────────────────────────────────────────────────────
-  # RV32 Core Configs — Tier 1 PR Gate (fast feedback)
+  # RV32 GREEN Configs — Tier 1 (1 testcase per config)
   # ─────────────────────────────────────────────────────────────────────────────
   execute-rv32-tier1:
     name: RV32 Tier1 ${{ matrix.config }} / ${{ matrix.testcase }}
@@ -99,46 +100,39 @@ jobs:
             c_test: ""
             linker: ""
 
-          # [B2] arch-test: single test via --test filter for PR gate speed (RTL+ISS)
-          #      rv32im-add-01 exercises I+M base — validates ISA decode path
-          - config: cv32a65x
-            testcase: dv-riscv-arch-test
-            mode: testlist
-            simulator: veri-testharness,spike
-            install_script: install-riscv-arch-test
-            testlist: "../tests/testlist_riscv-arch-test-cv32a65x.yaml"
-            test_name: "rv32im-add-01"
-            c_test: ""
-            linker: "../tests/riscv-arch-test/riscv-target/spike/link.ld"
-
           # ══════════════════════════════════════════════════════════════
-          # cv32a60x  ISA: rv32imc_zba_zbb_zbs_zbc  (same ISA as cv32a65x)
-          #   BExtEn=1, RVA=0, RVS=0, M-mode only
+          # cv32a60x  ISA: rv32imc_zba_zbb_zbs_zbc
+          #   BExtEn=1, CExtEn=1, RVA=0, RVS=0, M-mode only, single-issue
           #   RTL sim: veri-testharness + spike tandem
           # ══════════════════════════════════════════════════════════════
 
-          # [C1] riscv-tests: 5 basic physical-mode tests + hello_world (RTL+ISS)
-          - config: cv32a60x
-            testcase: cv32a6_tests
-            mode: script
-            simulator: veri-testharness,spike
-            install_script: ""
-            testlist: ""
-            test_name: ""
-            c_test: ""
-            linker: ""
-
-          # [C2] arch-test: single test via --test filter for PR gate speed (RTL+ISS)
-          #      rv32im-add-01 exercises I+M base — validates ISA decode path
+          # [C1] arch-test: single test rv32im-cadd-01 via --test filter (RTL+ISS)
           - config: cv32a60x
             testcase: dv-riscv-arch-test
             mode: testlist
             simulator: veri-testharness,spike
             install_script: install-riscv-arch-test
             testlist: "../tests/testlist_riscv-arch-test-cv32a60x.yaml"
-            test_name: "rv32im-add-01"
+            test_name: "rv32im-cadd-01"
             c_test: ""
             linker: "../tests/riscv-arch-test/riscv-target/spike/link.ld"
+
+          # ══════════════════════════════════════════════════════════════
+          # cv32a6_ima_sv32_fpga  ISA: rv32ima  (NO C extension!)
+          #   CExtEn=0, BExtEn=0, MmuPresent=1(SV32), FpgaEn=1
+          #   Spike-only: FPGA build requires special toolchain not in GH Actions
+          # ══════════════════════════════════════════════════════════════
+
+          # [F1] hello-world: spike-only proof-of-life
+          - config: cv32a6_ima_sv32_fpga
+            testcase: hello-world
+            mode: custom_c_test
+            simulator: spike
+            install_script: ""
+            testlist: ""
+            test_name: ""
+            c_test: "../tests/custom/hello_world/hello_world.c"
+            linker: "../../config/gen_from_riscv_config/linker/link.ld"
 
     steps:
       - uses: actions/checkout@v4
@@ -163,7 +157,6 @@ jobs:
           rc=0
 
           if [ "${{ matrix.mode }}" = "testlist" ]; then
-            # Install verilator only if RTL simulation requested
             if [[ "${{ matrix.simulator }}" == *"veri-testharness"* ]]; then
               source verif/regress/install-verilator.sh
             fi
@@ -210,7 +203,6 @@ jobs:
             cd -
 
           else
-            # script mode: the .sh script handles its own tool installation
             DV_SIMULATORS=${{ matrix.simulator }} \
             DV_TARGET=${{ matrix.config }} \
               bash verif/regress/${{ matrix.testcase }}.sh || rc=$?
@@ -232,7 +224,7 @@ jobs:
 
 
   # ─────────────────────────────────────────────────────────────────────────────
-  # RV64 Core Configs — Tier 1 PR Gate (fast feedback)
+  # RV64 GREEN Configs — Tier 1 (1 testcase per config)
   # ─────────────────────────────────────────────────────────────────────────────
   execute-rv64-tier1:
     name: RV64 Tier1 ${{ matrix.config }} / ${{ matrix.testcase }}
@@ -250,7 +242,7 @@ jobs:
           #   RTL sim: veri-testharness + spike tandem
           # ══════════════════════════════════════════════════════════════
 
-          # [H1] Baseline: 5 riscv-tests-v + hello_world (RTL+ISS tandem)
+          # [H1] riscv-tests-v + hello_world (RTL+ISS tandem)
           - config: cv64a6_imafdc_sv39_hpdcache_wb
             testcase: cv64a6_imafdc_tests
             mode: script
@@ -261,28 +253,82 @@ jobs:
             c_test: ""
             linker: ""
 
-          # [H2] arch-test: single test via --test filter for PR gate speed (RTL+ISS)
-          #      rv64i_m-add-01 exercises I+M base — validates ISA decode path
-          - config: cv64a6_imafdc_sv39_hpdcache_wb
-            testcase: dv-riscv-arch-test
-            mode: testlist
-            simulator: veri-testharness,spike
-            install_script: install-riscv-arch-test
-            testlist: "../tests/testlist_riscv-arch-test-cv64a6_imafdc_sv39.yaml"
-            test_name: "rv64i_m-add-01"
-            c_test: ""
-            linker: "../tests/riscv-arch-test/riscv-target/spike/link.ld"
-
           # ══════════════════════════════════════════════════════════════
-          # cv64a60ax  ISA: rv64gc_zba_zbb_zbs_zbc
+          # cv64a60ax  ISA: rv64gc_zba_zbb_zbs_zbc  (no K extension)
           #   AxiDataWidth=128, CoproType=COPRO_EXAMPLE
-          #   RTL sim: spike-only (veri-testharness not yet validated for cv64a60ax)
-          #   Gap: RTL sim validation blocked by AxiDataWidth=128/COPRO_EXAMPLE
-          #        testbench configuration — see Tier 2 gap analysis
+          #   Spike-only: veri-testharness not yet validated (AxiDataWidth=128)
           # ══════════════════════════════════════════════════════════════
 
-          # [A1] hello-world: spike-only proof-of-life (RTL sim gap: see above)
+          # [A1] hello-world: spike-only proof-of-life
           - config: cv64a60ax
+            testcase: hello-world
+            mode: custom_c_test
+            simulator: spike
+            install_script: ""
+            testlist: ""
+            test_name: ""
+            c_test: "../tests/custom/hello_world/hello_world.c"
+            linker: "../../config/gen_from_riscv_config/linker/link.ld"
+
+          # ══════════════════════════════════════════════════════════════
+          # cv64a6_imafdc_sv39_openpiton
+          #   ISA: rv64gc  (NO B, NO K — OpenPiton conserves resources)
+          #   Spike-only: OpenPiton NOC bus interface not compatible with
+          #   standard veri-testharness (needs dedicated testbench)
+          # ══════════════════════════════════════════════════════════════
+
+          # [O1] hello-world: spike-only proof-of-life
+          - config: cv64a6_imafdc_sv39_openpiton
+            testcase: hello-world
+            mode: custom_c_test
+            simulator: spike
+            install_script: ""
+            testlist: ""
+            test_name: ""
+            c_test: "../tests/custom/hello_world/hello_world.c"
+            linker: ""
+
+          # ══════════════════════════════════════════════════════════════
+          # cv64a6_imafdch_sv39  ISA: rv64gch_zba_zbb_zbs_zbc
+          #   HExtEn=1 (Hypervisor), BExtEn=1, CvxifEn=1
+          #   Spike-only: SPIKE_TANDEM + H-extension CSR init not yet validated
+          # ══════════════════════════════════════════════════════════════
+
+          # [G1] riscv-tests-v + hello_world — spike-only
+          - config: cv64a6_imafdch_sv39
+            testcase: cv64a6_imafdc_tests
+            mode: script
+            simulator: spike
+            install_script: ""
+            testlist: ""
+            test_name: ""
+            c_test: ""
+            linker: ""
+
+          # ══════════════════════════════════════════════════════════════
+          # cv64a6_imafdch_sv39_wb  ISA: rv64gch_zba_zbb_zbs_zbc
+          #   HExtEn=1, DcacheType=WB — same H-ext gap as above
+          # ══════════════════════════════════════════════════════════════
+
+          # [W1] riscv-tests-v + hello_world — spike-only
+          - config: cv64a6_imafdch_sv39_wb
+            testcase: cv64a6_imafdc_tests
+            mode: script
+            simulator: spike
+            install_script: ""
+            testlist: ""
+            test_name: ""
+            c_test: ""
+            linker: ""
+
+          # ══════════════════════════════════════════════════════════════
+          # cv64a6_imafdcv_sv39  ISA: rv64gcv  (V extension)
+          #   VExtEn=1, NrCommitPorts=2 (superscalar)
+          #   Spike-only: RVV testbench not yet validated in CI
+          # ══════════════════════════════════════════════════════════════
+
+          # [V1] hello-world: spike-only proof-of-life
+          - config: cv64a6_imafdcv_sv39
             testcase: hello-world
             mode: custom_c_test
             simulator: spike
@@ -315,7 +361,6 @@ jobs:
           rc=0
 
           if [ "${{ matrix.mode }}" = "testlist" ]; then
-            # Install verilator only if RTL simulation requested
             if [[ "${{ matrix.simulator }}" == *"veri-testharness"* ]]; then
               source verif/regress/install-verilator.sh
             fi
@@ -362,7 +407,6 @@ jobs:
             cd -
 
           else
-            # script mode: the .sh script handles its own tool installation
             DV_SIMULATORS=${{ matrix.simulator }} \
             DV_TARGET=${{ matrix.config }} \
               bash verif/regress/${{ matrix.testcase }}.sh || rc=$?
