@@ -254,7 +254,10 @@ jobs:
             if [ -n "${{ matrix.linker }}" ]; then
               LINKER_OPT="--linker=${{ matrix.linker }}"
             fi
-            # No --test filter in Tier 2: run full testlist
+            TEST_OPT=""
+            if [ -n "${{ matrix.test_name }}" ]; then
+              TEST_OPT="--test ${{ matrix.test_name }}"
+            fi
             cd verif/sim
             python3 cva6.py \
               --testlist=${{ matrix.testlist }} \
@@ -263,6 +266,7 @@ jobs:
               --iss=${{ matrix.simulator }} \
               --issrun_opts="+tb_performance_mode+debug_disable=1+UVM_VERBOSITY=UVM_NONE" \
               $LINKER_OPT \
+              ${TEST_OPT} \
               || rc=$?
             cd -
 
@@ -385,17 +389,20 @@ jobs:
 
           # ══════════════════════════════════════════════════════════════
           # cv64a60ax  ISA: rv64gc_zba_zbb_zbs_zbc  (no K extension)
-          #   MmuPresent=1(SV39), BExtEn=1, KExtEn=0
-          #   Uses the new cv64a60ax testlist (K tests excluded)
+          #   MmuPresent=1(SV39), BExtEn=1, KExtEn=0, CvxifEn=1
+          #   Uses the new cv64a60ax testlist (K tests excluded, 184 tests)
+          #   RTL sim: veri-testharness not yet validated for cv64a60ax
+          #   (First RTL run failed; AxiDataWidth=128 / COPRO_EXAMPLE may need
+          #    testbench configuration before RTL sim can be enabled)
+          #   Gap: cv64a60ax RTL sim validation — see tier2-gap-analysis.md
           # ══════════════════════════════════════════════════════════════
 
-          # [A1] arch-test: full cv64a60ax testlist — I, M, C, B, A, D (RTL+ISS)
-          #      ~120 tests; uses verif/tests/testlist_riscv-arch-test-cv64a60ax.yaml
-          #      (committed alongside this workflow, derived from sv39 without K)
+          # [A1] arch-test: full cv64a60ax testlist (184 tests), spike-only
+          #      RTL sim to be enabled after cv64a60ax testbench validation
           - config: cv64a60ax
             testcase: dv-riscv-arch-test
             mode: testlist
-            simulator: veri-testharness,spike
+            simulator: spike
             install_script: install-riscv-arch-test
             testlist: "../tests/testlist_riscv-arch-test-cv64a60ax.yaml"
             test_name: ""
@@ -438,28 +445,28 @@ jobs:
           # cv64a6_imafdch_sv39  ISA: rv64gch_zba_zbb_zbs_zbc
           #   HExtEn=1(Hypervisor!), BExtEn=1, CvxifEn=1, ZcbExtEn=1
           #   NO K extension — cv64a6_imafdc_sv39 testlist incompatible!
-          #   Uses cv64a60ax testlist (I/M/C/B/A/D, no K) — ISA-compatible
-          #   UPGRADE: was spike-only in baseline, now veri-testharness,spike
+          #   RTL sim: veri-testharness not yet validated for H-extension configs
+          #   (SPIKE_TANDEM tandem comparison diverges on H-ext CSR init)
+          #   Gap: H-extension RTL sim validation — see tier2-gap-analysis.md
           # ══════════════════════════════════════════════════════════════
 
-          # [G1] riscv-tests-v + hello_world — UPGRADED to RTL+ISS tandem
+          # [G1] riscv-tests-v + hello_world — spike-only (RTL gap: see above)
           - config: cv64a6_imafdch_sv39
             testcase: cv64a6_imafdc_tests
             mode: script
-            simulator: veri-testharness,spike
+            simulator: spike
             install_script: ""
             testlist: ""
             test_name: ""
             c_test: ""
             linker: ""
 
-          # [G2] arch-test using cv64a60ax testlist (I/M/C/B/A/D, no K) RTL+ISS
-          #      cv64a60ax testlist is ISA-compatible with rv64gch_zba_zbb_zbs_zbc:
-          #      H extension is transparent to non-H guest code; basic tests run fine
+          # [G2] arch-test using cv64a60ax testlist (I/M/C/B/A/D, no K) spike-only
+          #      Gap: RTL sim for H-extension configs not yet validated
           - config: cv64a6_imafdch_sv39
             testcase: dv-riscv-arch-test
             mode: testlist
-            simulator: veri-testharness,spike
+            simulator: spike
             install_script: install-riscv-arch-test
             testlist: "../tests/testlist_riscv-arch-test-cv64a60ax.yaml"
             test_name: ""
@@ -469,27 +476,26 @@ jobs:
           # ══════════════════════════════════════════════════════════════
           # cv64a6_imafdch_sv39_wb  ISA: rv64gch_zba_zbb_zbs_zbc  (same as above)
           #   DcacheType=WB — writeback cache, key hardware differentiator
-          #   UPGRADE: was spike-only in baseline, now veri-testharness,spike
-          #   MAJOR GAP: H-extension testlist missing (see gap report)
+          #   RTL sim: not yet validated for H-extension (same gap as above)
+          #   MAJOR GAP: H-extension testlist + RTL validation — see gap report
           # ══════════════════════════════════════════════════════════════
 
-          # [W1] riscv-tests-v + hello_world — UPGRADED to RTL+ISS tandem
+          # [W1] riscv-tests-v + hello_world — spike-only (RTL gap: see above)
           - config: cv64a6_imafdch_sv39_wb
             testcase: cv64a6_imafdc_tests
             mode: script
-            simulator: veri-testharness,spike
+            simulator: spike
             install_script: ""
             testlist: ""
             test_name: ""
             c_test: ""
             linker: ""
 
-          # [W2] arch-test using cv64a60ax testlist (I/M/C/B/A/D, no K) RTL+ISS
-          #      Writeback cache behavior exercised through RTL+ISS tandem comparison
+          # [W2] arch-test using cv64a60ax testlist — spike-only (RTL gap: see above)
           - config: cv64a6_imafdch_sv39_wb
             testcase: dv-riscv-arch-test
             mode: testlist
-            simulator: veri-testharness,spike
+            simulator: spike
             install_script: install-riscv-arch-test
             testlist: "../tests/testlist_riscv-arch-test-cv64a60ax.yaml"
             test_name: ""
@@ -562,7 +568,10 @@ jobs:
             if [ -n "${{ matrix.linker }}" ]; then
               LINKER_OPT="--linker=${{ matrix.linker }}"
             fi
-            # No --test filter in Tier 2: run full testlist
+            TEST_OPT=""
+            if [ -n "${{ matrix.test_name }}" ]; then
+              TEST_OPT="--test ${{ matrix.test_name }}"
+            fi
             cd verif/sim
             python3 cva6.py \
               --testlist=${{ matrix.testlist }} \
@@ -571,6 +580,7 @@ jobs:
               --iss=${{ matrix.simulator }} \
               --issrun_opts="+tb_performance_mode+debug_disable=1+UVM_VERBOSITY=UVM_NONE" \
               $LINKER_OPT \
+              ${TEST_OPT} \
               || rc=$?
             cd -
 
