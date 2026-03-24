@@ -482,14 +482,30 @@ jobs:
           # cv64a60ax  ISA: rv64gc_zba_zbb_zbs_zbc  (no K extension)
           #   MmuPresent=1(SV39), BExtEn=1, KExtEn=0, CvxifEn=1
           #   Uses the new cv64a60ax testlist (K tests excluded, 184 tests)
-          #   RTL sim: veri-testharness not yet validated for cv64a60ax
-          #   (First RTL run failed; AxiDataWidth=128 / COPRO_EXAMPLE may need
-          #    testbench configuration before RTL sim can be enabled)
+          #   RTL sim: under evaluation — see RTL EVAL TRIAL job below
+          #   Root cause: AXI_DATA_WIDTH=64 hardcoded in ariane_testharness.sv (line 32)
+          #               while cv64a60ax uses AxiDataWidth=128; fix under review.
           #   Gap: cv64a60ax RTL sim validation — see tier2-gap-analysis.md
           # ══════════════════════════════════════════════════════════════
 
+          # ── RTL EVAL TRIAL 2026-03-24 ──────────────────────────────────────────
+          # cv64a60ax: first RTL sim attempt with AXI_DATA_WIDTH fix in testharness.
+          # Purpose : verify Verilator compiles and simulates cv64a60ax (AxiDataWidth=128)
+          #           after fixing ariane_testharness.sv line 32.
+          # Remove  : delete this entry once cv64a60ax RTL evaluation is complete
+          #           and all existing jobs are upgraded to veri-testharness,spike.
+          - config: cv64a60ax
+            testcase: hello-world
+            mode: custom_c_test
+            simulator: veri-testharness,spike
+            install_script: ""
+            testlist: ""
+            test_name: ""
+            c_test: "../tests/custom/hello_world/hello_world.c"
+            linker: "../../config/gen_from_riscv_config/linker/link.ld"
+
           # [A1] arch-test: full cv64a60ax testlist (184 tests), spike-only
-          #      RTL sim to be enabled after cv64a60ax testbench validation
+          #      RTL sim to be enabled after cv64a60ax RTL eval trial passes
           - config: cv64a60ax
             testcase: dv-riscv-arch-test
             mode: testlist
