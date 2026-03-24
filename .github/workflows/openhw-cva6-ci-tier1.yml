@@ -7,21 +7,25 @@
 # ================================================================================
 #
 # PURPOSE:
-#   PR gate — proof-of-life for ALL 9 GREEN configs, target ≤15 min wall-clock.
+#   PR gate — proof-of-life for active GREEN configs, target ≤15 min wall-clock.
 #   One testcase per config: minimum functional smoke test to confirm the config
 #   compiles and the key simulation path works end-to-end.
 #
-# DESIGN:
-#   9 configs × 1 testcase = 9 test jobs (+ 1 setup-tools).
-#   Tests are chosen to be fast (script mode or single --test filtered testlist).
+# ACTIVE GREEN CONFIGS (updated 2026-03-24):
+#   4 configs × 1 testcase = 4 test jobs (+ 1 setup-tools).
 #
 # RTL SIMULATION COVERAGE:
 #   veri-testharness + spike tandem : cv32a65x, cv32a60x, cv64a6_imafdc_sv39_hpdcache_wb
-#   spike-only                      : cv32a6_ima_sv32_fpga (FPGA env not in GH Actions)
-#                                     cv64a60ax (AxiDataWidth=128 testbench not yet validated)
-#                                     cv64a6_imafdc_sv39_openpiton (OpenPiton NOC bus)
-#                                     cv64a6_imafdch_sv39[_wb] (H-ext tandem not yet validated)
-#                                     cv64a6_imafdcv_sv39 (V-ext testbench not yet validated)
+#   spike-only                      : cv64a60ax (AxiDataWidth=128 testbench validation pending)
+#
+# DEFERRED CONFIGS (2026-03-24, per Mike Thompson / OpenHW internal meeting):
+#   cv32a6_ima_sv32_fpga          — FPGA toolchain not available in standard GH Actions runners
+#   cv64a6_imafdc_sv39_openpiton  — OpenPiton NOC bus incompatible with std testbench
+#   cv64a6_imafdch_sv39           — H-extension test suite not yet developed
+#   cv64a6_imafdch_sv39_wb        — H-extension + WB cache variant, same blocker as above
+#   cv64a6_imafdcv_sv39           — V-extension: test suite missing + Verilator RAM impact TBD
+#   All deferred entries are commented out below. Uncomment to re-enable.
+#   See verif/docs/ci-meeting-notes-2026-03-24.md for rationale and re-enablement criteria.
 #
 # REFERENCE:
 #   Tier 2 full coverage : .github/workflows/openhw-cva6-ci-tier2.yml
@@ -118,21 +122,24 @@ jobs:
             linker: "../tests/riscv-arch-test/riscv-target/spike/link.ld"
 
           # ══════════════════════════════════════════════════════════════
+          # DEFERRED 2026-03-24 (OpenHW internal meeting, per Mike Thompson)
           # cv32a6_ima_sv32_fpga  ISA: rv32ima  (NO C extension!)
           #   CExtEn=0, BExtEn=0, MmuPresent=1(SV32), FpgaEn=1
-          #   Spike-only: FPGA build requires special toolchain not in GH Actions
+          # Reason: FPGA toolchain not available in standard GitHub Actions runners.
+          # Re-enable when: FPGA-capable self-hosted runner + toolchain are set up.
+          # See verif/docs/ci-meeting-notes-2026-03-24.md
           # ══════════════════════════════════════════════════════════════
 
           # [F1] hello-world: spike-only proof-of-life
-          - config: cv32a6_ima_sv32_fpga
-            testcase: hello-world
-            mode: custom_c_test
-            simulator: spike
-            install_script: ""
-            testlist: ""
-            test_name: ""
-            c_test: "../tests/custom/hello_world/hello_world.c"
-            linker: "../../config/gen_from_riscv_config/linker/link.ld"
+          #- config: cv32a6_ima_sv32_fpga
+          #  testcase: hello-world
+          #  mode: custom_c_test
+          #  simulator: spike
+          #  install_script: ""
+          #  testlist: ""
+          #  test_name: ""
+          #  c_test: "../tests/custom/hello_world/hello_world.c"
+          #  linker: "../../config/gen_from_riscv_config/linker/link.ld"
 
     steps:
       - uses: actions/checkout@v4
@@ -271,72 +278,88 @@ jobs:
             linker: "../../config/gen_from_riscv_config/linker/link.ld"
 
           # ══════════════════════════════════════════════════════════════
+          # DEFERRED 2026-03-24 (OpenHW internal meeting, per Mike Thompson)
           # cv64a6_imafdc_sv39_openpiton
           #   ISA: rv64gc  (NO B, NO K — OpenPiton conserves resources)
-          #   Spike-only: OpenPiton NOC bus interface not compatible with
-          #   standard veri-testharness (needs dedicated testbench)
+          # Reason: OpenPiton NOC bus interface incompatible with standard testbench;
+          #         requires dedicated testbench development by Thales/OpenPiton team.
+          # Re-enable when: NOC-compatible testbench is available.
+          # See verif/docs/ci-meeting-notes-2026-03-24.md
           # ══════════════════════════════════════════════════════════════
 
           # [O1] hello-world: spike-only proof-of-life
-          - config: cv64a6_imafdc_sv39_openpiton
-            testcase: hello-world
-            mode: custom_c_test
-            simulator: spike
-            install_script: ""
-            testlist: ""
-            test_name: ""
-            c_test: "../tests/custom/hello_world/hello_world.c"
-            linker: ""
+          #- config: cv64a6_imafdc_sv39_openpiton
+          #  testcase: hello-world
+          #  mode: custom_c_test
+          #  simulator: spike
+          #  install_script: ""
+          #  testlist: ""
+          #  test_name: ""
+          #  c_test: "../tests/custom/hello_world/hello_world.c"
+          #  linker: ""
 
           # ══════════════════════════════════════════════════════════════
+          # DEFERRED 2026-03-24 (OpenHW internal meeting, per Mike Thompson)
           # cv64a6_imafdch_sv39  ISA: rv64gch_zba_zbb_zbs_zbc
           #   HExtEn=1 (Hypervisor), BExtEn=1, CvxifEn=1
-          #   Spike-only: SPIKE_TANDEM + H-extension CSR init not yet validated
+          # Reason: H-extension (Hypervisor) test suite does not exist yet;
+          #         needs dedicated test development before CI can validate it.
+          # Re-enable when: H-extension test suite is developed and merged.
+          # See verif/docs/ci-meeting-notes-2026-03-24.md
           # ══════════════════════════════════════════════════════════════
 
           # [G1] riscv-tests-v + hello_world — spike-only
-          - config: cv64a6_imafdch_sv39
-            testcase: cv64a6_imafdc_tests
-            mode: script
-            simulator: spike
-            install_script: ""
-            testlist: ""
-            test_name: ""
-            c_test: ""
-            linker: ""
+          #- config: cv64a6_imafdch_sv39
+          #  testcase: cv64a6_imafdc_tests
+          #  mode: script
+          #  simulator: spike
+          #  install_script: ""
+          #  testlist: ""
+          #  test_name: ""
+          #  c_test: ""
+          #  linker: ""
 
           # ══════════════════════════════════════════════════════════════
+          # DEFERRED 2026-03-24 (OpenHW internal meeting, per Mike Thompson)
           # cv64a6_imafdch_sv39_wb  ISA: rv64gch_zba_zbb_zbs_zbc
-          #   HExtEn=1, DcacheType=WB — same H-ext gap as above
+          #   HExtEn=1, DcacheType=WB
+          # Reason: H-extension + WB cache variant; same blocker as cv64a6_imafdch_sv39
+          #         (H-extension test suite not yet developed).
+          # Re-enable when: H-extension test suite is developed and merged.
+          # See verif/docs/ci-meeting-notes-2026-03-24.md
           # ══════════════════════════════════════════════════════════════
 
           # [W1] riscv-tests-v + hello_world — spike-only
-          - config: cv64a6_imafdch_sv39_wb
-            testcase: cv64a6_imafdc_tests
-            mode: script
-            simulator: spike
-            install_script: ""
-            testlist: ""
-            test_name: ""
-            c_test: ""
-            linker: ""
+          #- config: cv64a6_imafdch_sv39_wb
+          #  testcase: cv64a6_imafdc_tests
+          #  mode: script
+          #  simulator: spike
+          #  install_script: ""
+          #  testlist: ""
+          #  test_name: ""
+          #  c_test: ""
+          #  linker: ""
 
           # ══════════════════════════════════════════════════════════════
+          # DEFERRED 2026-03-24 (OpenHW internal meeting, per Mike Thompson)
           # cv64a6_imafdcv_sv39  ISA: rv64gcv  (V extension)
           #   VExtEn=1, NrCommitPorts=2 (superscalar)
-          #   Spike-only: RVV testbench not yet validated in CI
+          # Reason: V-extension (RVV) test suite does not exist yet;
+          #         Verilator memory footprint for vector-capable design also TBD.
+          # Re-enable when: RVV test suite is developed + Verilator memory impact assessed.
+          # See verif/docs/ci-meeting-notes-2026-03-24.md
           # ══════════════════════════════════════════════════════════════
 
           # [V1] hello-world: spike-only proof-of-life
-          - config: cv64a6_imafdcv_sv39
-            testcase: hello-world
-            mode: custom_c_test
-            simulator: spike
-            install_script: ""
-            testlist: ""
-            test_name: ""
-            c_test: "../tests/custom/hello_world/hello_world.c"
-            linker: ""
+          #- config: cv64a6_imafdcv_sv39
+          #  testcase: hello-world
+          #  mode: custom_c_test
+          #  simulator: spike
+          #  install_script: ""
+          #  testlist: ""
+          #  test_name: ""
+          #  c_test: "../tests/custom/hello_world/hello_world.c"
+          #  linker: ""
 
     steps:
       - uses: actions/checkout@v4

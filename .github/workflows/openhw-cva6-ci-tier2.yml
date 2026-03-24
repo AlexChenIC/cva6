@@ -7,7 +7,7 @@
 # ================================================================================
 #
 # PURPOSE:
-#   Maximum test coverage for all 9 GREEN configs using ALL EXISTING testcases
+#   Maximum test coverage for active GREEN configs using ALL EXISTING testcases
 #   already present in this repository.  No new testcases are generated here.
 #   This workflow is the successor to the proof-of-life baseline
 #   (openhw-cva6-ci.yml, commit 70ac25e8).
@@ -16,34 +16,35 @@
 #   openhw-cva6-ci.yml (commit 70ac25e8)  ← DO NOT MODIFY that file
 #   This file is a separate Tier-2 escalation derived from that baseline.
 #
+# ACTIVE GREEN CONFIGS (updated 2026-03-24):
+#   RTL + Spike tandem : cv32a65x, cv32a60x, cv64a6_imafdc_sv39_hpdcache_wb
+#   Spike-only         : cv64a60ax (AxiDataWidth=128 testbench validation pending)
+#
+# DEFERRED CONFIGS (2026-03-24, per Mike Thompson / OpenHW internal meeting):
+#   cv32a6_ima_sv32_fpga          — FPGA toolchain not available in standard GH Actions runners
+#   cv64a6_imafdc_sv39_openpiton  — OpenPiton NOC bus incompatible with std testbench
+#   cv64a6_imafdch_sv39           — H-extension test suite not yet developed
+#   cv64a6_imafdch_sv39_wb        — H-extension + WB cache variant, same blocker as above
+#   cv64a6_imafdcv_sv39           — V-extension: test suite missing + Verilator RAM impact TBD
+#   All deferred entries are commented out below. Uncomment to re-enable.
+#   See verif/docs/ci-meeting-notes-2026-03-24.md for rationale and re-enablement criteria.
+#
 # COVERAGE DELTA vs BASELINE:
 #   Baseline  : 1 test/job ("proof-of-life"), RTL simulation on 4/11 jobs
-#   Tier 2    : full testlists (no --test filter), RTL simulation on 17/42 jobs
-#
-#   RTL simulation upgraded configs (vs baseline):
-#     cv64a6_imafdch_sv39     — was spike-only, now veri-testharness,spike
-#     cv64a6_imafdch_sv39_wb  — was spike-only, now veri-testharness,spike
-#     cv64a60ax               — was spike-only hello-world, now RTL arch-test
+#   Tier 2    : full testlists (no --test filter), active configs only
 #
 #   New testlist jobs added (using existing repo testlists only):
-#     cv32a65x     : cv32a6_tests, dv-riscv-arch-test (full), dv-riscv-compliance
-#     cv32a60x     : cv32a6_tests, dv-riscv-arch-test (full), dv-riscv-compliance
-#     cv32a6_ima_sv32_fpga  : dv-riscv-tests-p (rv32ima physical mode)
+#     cv32a65x     : cv32a6_tests, dv-riscv-arch-test (full), dv-riscv-compliance,
+#                    dv-riscv-tests-p, dv-riscv-csr-access-test, benchmark
+#     cv32a60x     : cv32a6_tests, dv-riscv-arch-test (full), dv-riscv-compliance,
+#                    dv-riscv-tests-p, dv-riscv-csr-access-test
 #     hpdcache_wb  : dv-riscv-arch-test (full), dv-riscv-tests-v (SV39 MMU!),
-#                    dv-riscv-tests-p, dv-riscv-compliance
-#     cv64a60ax    : dv-riscv-arch-test (full cv64a60ax testlist, no K)
-#     openpiton    : dv-riscv-tests-v (spike-only, SV39 basic)
-#     imafdch_sv39 : cv64a6_imafdc_tests (RTL), dv-riscv-arch-test (RTL)
-#     imafdch_wb   : cv64a6_imafdc_tests (RTL), dv-riscv-arch-test (RTL)
-#     imafdcv_sv39 : dv-riscv-tests-v (spike-only, basic I/M/A)
+#                    dv-riscv-tests-p, dv-riscv-compliance, benchmark
+#     cv64a60ax    : dv-riscv-arch-test (full cv64a60ax testlist, no K),
+#                    dv-riscv-tests-p, dv-riscv-tests-v, dv-riscv-compliance
 #
-# COVERAGE GAPS (see docs/tier2-gap-analysis.md for full details):
-#   cv32a6_ima_sv32_fpga : SV32 MMU arch-test testlist not yet created
-#                          dv-riscv-tests-v removed (cvxif+rv32ima Spike fails v-mode; needs investigation)
-#   cv64a6_imafdc_sv39_openpiton : rv64gc-only testlist (no B, no K) not yet created
-#   cv64a6_imafdch_sv39[_wb]     : H-extension (hypervisor) testlist not yet created
-#   cv64a6_imafdcv_sv39          : RVV (V-extension) testlist not yet created
-#   All configs                  : CSR-access, PMP tests — linker/simulator gaps
+# COVERAGE GAPS (active configs only — see docs/tier2-gap-analysis.md for details):
+#   All configs : CSR-access, PMP tests — linker/simulator gaps
 #
 # TRIGGER:
 #   Manual dispatch + nightly schedule (NOT a PR gate — use Tier 1 for that)
@@ -190,35 +191,38 @@ jobs:
             linker: ""
 
           # ══════════════════════════════════════════════════════════════
+          # DEFERRED 2026-03-24 (OpenHW internal meeting, per Mike Thompson)
           # cv32a6_ima_sv32_fpga  ISA: rv32ima  (NO C extension!)
           #   CExtEn=0, BExtEn=0, MmuPresent=1(SV32!), FpgaEn=1
           #   PMP=0 entries, Spike-only (FPGA build not in GH Actions env)
-          #   MAJOR GAP: SV32 MMU testlist missing — see gap report
+          # Reason: FPGA toolchain not available in standard GitHub Actions runners.
+          # Re-enable when: FPGA-capable self-hosted runner + toolchain are set up.
+          # See verif/docs/ci-meeting-notes-2026-03-24.md
           # ══════════════════════════════════════════════════════════════
 
           # [F1] Baseline hello-world (spike-only, proof-of-life)
-          - config: cv32a6_ima_sv32_fpga
-            testcase: hello-world
-            mode: custom_c_test
-            simulator: spike
-            install_script: ""
-            testlist: ""
-            test_name: ""
-            c_test: "../tests/custom/hello_world/hello_world.c"
-            linker: "../../config/gen_from_riscv_config/linker/link.ld"
+          #- config: cv32a6_ima_sv32_fpga
+          #  testcase: hello-world
+          #  mode: custom_c_test
+          #  simulator: spike
+          #  install_script: ""
+          #  testlist: ""
+          #  test_name: ""
+          #  c_test: "../tests/custom/hello_world/hello_world.c"
+          #  linker: "../../config/gen_from_riscv_config/linker/link.ld"
 
           # [F2] riscv-tests physical mode: rv32ima basic I/M/A instructions (spike-only)
           #      Uses testlist_riscv-tests-rv32ima-p.yaml — only existing testlist
           #      compatible with rv32ima ISA (no C, no B, no K)
-          - config: cv32a6_ima_sv32_fpga
-            testcase: dv-riscv-tests-p
-            mode: testlist
-            simulator: spike
-            install_script: install-riscv-tests
-            testlist: "../tests/testlist_riscv-tests-rv32ima-p.yaml"
-            test_name: ""
-            c_test: ""
-            linker: ""
+          #- config: cv32a6_ima_sv32_fpga
+          #  testcase: dv-riscv-tests-p
+          #  mode: testlist
+          #  simulator: spike
+          #  install_script: install-riscv-tests
+          #  testlist: "../tests/testlist_riscv-tests-rv32ima-p.yaml"
+          #  test_name: ""
+          #  c_test: ""
+          #  linker: ""
 
           # ══════════════════════════════════════════════════════════════
           # cv32a65x  — new Tier2 full-coverage jobs
@@ -283,9 +287,10 @@ jobs:
             c_test: ""
             linker: ""
 
-          # ══════════════════════════════════════════════════════════════
-          # cv32a6_ima_sv32_fpga  — new Tier2 full-coverage jobs
-          # ══════════════════════════════════════════════════════════════
+          # ── DEFERRED 2026-03-24 (Mike Thompson / OpenHW meeting) ────────────────
+          # cv32a6_ima_sv32_fpga — new Tier2 full-coverage jobs (DEFERRED, see above)
+          # Uncomment all entries below when FPGA runner + toolchain are available.
+          # ─────────────────────────────────────────────────────────────────────────
 
           # [F3] dv-riscv-tests-v: REMOVED — CVA6 custom Spike with --isa=rv32ima
           #   fails SV32 virtual-memory tests (rv32ima + --extension=cvxif +
@@ -295,15 +300,15 @@ jobs:
           #   TODO: re-add once root cause is identified and fixed.
 
           # [F4] compliance: rv32ima RISC-V compliance suite (spike-only)
-          - config: cv32a6_ima_sv32_fpga
-            testcase: dv-riscv-compliance
-            mode: testlist
-            simulator: spike
-            install_script: install-riscv-compliance
-            testlist: "../tests/testlist_riscv-compliance-rv32ima.yaml"
-            test_name: ""
-            c_test: ""
-            linker: ""
+          #- config: cv32a6_ima_sv32_fpga
+          #  testcase: dv-riscv-compliance
+          #  mode: testlist
+          #  simulator: spike
+          #  install_script: install-riscv-compliance
+          #  testlist: "../tests/testlist_riscv-compliance-rv32ima.yaml"
+          #  test_name: ""
+          #  c_test: ""
+          #  linker: ""
 
     steps:
       - uses: actions/checkout@v4
@@ -496,128 +501,138 @@ jobs:
             linker: "../tests/riscv-arch-test/riscv-target/spike/link.ld"
 
           # ══════════════════════════════════════════════════════════════
+          # DEFERRED 2026-03-24 (OpenHW internal meeting, per Mike Thompson)
           # cv64a6_imafdc_sv39_openpiton
           #   ISA: rv64gc  (NO B, NO K — OpenPiton conserves resources)
           #   HExtEn=0, BExtEn=0, CvxifEn=0
-          #   RTL: veri-testharness NOT usable (OpenPiton NOC bus interface)
-          #   Spike-only. MAJOR GAP: no rv64gc-only testlist exists.
+          # Reason: OpenPiton NOC bus interface incompatible with standard testbench;
+          #         requires dedicated testbench development by Thales/OpenPiton team.
+          # Re-enable when: NOC-compatible testbench is available.
+          # See verif/docs/ci-meeting-notes-2026-03-24.md
           # ══════════════════════════════════════════════════════════════
 
           # [O1] Baseline hello-world (spike-only)
-          - config: cv64a6_imafdc_sv39_openpiton
-            testcase: hello-world
-            mode: custom_c_test
-            simulator: spike
-            install_script: ""
-            testlist: ""
-            test_name: ""
-            c_test: "../tests/custom/hello_world/hello_world.c"
-            linker: ""
+          #- config: cv64a6_imafdc_sv39_openpiton
+          #  testcase: hello-world
+          #  mode: custom_c_test
+          #  simulator: spike
+          #  install_script: ""
+          #  testlist: ""
+          #  test_name: ""
+          #  c_test: "../tests/custom/hello_world/hello_world.c"
+          #  linker: ""
 
           # [O2] riscv-tests virtual mode: SV39 basic tests, spike-only
           #      riscv-tests do NOT include B/K tests → compatible with rv64gc ISA
           #      NOTE: requires verification that cva6.py Spike config enables S-mode
-          - config: cv64a6_imafdc_sv39_openpiton
-            testcase: dv-riscv-tests-v
-            mode: testlist
-            simulator: spike
-            install_script: install-riscv-tests
-            testlist: "../tests/testlist_riscv-tests-cv64a6_imafdc_sv39-v.yaml"
-            test_name: ""
-            c_test: ""
-            linker: ""
+          #- config: cv64a6_imafdc_sv39_openpiton
+          #  testcase: dv-riscv-tests-v
+          #  mode: testlist
+          #  simulator: spike
+          #  install_script: install-riscv-tests
+          #  testlist: "../tests/testlist_riscv-tests-cv64a6_imafdc_sv39-v.yaml"
+          #  test_name: ""
+          #  c_test: ""
+          #  linker: ""
 
           # ══════════════════════════════════════════════════════════════
+          # DEFERRED 2026-03-24 (OpenHW internal meeting, per Mike Thompson)
           # cv64a6_imafdch_sv39  ISA: rv64gch_zba_zbb_zbs_zbc
           #   HExtEn=1(Hypervisor!), BExtEn=1, CvxifEn=1, ZcbExtEn=1
           #   NO K extension — cv64a6_imafdc_sv39 testlist incompatible!
-          #   RTL sim: veri-testharness not yet validated for H-extension configs
-          #   (SPIKE_TANDEM tandem comparison diverges on H-ext CSR init)
-          #   Gap: H-extension RTL sim validation — see tier2-gap-analysis.md
+          # Reason: H-extension (Hypervisor) test suite does not exist yet;
+          #         needs dedicated test development before CI can validate it.
+          # Re-enable when: H-extension test suite is developed and merged.
+          # See verif/docs/ci-meeting-notes-2026-03-24.md
           # ══════════════════════════════════════════════════════════════
 
-          # [G1] riscv-tests-v + hello_world — spike-only (RTL gap: see above)
-          - config: cv64a6_imafdch_sv39
-            testcase: cv64a6_imafdc_tests
-            mode: script
-            simulator: spike
-            install_script: ""
-            testlist: ""
-            test_name: ""
-            c_test: ""
-            linker: ""
+          # [G1] riscv-tests-v + hello_world — spike-only
+          #- config: cv64a6_imafdch_sv39
+          #  testcase: cv64a6_imafdc_tests
+          #  mode: script
+          #  simulator: spike
+          #  install_script: ""
+          #  testlist: ""
+          #  test_name: ""
+          #  c_test: ""
+          #  linker: ""
 
           # [G2] arch-test using cv64a60ax testlist (I/M/C/B/A/D, no K) spike-only
-          #      Gap: RTL sim for H-extension configs not yet validated
-          - config: cv64a6_imafdch_sv39
-            testcase: dv-riscv-arch-test
-            mode: testlist
-            simulator: spike
-            install_script: install-riscv-arch-test
-            testlist: "../tests/testlist_riscv-arch-test-cv64a60ax.yaml"
-            test_name: ""
-            c_test: ""
-            linker: "../tests/riscv-arch-test/riscv-target/spike/link.ld"
+          #- config: cv64a6_imafdch_sv39
+          #  testcase: dv-riscv-arch-test
+          #  mode: testlist
+          #  simulator: spike
+          #  install_script: install-riscv-arch-test
+          #  testlist: "../tests/testlist_riscv-arch-test-cv64a60ax.yaml"
+          #  test_name: ""
+          #  c_test: ""
+          #  linker: "../tests/riscv-arch-test/riscv-target/spike/link.ld"
 
           # ══════════════════════════════════════════════════════════════
-          # cv64a6_imafdch_sv39_wb  ISA: rv64gch_zba_zbb_zbs_zbc  (same as above)
+          # DEFERRED 2026-03-24 (OpenHW internal meeting, per Mike Thompson)
+          # cv64a6_imafdch_sv39_wb  ISA: rv64gch_zba_zbb_zbs_zbc
           #   DcacheType=WB — writeback cache, key hardware differentiator
-          #   RTL sim: not yet validated for H-extension (same gap as above)
-          #   MAJOR GAP: H-extension testlist + RTL validation — see gap report
+          # Reason: H-extension + WB cache variant; same blocker as cv64a6_imafdch_sv39
+          #         (H-extension test suite not yet developed).
+          # Re-enable when: H-extension test suite is developed and merged.
+          # See verif/docs/ci-meeting-notes-2026-03-24.md
           # ══════════════════════════════════════════════════════════════
 
-          # [W1] riscv-tests-v + hello_world — spike-only (RTL gap: see above)
-          - config: cv64a6_imafdch_sv39_wb
-            testcase: cv64a6_imafdc_tests
-            mode: script
-            simulator: spike
-            install_script: ""
-            testlist: ""
-            test_name: ""
-            c_test: ""
-            linker: ""
+          # [W1] riscv-tests-v + hello_world — spike-only
+          #- config: cv64a6_imafdch_sv39_wb
+          #  testcase: cv64a6_imafdc_tests
+          #  mode: script
+          #  simulator: spike
+          #  install_script: ""
+          #  testlist: ""
+          #  test_name: ""
+          #  c_test: ""
+          #  linker: ""
 
-          # [W2] arch-test using cv64a60ax testlist — spike-only (RTL gap: see above)
-          - config: cv64a6_imafdch_sv39_wb
-            testcase: dv-riscv-arch-test
-            mode: testlist
-            simulator: spike
-            install_script: install-riscv-arch-test
-            testlist: "../tests/testlist_riscv-arch-test-cv64a60ax.yaml"
-            test_name: ""
-            c_test: ""
-            linker: "../tests/riscv-arch-test/riscv-target/spike/link.ld"
+          # [W2] arch-test using cv64a60ax testlist — spike-only
+          #- config: cv64a6_imafdch_sv39_wb
+          #  testcase: dv-riscv-arch-test
+          #  mode: testlist
+          #  simulator: spike
+          #  install_script: install-riscv-arch-test
+          #  testlist: "../tests/testlist_riscv-arch-test-cv64a60ax.yaml"
+          #  test_name: ""
+          #  c_test: ""
+          #  linker: "../tests/riscv-arch-test/riscv-target/spike/link.ld"
 
           # ══════════════════════════════════════════════════════════════
+          # DEFERRED 2026-03-24 (OpenHW internal meeting, per Mike Thompson)
           # cv64a6_imafdcv_sv39  ISA: rv64gcv  (V extension, NO B, NO K)
           #   VExtEn=1, BExtEn=0, NrCommitPorts=2 (superscalar)
-          #   No V-extension testlist exists in repo → spike-only for now
-          #   riscv-tests (-v) compatible: tests only I/M/A — subset of rv64gcv
+          # Reason: V-extension (RVV) test suite does not exist yet;
+          #         Verilator memory footprint for vector-capable design also TBD.
+          # Re-enable when: RVV test suite is developed + Verilator memory impact assessed.
+          # See verif/docs/ci-meeting-notes-2026-03-24.md
           # ══════════════════════════════════════════════════════════════
 
           # [V1] Baseline hello-world (spike-only, proof-of-life)
-          - config: cv64a6_imafdcv_sv39
-            testcase: hello-world
-            mode: custom_c_test
-            simulator: spike
-            install_script: ""
-            testlist: ""
-            test_name: ""
-            c_test: "../tests/custom/hello_world/hello_world.c"
-            linker: ""
+          #- config: cv64a6_imafdcv_sv39
+          #  testcase: hello-world
+          #  mode: custom_c_test
+          #  simulator: spike
+          #  install_script: ""
+          #  testlist: ""
+          #  test_name: ""
+          #  c_test: "../tests/custom/hello_world/hello_world.c"
+          #  linker: ""
 
           # [V2] riscv-tests virtual mode: SV39 I/M/A tests, spike-only
           #      riscv-tests do NOT include B/K/V tests → compatible with rv64gcv
           #      Provides basic functional coverage until RVV testlist is created
-          - config: cv64a6_imafdcv_sv39
-            testcase: dv-riscv-tests-v
-            mode: testlist
-            simulator: spike
-            install_script: install-riscv-tests
-            testlist: "../tests/testlist_riscv-tests-cv64a6_imafdc_sv39-v.yaml"
-            test_name: ""
-            c_test: ""
-            linker: ""
+          #- config: cv64a6_imafdcv_sv39
+          #  testcase: dv-riscv-tests-v
+          #  mode: testlist
+          #  simulator: spike
+          #  install_script: install-riscv-tests
+          #  testlist: "../tests/testlist_riscv-tests-cv64a6_imafdc_sv39-v.yaml"
+          #  test_name: ""
+          #  c_test: ""
+          #  linker: ""
 
           # ══════════════════════════════════════════════════════════════
           # cv64a6_imafdc_sv39_hpdcache_wb  — new Tier2 full-coverage jobs
@@ -672,115 +687,115 @@ jobs:
             c_test: ""
             linker: ""
 
-          # ══════════════════════════════════════════════════════════════
-          # cv64a6_imafdc_sv39_openpiton  — new Tier2 full-coverage jobs
-          #   ISA: rv64gc (no B, no K); p-mode testlist has no B-ext tests
-          # ══════════════════════════════════════════════════════════════
+          # ── DEFERRED 2026-03-24 (Mike Thompson / OpenHW meeting) ────────────────
+          # cv64a6_imafdc_sv39_openpiton — new Tier2 jobs (DEFERRED, see above)
+          # Uncomment all entries below when NOC-compatible testbench is available.
+          # ─────────────────────────────────────────────────────────────────────────
 
           # [O3] riscv-tests physical mode: rv64gc basic tests (spike-only)
           #      no B-ext tests in this testlist → compatible with openpiton ISA
-          - config: cv64a6_imafdc_sv39_openpiton
-            testcase: dv-riscv-tests-p
-            mode: testlist
-            simulator: spike
-            install_script: install-riscv-tests
-            testlist: "../tests/testlist_riscv-tests-cv64a6_imafdc_sv39-p.yaml"
-            test_name: ""
-            c_test: ""
-            linker: ""
+          #- config: cv64a6_imafdc_sv39_openpiton
+          #  testcase: dv-riscv-tests-p
+          #  mode: testlist
+          #  simulator: spike
+          #  install_script: install-riscv-tests
+          #  testlist: "../tests/testlist_riscv-tests-cv64a6_imafdc_sv39-p.yaml"
+          #  test_name: ""
+          #  c_test: ""
+          #  linker: ""
 
-          # ══════════════════════════════════════════════════════════════
-          # cv64a6_imafdch_sv39  — new Tier2 full-coverage jobs
-          #   ISA: rv64gch_zba_zbb_zbs_zbc; IMAFDC superset → testlists compatible
-          # ══════════════════════════════════════════════════════════════
+          # ── DEFERRED 2026-03-24 (Mike Thompson / OpenHW meeting) ────────────────
+          # cv64a6_imafdch_sv39 — new Tier2 jobs (DEFERRED, see above)
+          # Uncomment all entries below when H-extension test suite is developed.
+          # ─────────────────────────────────────────────────────────────────────────
 
           # [G3] riscv-tests physical mode: rv64gc+B basic tests (spike-only)
-          - config: cv64a6_imafdch_sv39
-            testcase: dv-riscv-tests-p
-            mode: testlist
-            simulator: spike
-            install_script: install-riscv-tests
-            testlist: "../tests/testlist_riscv-tests-cv64a6_imafdc_sv39-p.yaml"
-            test_name: ""
-            c_test: ""
-            linker: ""
+          #- config: cv64a6_imafdch_sv39
+          #  testcase: dv-riscv-tests-p
+          #  mode: testlist
+          #  simulator: spike
+          #  install_script: install-riscv-tests
+          #  testlist: "../tests/testlist_riscv-tests-cv64a6_imafdc_sv39-p.yaml"
+          #  test_name: ""
+          #  c_test: ""
+          #  linker: ""
 
           # [G4] riscv-tests virtual mode: SV39 MMU tests (spike-only)
-          - config: cv64a6_imafdch_sv39
-            testcase: dv-riscv-tests-v
-            mode: testlist
-            simulator: spike
-            install_script: install-riscv-tests
-            testlist: "../tests/testlist_riscv-tests-cv64a6_imafdc_sv39-v.yaml"
-            test_name: ""
-            c_test: ""
-            linker: ""
+          #- config: cv64a6_imafdch_sv39
+          #  testcase: dv-riscv-tests-v
+          #  mode: testlist
+          #  simulator: spike
+          #  install_script: install-riscv-tests
+          #  testlist: "../tests/testlist_riscv-tests-cv64a6_imafdc_sv39-v.yaml"
+          #  test_name: ""
+          #  c_test: ""
+          #  linker: ""
 
           # [G5] compliance: rv64gc+B compliance suite (spike-only; H-ext is superset)
-          - config: cv64a6_imafdch_sv39
-            testcase: dv-riscv-compliance
-            mode: testlist
-            simulator: spike
-            install_script: install-riscv-compliance
-            testlist: "../tests/testlist_riscv-compliance-cv64a6_imafdc_sv39.yaml"
-            test_name: ""
-            c_test: ""
-            linker: ""
+          #- config: cv64a6_imafdch_sv39
+          #  testcase: dv-riscv-compliance
+          #  mode: testlist
+          #  simulator: spike
+          #  install_script: install-riscv-compliance
+          #  testlist: "../tests/testlist_riscv-compliance-cv64a6_imafdc_sv39.yaml"
+          #  test_name: ""
+          #  c_test: ""
+          #  linker: ""
 
-          # ══════════════════════════════════════════════════════════════
-          # cv64a6_imafdch_sv39_wb  — new Tier2 full-coverage jobs
-          #   Same ISA as imafdch_sv39 + WB dcache; same testlist constraints
-          # ══════════════════════════════════════════════════════════════
+          # ── DEFERRED 2026-03-24 (Mike Thompson / OpenHW meeting) ────────────────
+          # cv64a6_imafdch_sv39_wb — new Tier2 jobs (DEFERRED, see above)
+          # Uncomment all entries below when H-extension test suite is developed.
+          # ─────────────────────────────────────────────────────────────────────────
 
           # [W3] riscv-tests physical mode: rv64gc+B basic tests (spike-only)
-          - config: cv64a6_imafdch_sv39_wb
-            testcase: dv-riscv-tests-p
-            mode: testlist
-            simulator: spike
-            install_script: install-riscv-tests
-            testlist: "../tests/testlist_riscv-tests-cv64a6_imafdc_sv39-p.yaml"
-            test_name: ""
-            c_test: ""
-            linker: ""
+          #- config: cv64a6_imafdch_sv39_wb
+          #  testcase: dv-riscv-tests-p
+          #  mode: testlist
+          #  simulator: spike
+          #  install_script: install-riscv-tests
+          #  testlist: "../tests/testlist_riscv-tests-cv64a6_imafdc_sv39-p.yaml"
+          #  test_name: ""
+          #  c_test: ""
+          #  linker: ""
 
           # [W4] riscv-tests virtual mode: SV39 MMU tests (spike-only)
-          - config: cv64a6_imafdch_sv39_wb
-            testcase: dv-riscv-tests-v
-            mode: testlist
-            simulator: spike
-            install_script: install-riscv-tests
-            testlist: "../tests/testlist_riscv-tests-cv64a6_imafdc_sv39-v.yaml"
-            test_name: ""
-            c_test: ""
-            linker: ""
+          #- config: cv64a6_imafdch_sv39_wb
+          #  testcase: dv-riscv-tests-v
+          #  mode: testlist
+          #  simulator: spike
+          #  install_script: install-riscv-tests
+          #  testlist: "../tests/testlist_riscv-tests-cv64a6_imafdc_sv39-v.yaml"
+          #  test_name: ""
+          #  c_test: ""
+          #  linker: ""
 
           # [W5] compliance: rv64gc+B compliance suite (spike-only; WB+H-ext)
-          - config: cv64a6_imafdch_sv39_wb
-            testcase: dv-riscv-compliance
-            mode: testlist
-            simulator: spike
-            install_script: install-riscv-compliance
-            testlist: "../tests/testlist_riscv-compliance-cv64a6_imafdc_sv39.yaml"
-            test_name: ""
-            c_test: ""
-            linker: ""
+          #- config: cv64a6_imafdch_sv39_wb
+          #  testcase: dv-riscv-compliance
+          #  mode: testlist
+          #  simulator: spike
+          #  install_script: install-riscv-compliance
+          #  testlist: "../tests/testlist_riscv-compliance-cv64a6_imafdc_sv39.yaml"
+          #  test_name: ""
+          #  c_test: ""
+          #  linker: ""
 
-          # ══════════════════════════════════════════════════════════════
-          # cv64a6_imafdcv_sv39  — new Tier2 full-coverage jobs
-          #   ISA: rv64gcv (V-ext only, no B/K); riscv-tests-p has no V tests
-          # ══════════════════════════════════════════════════════════════
+          # ── DEFERRED 2026-03-24 (Mike Thompson / OpenHW meeting) ────────────────
+          # cv64a6_imafdcv_sv39 — new Tier2 jobs (DEFERRED, see above)
+          # Uncomment all entries below when RVV test suite is developed.
+          # ─────────────────────────────────────────────────────────────────────────
 
           # [V3] riscv-tests physical mode: rv64gc subset (spike-only)
           #      riscv-tests do NOT include V-extension tests → compatible
-          - config: cv64a6_imafdcv_sv39
-            testcase: dv-riscv-tests-p
-            mode: testlist
-            simulator: spike
-            install_script: install-riscv-tests
-            testlist: "../tests/testlist_riscv-tests-cv64a6_imafdc_sv39-p.yaml"
-            test_name: ""
-            c_test: ""
-            linker: ""
+          #- config: cv64a6_imafdcv_sv39
+          #  testcase: dv-riscv-tests-p
+          #  mode: testlist
+          #  simulator: spike
+          #  install_script: install-riscv-tests
+          #  testlist: "../tests/testlist_riscv-tests-cv64a6_imafdc_sv39-p.yaml"
+          #  test_name: ""
+          #  c_test: ""
+          #  linker: ""
 
     steps:
       - uses: actions/checkout@v4
