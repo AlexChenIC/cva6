@@ -29,7 +29,7 @@ module ariane_testharness #(
   parameter int unsigned AXI_USER_WIDTH    = CVA6Cfg.AxiUserWidth,
   parameter int unsigned AXI_USER_EN       = CVA6Cfg.AXI_USER_EN,
   parameter int unsigned AXI_ADDRESS_WIDTH = 64,
-  parameter int unsigned AXI_DATA_WIDTH    = 64,
+  parameter int unsigned AXI_DATA_WIDTH    = CVA6Cfg.AxiDataWidth,
   parameter bit          InclSimDTM        = 1'b1,
   parameter int unsigned NUM_WORDS         = 2**25,         // memory size
   parameter bit          StallRandomOutput = 1'b0,
@@ -42,6 +42,11 @@ module ariane_testharness #(
 );
 
   localparam [7:0] hart_id = '0;
+  // Debug module always operates on a 64-bit bus regardless of the SoC AXI data width.
+  // dm_top, the debug axi2mem slave, and the dm axi_adapter master all use 64-bit data paths
+  // (dm_slave_wdata/dm_master_wdata signals are hardcoded logic[64-1:0]).
+  // Using AXI_DATA_WIDTH here instead caused Spike DPI to crash when AXI_DATA_WIDTH=128.
+  localparam int unsigned DM_BUS_WIDTH = 64;
 
   // RVFI
   localparam type rvfi_instr_t = `RVFI_INSTR_T(CVA6Cfg);
@@ -253,7 +258,7 @@ module ariane_testharness #(
   // debug module
   dm_top #(
     .NrHarts              ( 1                           ),
-    .BusWidth             ( AXI_DATA_WIDTH              ),
+    .BusWidth             ( DM_BUS_WIDTH                ),
     .SelectableHarts      ( 1'b1                        )
   ) i_dm_top (
     .clk_i                ( clk_i                       ),
@@ -291,7 +296,7 @@ module ariane_testharness #(
   axi2mem #(
     .AXI_ID_WIDTH   ( ariane_axi_soc::IdWidthSlave ),
     .AXI_ADDR_WIDTH ( AXI_ADDRESS_WIDTH            ),
-    .AXI_DATA_WIDTH ( AXI_DATA_WIDTH               ),
+    .AXI_DATA_WIDTH ( DM_BUS_WIDTH                 ),
     .AXI_USER_WIDTH ( AXI_USER_WIDTH               )
   ) i_dm_axi2mem (
     .clk_i      ( clk_i                     ),
@@ -312,7 +317,7 @@ module ariane_testharness #(
 
   axi_adapter #(
     .CVA6Cfg               ( CVA6Cfg                   ),
-    .DATA_WIDTH            ( AXI_DATA_WIDTH            ),
+    .DATA_WIDTH            ( DM_BUS_WIDTH              ),
     .axi_req_t             ( ariane_axi::req_t         ),
     .axi_rsp_t             ( ariane_axi::resp_t        )
   ) i_dm_axi_master (
