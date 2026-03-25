@@ -255,6 +255,15 @@ module ariane_testharness #(
   logic                dm_master_r_valid;
   logic [64-1:0]       dm_master_r_rdata;
 
+  // AXI-width intermediates for i_dm_axi_master.
+  // axi_adapter requires DATA_WIDTH >= CVA6Cfg.AxiDataWidth to avoid empty [-1:0] array
+  // dimensions in wdata_i/be_i/rdata_o (when DATA_WIDTH < AxiDataWidth, integer division
+  // gives 0 elements, Verilator treats them as 0-bit → rdata always 0).
+  // We always pass DATA_WIDTH=AXI_DATA_WIDTH to the adapter and pad/truncate at the DM boundary.
+  logic [AXI_DATA_WIDTH-1:0]   dm_master_wdata_axi;
+  logic [AXI_DATA_WIDTH/8-1:0] dm_master_be_axi;
+  logic [AXI_DATA_WIDTH-1:0]   dm_master_r_rdata_axi;
+
   // debug module
   dm_top #(
     .NrHarts              ( 1                           ),
@@ -315,9 +324,23 @@ module ariane_testharness #(
   `AXI_ASSIGN_FROM_REQ(slave[1], dm_axi_m_req)
   `AXI_ASSIGN_TO_RESP(dm_axi_m_resp, slave[1])
 
+  // When AXI_DATA_WIDTH == DM_BUS_WIDTH (64-bit AXI configs), signals pass through unchanged.
+  // When AXI_DATA_WIDTH > DM_BUS_WIDTH (e.g., cv64a60ax: 128-bit AXI, 64-bit DM), zero-pad
+  // wdata/be to the full AXI width and take only the lower DM_BUS_WIDTH bits from rdata_o.
+  // This lets DATA_WIDTH=AXI_DATA_WIDTH in axi_adapter, keeping array dimensions valid (>=1).
+  if (AXI_DATA_WIDTH == DM_BUS_WIDTH) begin : gen_dm_axi_width_eq
+    assign dm_master_wdata_axi = dm_master_wdata;
+    assign dm_master_be_axi    = dm_master_be;
+    assign dm_master_r_rdata   = dm_master_r_rdata_axi;
+  end else begin : gen_dm_axi_width_gt
+    assign dm_master_wdata_axi = {{(AXI_DATA_WIDTH-DM_BUS_WIDTH){1'b0}}, dm_master_wdata};
+    assign dm_master_be_axi    = {{(AXI_DATA_WIDTH/8-DM_BUS_WIDTH/8){1'b0}}, dm_master_be};
+    assign dm_master_r_rdata   = dm_master_r_rdata_axi[DM_BUS_WIDTH-1:0];
+  end
+
   axi_adapter #(
     .CVA6Cfg               ( CVA6Cfg                   ),
-    .DATA_WIDTH            ( DM_BUS_WIDTH              ),
+    .DATA_WIDTH            ( AXI_DATA_WIDTH            ),  // must equal CVA6Cfg.AxiDataWidth to avoid [-1:0] array when AxiDataWidth>DM_BUS_WIDTH
     .axi_req_t             ( ariane_axi::req_t         ),
     .axi_rsp_t             ( ariane_axi::resp_t        )
   ) i_dm_axi_master (
@@ -329,12 +352,12 @@ module ariane_testharness #(
     .gnt_o                 ( dm_master_gnt             ),
     .addr_i                ( dm_master_add             ),
     .we_i                  ( dm_master_we              ),
-    .wdata_i               ( dm_master_wdata           ),
-    .be_i                  ( dm_master_be              ),
+    .wdata_i               ( dm_master_wdata_axi       ),
+    .be_i                  ( dm_master_be_axi          ),
     .size_i                ( 2'b11                     ), // always do 64bit here and use byte enables to gate
     .id_i                  ( '0                        ),
     .valid_o               ( dm_master_r_valid         ),
-    .rdata_o               ( dm_master_r_rdata         ),
+    .rdata_o               ( dm_master_r_rdata_axi     ),
     .id_o                  (                           ),
     .critical_word_o       (                           ),
     .critical_word_valid_o (                           ),
@@ -369,12 +392,31 @@ module ariane_testharness #(
     .data_i ( rom_rdata               )
   );
 
-  bootrom i_bootrom (
-    .clk_i      ( clk_i     ),
-    .req_i      ( rom_req   ),
-    .addr_i     ( rom_addr  ),
-    .rdata_o    ( rom_rdata )
-  );
+  // For 64-bit AXI: single bootrom instance supplies the full 64-bit beat (original path).
+  // For wider AXI (e.g., cv64a60ax: 128-bit): two instances supply both 64-bit halves of each
+  // 128-bit aligned beat. axi2mem issues 16-byte-aligned addresses (rom_addr[3:0]=0); the hi
+  // instance forces bit[3]=1 to access the next consecutive 64-bit ROM word (addr+8).
+  if (AXI_DATA_WIDTH == 64) begin : gen_bootrom_64
+    bootrom i_bootrom (
+      .clk_i   ( clk_i    ),
+      .req_i   ( rom_req  ),
+      .addr_i  ( rom_addr ),
+      .rdata_o ( rom_rdata )
+    );
+  end else begin : gen_bootrom_wide
+    bootrom i_bootrom_lo (
+      .clk_i   ( clk_i    ),
+      .req_i   ( rom_req  ),
+      .addr_i  ( {rom_addr[AXI_ADDRESS_WIDTH-1:4], 4'h0} ),
+      .rdata_o ( rom_rdata[63:0] )
+    );
+    bootrom i_bootrom_hi (
+      .clk_i   ( clk_i    ),
+      .req_i   ( rom_req  ),
+      .addr_i  ( {rom_addr[AXI_ADDRESS_WIDTH-1:4], 4'h8} ),
+      .rdata_o ( rom_rdata[AXI_DATA_WIDTH-1:64] )
+    );
+  end
 
   // ------------------------------
   // GPIO
