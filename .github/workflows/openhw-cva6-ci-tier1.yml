@@ -11,12 +11,13 @@
 #   One testcase per config: minimum functional smoke test to confirm the config
 #   compiles and the key simulation path works end-to-end.
 #
-# ACTIVE GREEN CONFIGS (updated 2026-03-24):
-#   4 configs × 1 testcase = 4 test jobs (+ 1 setup-tools).
+# ACTIVE GREEN CONFIGS (updated 2026-03-26):
+#   3 configs × 1 testcase = 3 test jobs (+ 1 setup-tools).
+#   (cv64a60ax suspended 2026-03-26, see RTL SIMULATION COVERAGE below)
 #
 # RTL SIMULATION COVERAGE:
 #   veri-testharness + spike tandem : cv32a65x, cv32a60x, cv64a6_imafdc_sv39_hpdcache_wb
-#   spike-only                      : cv64a60ax (AxiDataWidth=128 testbench validation pending)
+#   SUSPENDED 2026-03-26            : cv64a60ax (bugs found + being reported upstream, see docs/cv64a60ax-bugs/)
 #
 # DEFERRED CONFIGS (2026-03-24, per Mike Thompson / OpenHW internal meeting):
 #   cv32a6_ima_sv32_fpga          — FPGA toolchain not available in standard GH Actions runners
@@ -260,6 +261,21 @@ jobs:
             c_test: ""
             linker: ""
 
+          # ── TEMPORARILY SUSPENDED 2026-03-26 ──────────────────────────────────
+          # cv64a60ax: all CI entries suspended pending upstream bug confirmation.
+          # Three bugs found during RTL simulation validation:
+          #   RC5: cva6_icache_axi_wrapper.sv line 89 hardcodes /64 (upstream RTL bug)
+          #   RC4: cv64a60ax_config_pkg execute region excludes bootrom at 0x10000
+          #   RC3: ariane_tb.cpp SRAM preload misses gen_cut[1] for 128-bit AXI
+          # All fixed locally -- *** SUCCESS *** (tohost=0) after 10714 cycles.
+          # WAITING FOR:
+          #   [ ] User verification on fresh CVA6 clone
+          #   [ ] OpenHW GitHub Issues submitted (RC5, RC3 are upstream bugs)
+          #   [ ] OpenHW team response / upstream fix merged
+          # Re-enable: after upstream RC5 fix acknowledged.
+          #            Change simulator: spike --> veri-testharness,spike for RTL tandem.
+          # Details: docs/cv64a60ax-bugs/ (5 markdown files)
+          # ──────────────────────────────────────────────────────────────────────
           # ══════════════════════════════════════════════════════════════
           # cv64a60ax  ISA: rv64gc_zba_zbb_zbs_zbc  (no K extension)
           #   AxiDataWidth=128, CoproType=COPRO_EXAMPLE
@@ -267,15 +283,15 @@ jobs:
           # ══════════════════════════════════════════════════════════════
 
           # [A1] hello-world: spike-only proof-of-life
-          - config: cv64a60ax
-            testcase: hello-world
-            mode: custom_c_test
-            simulator: spike
-            install_script: ""
-            testlist: ""
-            test_name: ""
-            c_test: "../tests/custom/hello_world/hello_world.c"
-            linker: "../../config/gen_from_riscv_config/linker/link.ld"
+          #- config: cv64a60ax
+          #  testcase: hello-world
+          #  mode: custom_c_test
+          #  simulator: spike
+          #  install_script: ""
+          #  testlist: ""
+          #  test_name: ""
+          #  c_test: "../tests/custom/hello_world/hello_world.c"
+          #  linker: "../../config/gen_from_riscv_config/linker/link.ld"
 
           # ══════════════════════════════════════════════════════════════
           # DEFERRED 2026-03-24 (OpenHW internal meeting, per Mike Thompson)

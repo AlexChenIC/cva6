@@ -18,7 +18,7 @@
 #
 # ACTIVE GREEN CONFIGS (updated 2026-03-24):
 #   RTL + Spike tandem : cv32a65x, cv32a60x, cv64a6_imafdc_sv39_hpdcache_wb
-#   Spike-only         : cv64a60ax (AxiDataWidth=128 testbench validation pending)
+#   SUSPENDED 2026-03-26: cv64a60ax (bugs found + being reported upstream, see docs/cv64a60ax-bugs/)
 #
 # DEFERRED CONFIGS (2026-03-24, per Mike Thompson / OpenHW internal meeting):
 #   cv32a6_ima_sv32_fpga          — FPGA toolchain not available in standard GH Actions runners
@@ -478,43 +478,59 @@ jobs:
             c_test: ""
             linker: ""
 
+          # ── TEMPORARILY SUSPENDED 2026-03-26 ──────────────────────────────────
+          # cv64a60ax: all CI entries suspended pending upstream bug confirmation.
+          # Three bugs found during RTL simulation validation:
+          #   RC5: cva6_icache_axi_wrapper.sv line 89 hardcodes /64 (upstream RTL bug)
+          #   RC4: cv64a60ax_config_pkg execute region excludes bootrom at 0x10000
+          #   RC3: ariane_tb.cpp SRAM preload misses gen_cut[1] for 128-bit AXI
+          # All fixed locally -- *** SUCCESS *** (tohost=0) after 10714 cycles.
+          # WAITING FOR:
+          #   [ ] User verification on fresh CVA6 clone
+          #   [ ] OpenHW GitHub Issues submitted (RC5, RC3 are upstream bugs)
+          #   [ ] OpenHW team response / upstream fix merged
+          # Re-enable: after upstream RC5 fix acknowledged.
+          #            Change simulator: spike --> veri-testharness,spike for RTL tandem.
+          # Details: docs/cv64a60ax-bugs/ (5 markdown files)
+          # ──────────────────────────────────────────────────────────────────────
           # ══════════════════════════════════════════════════════════════
           # cv64a60ax  ISA: rv64gc_zba_zbb_zbs_zbc  (no K extension)
           #   MmuPresent=1(SV39), BExtEn=1, KExtEn=0, CvxifEn=1
           #   Uses the new cv64a60ax testlist (K tests excluded, 184 tests)
-          #   RTL sim: under evaluation — see RTL EVAL TRIAL job below
+          #   RTL sim: under evaluation -- see RTL EVAL TRIAL job below
           #   Root cause: AXI_DATA_WIDTH=64 hardcoded in ariane_testharness.sv (line 32)
           #               while cv64a60ax uses AxiDataWidth=128; fix under review.
-          #   Gap: cv64a60ax RTL sim validation — see tier2-gap-analysis.md
+          #   Gap: cv64a60ax RTL sim validation -- see tier2-gap-analysis.md
           # ══════════════════════════════════════════════════════════════
 
-          # ── RTL EVAL TRIAL 2026-03-24 ──────────────────────────────────────────
-          # cv64a60ax: first RTL sim attempt with AXI_DATA_WIDTH fix in testharness.
-          # Purpose : verify Verilator compiles and simulates cv64a60ax (AxiDataWidth=128)
-          #           after fixing ariane_testharness.sv line 32.
-          # Remove  : delete this entry once cv64a60ax RTL evaluation is complete
-          #           and all existing jobs are upgraded to veri-testharness,spike.
-          - config: cv64a60ax
-            testcase: hello-world
-            mode: custom_c_test
-            simulator: veri-testharness,spike
-            install_script: ""
-            testlist: ""
-            test_name: ""
-            c_test: "../tests/custom/hello_world/hello_world.c"
-            linker: "../../config/gen_from_riscv_config/linker/link.ld"
+          # ── RTL EVAL TRIAL — SUSPENDED 2026-03-26 ──────────────────────────────
+          # cv64a60ax hello-world RTL eval trial: SUSPENDED (bugs found, see above).
+          # Originally ran as veri-testharness,spike. Failed with INSTR_ACCESS_FAULT.
+          # Root causes identified and fixed locally (SUCCESS confirmed).
+          # Waiting for upstream confirmation before re-enabling.
+          # ──────────────────────────────────────────────────────────────────────
+          #- config: cv64a60ax
+          #  testcase: hello-world
+          #  mode: custom_c_test
+          #  simulator: veri-testharness,spike
+          #  install_script: ""
+          #  testlist: ""
+          #  test_name: ""
+          #  c_test: "../tests/custom/hello_world/hello_world.c"
+          #  linker: "../../config/gen_from_riscv_config/linker/link.ld"
 
           # [A1] arch-test: full cv64a60ax testlist (184 tests), spike-only
           #      RTL sim to be enabled after cv64a60ax RTL eval trial passes
-          - config: cv64a60ax
-            testcase: dv-riscv-arch-test
-            mode: testlist
-            simulator: spike
-            install_script: install-riscv-arch-test
-            testlist: "../tests/testlist_riscv-arch-test-cv64a60ax.yaml"
-            test_name: ""
-            c_test: ""
-            linker: "../tests/riscv-arch-test/riscv-target/spike/link.ld"
+          # SUSPENDED 2026-03-26: cv64a60ax -- see suspension note above
+          #- config: cv64a60ax
+          #  testcase: dv-riscv-arch-test
+          #  mode: testlist
+          #  simulator: spike
+          #  install_script: install-riscv-arch-test
+          #  testlist: "../tests/testlist_riscv-arch-test-cv64a60ax.yaml"
+          #  test_name: ""
+          #  c_test: ""
+          #  linker: "../tests/riscv-arch-test/riscv-target/spike/link.ld"
 
           # ══════════════════════════════════════════════════════════════
           # DEFERRED 2026-03-24 (OpenHW internal meeting, per Mike Thompson)
@@ -668,40 +684,44 @@ jobs:
           # ══════════════════════════════════════════════════════════════
           # cv64a60ax  — new Tier2 full-coverage jobs
           #   ISA: rv64gc_zba_zbb_zbs_zbc  (no K); compliance testlist compatible
+          #   SUSPENDED 2026-03-26: see suspension note above
           # ══════════════════════════════════════════════════════════════
 
           # [A2] riscv-tests physical mode: rv64gc basic tests (spike-only)
-          - config: cv64a60ax
-            testcase: dv-riscv-tests-p
-            mode: testlist
-            simulator: spike
-            install_script: install-riscv-tests
-            testlist: "../tests/testlist_riscv-tests-cv64a6_imafdc_sv39-p.yaml"
-            test_name: ""
-            c_test: ""
-            linker: ""
+          # SUSPENDED 2026-03-26: cv64a60ax -- see suspension note above
+          #- config: cv64a60ax
+          #  testcase: dv-riscv-tests-p
+          #  mode: testlist
+          #  simulator: spike
+          #  install_script: install-riscv-tests
+          #  testlist: "../tests/testlist_riscv-tests-cv64a6_imafdc_sv39-p.yaml"
+          #  test_name: ""
+          #  c_test: ""
+          #  linker: ""
 
           # [A3] riscv-tests virtual mode: SV39 MMU tests (spike-only)
-          - config: cv64a60ax
-            testcase: dv-riscv-tests-v
-            mode: testlist
-            simulator: spike
-            install_script: install-riscv-tests
-            testlist: "../tests/testlist_riscv-tests-cv64a6_imafdc_sv39-v.yaml"
-            test_name: ""
-            c_test: ""
-            linker: ""
+          # SUSPENDED 2026-03-26: cv64a60ax -- see suspension note above
+          #- config: cv64a60ax
+          #  testcase: dv-riscv-tests-v
+          #  mode: testlist
+          #  simulator: spike
+          #  install_script: install-riscv-tests
+          #  testlist: "../tests/testlist_riscv-tests-cv64a6_imafdc_sv39-v.yaml"
+          #  test_name: ""
+          #  c_test: ""
+          #  linker: ""
 
           # [A4] compliance: rv64gc+B compliance suite incl. Zba/Zbb/Zbs/Zbc (spike-only)
-          - config: cv64a60ax
-            testcase: dv-riscv-compliance
-            mode: testlist
-            simulator: spike
-            install_script: install-riscv-compliance
-            testlist: "../tests/testlist_riscv-compliance-cv64a6_imafdc_sv39.yaml"
-            test_name: ""
-            c_test: ""
-            linker: ""
+          # SUSPENDED 2026-03-26: cv64a60ax -- see suspension note above
+          #- config: cv64a60ax
+          #  testcase: dv-riscv-compliance
+          #  mode: testlist
+          #  simulator: spike
+          #  install_script: install-riscv-compliance
+          #  testlist: "../tests/testlist_riscv-compliance-cv64a6_imafdc_sv39.yaml"
+          #  test_name: ""
+          #  c_test: ""
+          #  linker: ""
 
           # ── DEFERRED 2026-03-24 (Mike Thompson / OpenHW meeting) ────────────────
           # cv64a6_imafdc_sv39_openpiton — new Tier2 jobs (DEFERRED, see above)
