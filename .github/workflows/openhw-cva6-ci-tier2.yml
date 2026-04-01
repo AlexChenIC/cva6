@@ -84,6 +84,24 @@ jobs:
             test_name: ""
             linker: ""
 
+          - config: cv32a65x
+            testcase: dv-riscv-csr-access-test
+            mode: script
+            simulator: veri-testharness,spike
+            install_script: ""
+            testlist: ""
+            test_name: ""
+            linker: ""
+
+          - config: cv32a65x
+            testcase: benchmark
+            mode: script
+            simulator: veri-testharness,spike
+            install_script: ""
+            testlist: ""
+            test_name: ""
+            linker: ""
+
           - config: cv32a60x
             testcase: cv32a6_tests
             mode: script
@@ -117,6 +135,24 @@ jobs:
             simulator: veri-testharness,spike
             install_script: install-riscv-compliance
             testlist: "../tests/testlist_riscv-compliance-cv32a60x.yaml"
+            test_name: ""
+            linker: ""
+
+          - config: cv32a60x
+            testcase: dv-riscv-csr-access-test
+            mode: script
+            simulator: veri-testharness,spike
+            install_script: ""
+            testlist: ""
+            test_name: ""
+            linker: ""
+
+          - config: cv32a60x
+            testcase: benchmark
+            mode: script
+            simulator: veri-testharness,spike
+            install_script: ""
+            testlist: ""
             test_name: ""
             linker: ""
 
@@ -231,6 +267,15 @@ jobs:
             simulator: veri-testharness,spike
             install_script: install-riscv-compliance
             testlist: "../tests/testlist_riscv-compliance-cv64a6_imafdc_sv39.yaml"
+            test_name: ""
+            linker: ""
+
+          - config: cv64a6_imafdc_sv39_hpdcache_wb
+            testcase: benchmark
+            mode: script
+            simulator: veri-testharness,spike
+            install_script: ""
+            testlist: ""
             test_name: ""
             linker: ""
 

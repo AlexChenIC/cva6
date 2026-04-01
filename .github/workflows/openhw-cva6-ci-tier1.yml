@@ -53,14 +53,14 @@ jobs:
             linker: ""
 
           - config: cv32a60x
-            testcase: dv-riscv-arch-test
-            mode: testlist
+            testcase: cv32a6_tests
+            mode: script
             simulator: veri-testharness,spike
-            install_script: install-riscv-arch-test
-            testlist: "../tests/testlist_riscv-arch-test-cv32a60x.yaml"
-            test_name: "rv32im-cadd-01"
+            install_script: ""
+            testlist: ""
+            test_name: ""
             c_test: ""
-            linker: "../tests/riscv-arch-test/riscv-target/spike/link.ld"
+            linker: ""
 
     steps:
       - uses: actions/checkout@v4
