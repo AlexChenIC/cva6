@@ -1,32 +1,16 @@
 # Copyright 2026 OpenHW Group
 # SPDX-License-Identifier: Apache-2.0
 
-# CVA6 CI Dashboard — Build and Deploy to GitHub Pages
+# CVA6 Legacy Dashboard Preview
 #
-# Triggered when any of the three Verilator CI workflows complete,
-# or manually / on a daily schedule. Collects run/job data via
-# GitHub API, renders a static HTML dashboard, and deploys to Pages.
-#
-# Data persistence: JSON history is stored on the gh-pages branch
-# under data/ and merged incrementally on each run.
+# Manual-only artifact build for the legacy dashboard. The deployable
+# Pages site is now assembled by the tier dashboard workflow so that
+# legacy and tier views can coexist under a single Pages site.
 
-name: openhw-dashboard
+name: openhw-dashboard-legacy-preview
 
 on:
-  # Trigger when CI workflows complete
-  workflow_run:
-    workflows:
-      - ci
-      - openhw-apu-full
-      - openhw-quick-regress
-    types: [completed]
-
-  # Manual trigger
   workflow_dispatch:
-
-  # Daily refresh (catch any missed events)
-  schedule:
-    - cron: '30 6 * * *'  # 06:30 UTC daily
 
 # Queue runs instead of cancelling — prevents write conflicts on gh-pages
 concurrency:
@@ -34,9 +18,7 @@ concurrency:
   cancel-in-progress: false
 
 permissions:
-  contents: write    # Push to gh-pages branch
-  pages: write       # Deploy to GitHub Pages
-  id-token: write    # OIDC token for Pages deployment
+  contents: read
 
 jobs:
   # ============================================================
@@ -86,75 +68,9 @@ jobs:
           # Copy data alongside HTML for persistence
           cp -r /tmp/dash-data /tmp/dash-site/data
 
-      - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: /tmp/dash-site
-
-      - name: Upload data for persistence job
+      - name: Upload legacy dashboard artifact
         uses: actions/upload-artifact@v4
         with:
-          name: dashboard-data
-          path: /tmp/dash-data/
-          retention-days: 7
-
-  # ============================================================
-  # Job 2: Deploy to GitHub Pages
-  # ============================================================
-  deploy:
-    name: Deploy to Pages
-    needs: build
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v4
-
-  # ============================================================
-  # Job 3: Persist data to gh-pages branch
-  # ============================================================
-  persist-data:
-    name: Persist Data
-    needs: build
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout gh-pages branch
-        uses: actions/checkout@v4
-        with:
-          ref: gh-pages
-          fetch-depth: 1
-        continue-on-error: true
-
-      - name: Initialize gh-pages branch if needed
-        run: |
-          if [ ! -d ".git" ]; then
-            git init
-            git remote add origin "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git"
-            git checkout --orphan gh-pages
-            echo "# CVA6 CI Dashboard Data" > README.md
-            git add README.md
-            git config user.name "github-actions[bot]"
-            git config user.email "github-actions[bot]@users.noreply.github.com"
-            git commit -m "Initialize gh-pages branch"
-          fi
-
-      - name: Download updated data
-        uses: actions/download-artifact@v4
-        with:
-          name: dashboard-data
-          path: data/
-
-      - name: Commit and push data
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add data/
-          if git diff --cached --quiet; then
-            echo "No data changes to commit"
-          else
-            git commit -m "Update dashboard data [skip ci]"
-            git push origin gh-pages
-          fi
+          name: cva6-legacy-dashboard-site
+          path: /tmp/dash-site
+          retention-days: 14
