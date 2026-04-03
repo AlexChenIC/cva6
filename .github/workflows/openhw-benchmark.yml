@@ -1,0 +1,226 @@
+# Copyright 2026 OpenHW Group
+# Licensed under the Apache License, Version 2.0, see LICENSE for details.
+# SPDX-License-Identifier: Apache-2.0
+
+# All-Config Benchmark Baseline
+# Diagnostic: "Did this change break functional correctness or performance?
+#              Which config is affected?"
+#
+# Runs benchmark suite (12 programs: dhrystone, median, matmul, spmv, etc.)
+# across all 6 CVA6 configurations. All PASS = basic functional correctness.
+#
+# Configs (4 RV64 + 2 RV32):
+#   - cv64a6_imafdc_sv39
+#   - cv64a6_imafdc_sv39_wb
+#   - cv64a6_imafdc_sv39_hpdcache
+#   - cv64a6_imafdc_sv39_hpdcache_wb
+#   - cv32a65x
+#   - cv32a6_imac_sv32
+#
+# Jobs: 6 | Estimated: ~15 min
+
+name: openhw-benchmark
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - 'task/**'
+      - 'feature/**'
+      - 'openhw/**'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  SPIKE_TANDEM: 1
+  NUM_JOBS: 8
+
+jobs:
+  # ============================================================
+  # Stage 1: Setup and cache tools
+  # ============================================================
+  setup-tools:
+    name: Setup Tools
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Setup CVA6 Environment
+        uses: ./.github/actions/setup-cva6-env
+        with:
+          install-tools: 'true'
+
+  # ============================================================
+  # Stage 2: Benchmark tests (parallel matrix)
+  # ============================================================
+  benchmark:
+    name: benchmark (${{ matrix.config }})
+    runs-on: ubuntu-latest
+    needs: setup-tools
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # RV64 configs
+          - config: cv64a6_imafdc_sv39
+            arch: RV64
+          - config: cv64a6_imafdc_sv39_wb
+            arch: RV64
+          - config: cv64a6_imafdc_sv39_hpdcache
+            arch: RV64
+          - config: cv64a6_imafdc_sv39_hpdcache_wb
+            arch: RV64
+          # RV32 configs
+          - config: cv32a65x
+            arch: RV32
+          - config: cv32a6_imac_sv32
+            arch: RV32
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Setup CVA6 Environment
+        uses: ./.github/actions/setup-cva6-env
+
+      - name: Install prerequisites
+        run: source ci/install-prereq.sh
+
+      - name: Run benchmark
+        run: |
+          set -x
+          mkdir -p ci-results
+          echo "1" > ci-results/exit_code
+          source verif/sim/setup-env.sh
+          rc=0
+          DV_SIMULATORS=veri-testharness,spike \
+          DV_TARGET=${{ matrix.config }} \
+            bash verif/regress/benchmark.sh || rc=$?
+          echo "$rc" > ci-results/exit_code
+          find verif/sim -name "iss_regr.log" -exec cp {} ci-results/ \; 2>/dev/null || true
+          exit $rc
+
+      - name: Upload Results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bench-${{ matrix.arch }}-${{ matrix.config }}
+          path: |
+            ci-results/
+            verif/sim/out*/
+          retention-days: 14
+
+  # ============================================================
+  # Stage 3: Benchmark Report
+  # ============================================================
+  benchmark-report:
+    name: Benchmark Report
+    runs-on: ubuntu-latest
+    needs: benchmark
+    if: ${{ always() && !cancelled() }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts/
+
+      - name: Generate Benchmark Report
+        run: |
+          echo "## All-Config Benchmark Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Commit:** \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Arch | Config | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|------|--------|--------|" >> $GITHUB_STEP_SUMMARY
+
+          total_configs=0
+          passed_configs=0
+          any_failure=0
+
+          for dir in artifacts/*/; do
+            [ ! -d "$dir" ] && continue
+            name=$(basename "$dir")
+            total_configs=$((total_configs + 1))
+
+            # Parse: bench-{ARCH}-{config}
+            arch=$(echo "$name" | cut -d'-' -f2)
+            config=$(echo "$name" | sed 's/^bench-[A-Za-z0-9]*-//')
+
+            exit_code="missing"
+            exit_code_file="$dir/ci-results/exit_code"
+            if [ -f "$exit_code_file" ]; then
+              exit_code=$(cat "$exit_code_file" | tr -d '[:space:]')
+            fi
+
+            passed=""
+            failed=""
+            log_file=$(find "$dir" -name "iss_regr.log" 2>/dev/null | head -1)
+            if [ -n "$log_file" ] && [ -f "$log_file" ]; then
+              summary_line=$(grep -E "PASSED.*FAILED" "$log_file" | tail -n 1)
+              if [ -n "$summary_line" ]; then
+                passed=$(printf "%s" "$summary_line" | sed -n 's/.*\([0-9][0-9]*\)[[:space:]]*PASSED.*/\1/p')
+                failed=$(printf "%s" "$summary_line" | sed -n 's/.*\([0-9][0-9]*\)[[:space:]]*FAILED.*/\1/p')
+              fi
+            fi
+
+            if [ "$exit_code" = "0" ]; then
+              if [ -n "$passed" ]; then
+                status="PASS ($passed programs)"
+              else
+                status="PASS"
+              fi
+              passed_configs=$((passed_configs + 1))
+            elif [ "$exit_code" = "missing" ]; then
+              status="UNKNOWN"
+              any_failure=1
+            else
+              any_failure=1
+              if [ -n "$failed" ] && [ "$failed" -gt 0 ]; then
+                status="FAIL ($passed passed, $failed failed)"
+              else
+                status="FAIL (exit $exit_code)"
+              fi
+            fi
+
+            echo "| ${arch} | ${config} | ${status} |" >> $GITHUB_STEP_SUMMARY
+          done
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Summary" >> $GITHUB_STEP_SUMMARY
+          echo "- **Configs Passed:** ${passed_configs}/${total_configs}" >> $GITHUB_STEP_SUMMARY
+          if [ "$any_failure" -eq 1 ]; then
+            echo "- **Overall: FAILED** - Benchmark regression detected" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "- **Overall: ALL PASSED** - All configs functionally correct" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "---" >> $GITHUB_STEP_SUMMARY
+          echo "*Generated by OpenHW CVA6 Benchmark CI*" >> $GITHUB_STEP_SUMMARY
+
+      - name: Check for failures
+        run: |
+          any_failed=0
+          for dir in artifacts/*/; do
+            [ ! -d "$dir" ] && continue
+            name=$(basename "$dir")
+            exit_code_file="$dir/ci-results/exit_code"
+            if [ -f "$exit_code_file" ]; then
+              ec=$(cat "$exit_code_file" | tr -d '[:space:]')
+              if [ "$ec" != "0" ]; then
+                echo "::error::Benchmark failed: ${name} (exit code: ${ec})"
+                any_failed=1
+              fi
+            else
+              echo "::error::Missing result marker: ${name}"
+              any_failed=1
+            fi
+          done
+          if [ "$any_failed" -eq 1 ]; then
+            echo "::error::Benchmark baseline check failed."
+            exit 1
+          fi
+          echo "All benchmark tests passed!"

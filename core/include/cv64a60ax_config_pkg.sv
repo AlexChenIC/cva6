@@ -81,6 +81,7 @@ localparam config_pkg::cva6_user_cfg_t cva6_cfg = '{
    CvxifEn: bit'(1),
    CoproType: config_pkg::COPRO_EXAMPLE,
    RVZiCond: bit'(1),
+   RVZiCbom: bit'(1),
    RVZicntr: bit'(1),
    RVZihpm: bit'(1),
    NrScoreboardEntries: unsigned'(8),

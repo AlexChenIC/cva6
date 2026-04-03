@@ -1,0 +1,341 @@
+name: openhw-cva6-ci-tier2
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 2 * * *'
+  push:
+    branches:
+      - task/ci_flow
+
+concurrency:
+  group: openhw-cva6-ci-tier2-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  SPIKE_TANDEM: 1
+  NUM_JOBS: 8
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+jobs:
+  setup-tools:
+    name: Setup Tools
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup CVA6 Environment
+        uses: ./.github/actions/setup-cva6-env
+        with:
+          install-tools: "true"
+
+  execute-rv32-tier2:
+    name: RV32 Tier2 ${{ matrix.config }} / ${{ matrix.testcase }}
+    runs-on: ubuntu-latest
+    needs: setup-tools
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - config: cv32a65x
+            testcase: smoke-tests-cv32a65x
+            mode: script
+            simulator: veri-testharness,spike
+            install_script: ""
+            testlist: ""
+            test_name: ""
+            linker: ""
+
+          - config: cv32a65x
+            testcase: cv32a6_tests
+            mode: script
+            simulator: veri-testharness,spike
+            install_script: ""
+            testlist: ""
+            test_name: ""
+            linker: ""
+
+          - config: cv32a65x
+            testcase: dv-riscv-arch-test
+            mode: testlist
+            simulator: veri-testharness,spike
+            install_script: install-riscv-arch-test
+            testlist: "../tests/testlist_riscv-arch-test-cv32a65x.yaml"
+            test_name: ""
+            linker: "../tests/riscv-arch-test/riscv-target/spike/link.ld"
+
+          - config: cv32a65x
+            testcase: dv-riscv-tests-p
+            mode: testlist
+            simulator: veri-testharness,spike
+            install_script: install-riscv-tests
+            testlist: "../tests/testlist_riscv-tests-cv32a65x-p.yaml"
+            test_name: ""
+            linker: ""
+
+          - config: cv32a65x
+            testcase: dv-riscv-compliance
+            mode: testlist
+            simulator: veri-testharness,spike
+            install_script: install-riscv-compliance
+            testlist: "../tests/testlist_riscv-compliance-cv32a65x.yaml"
+            test_name: ""
+            linker: ""
+
+          - config: cv32a65x
+            testcase: dv-riscv-csr-access-test
+            mode: script
+            simulator: veri-testharness,spike
+            install_script: ""
+            testlist: ""
+            test_name: ""
+            linker: ""
+
+          - config: cv32a65x
+            testcase: benchmark
+            mode: script
+            simulator: veri-testharness,spike
+            install_script: ""
+            testlist: ""
+            test_name: ""
+            linker: ""
+
+          - config: cv32a60x
+            testcase: cv32a6_tests
+            mode: script
+            simulator: veri-testharness,spike
+            install_script: ""
+            testlist: ""
+            test_name: ""
+            linker: ""
+
+          - config: cv32a60x
+            testcase: dv-riscv-arch-test
+            mode: testlist
+            simulator: veri-testharness,spike
+            install_script: install-riscv-arch-test
+            testlist: "../tests/testlist_riscv-arch-test-cv32a60x.yaml"
+            test_name: ""
+            linker: "../tests/riscv-arch-test/riscv-target/spike/link.ld"
+
+          - config: cv32a60x
+            testcase: dv-riscv-tests-p
+            mode: testlist
+            simulator: veri-testharness,spike
+            install_script: install-riscv-tests
+            testlist: "../tests/testlist_riscv-tests-cv32a60x-p.yaml"
+            test_name: ""
+            linker: ""
+
+          - config: cv32a60x
+            testcase: dv-riscv-compliance
+            mode: testlist
+            simulator: veri-testharness,spike
+            install_script: install-riscv-compliance
+            testlist: "../tests/testlist_riscv-compliance-cv32a60x.yaml"
+            test_name: ""
+            linker: ""
+
+          - config: cv32a60x
+            testcase: dv-riscv-csr-access-test
+            mode: script
+            simulator: veri-testharness,spike
+            install_script: ""
+            testlist: ""
+            test_name: ""
+            linker: ""
+
+          - config: cv32a60x
+            testcase: benchmark
+            mode: script
+            simulator: veri-testharness,spike
+            install_script: ""
+            testlist: ""
+            test_name: ""
+            linker: ""
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup CVA6 Environment
+        uses: ./.github/actions/setup-cva6-env
+
+      - name: Install prerequisites
+        run: source ci/install-prereq.sh
+
+      - name: Run Tier 2 for ${{ matrix.config }} / ${{ matrix.testcase }}
+        run: |
+          set -x
+          mkdir -p ci-results
+          echo "1" > ci-results/exit_code
+          source verif/sim/setup-env.sh
+          rc=0
+
+          if [ "${{ matrix.mode }}" = "testlist" ]; then
+            if [[ "${{ matrix.simulator }}" == *"veri-testharness"* ]]; then
+              source verif/regress/install-verilator.sh
+            fi
+            source verif/regress/install-spike.sh
+            if [ -n "${{ matrix.install_script }}" ]; then
+              source verif/regress/${{ matrix.install_script }}.sh
+            fi
+            LINKER_OPT=""
+            if [ -n "${{ matrix.linker }}" ]; then
+              LINKER_OPT="--linker=${{ matrix.linker }}"
+            fi
+            cd verif/sim
+            python3 cva6.py \
+              --testlist=${{ matrix.testlist }} \
+              --target ${{ matrix.config }} \
+              --iss_yaml=cva6.yaml \
+              --iss=${{ matrix.simulator }} \
+              --issrun_opts="+tb_performance_mode+debug_disable=1+UVM_VERBOSITY=UVM_NONE" \
+              $LINKER_OPT \
+              || rc=$?
+            cd -
+          else
+            DV_SIMULATORS=${{ matrix.simulator }} \
+            DV_TARGET=${{ matrix.config }} \
+              bash verif/regress/${{ matrix.testcase }}.sh || rc=$?
+          fi
+
+          echo "$rc" > ci-results/exit_code
+          find verif/sim -name "iss_regr.log" -exec cp {} ci-results/ \; 2>/dev/null || true
+          exit $rc
+
+      - name: Upload Results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tier2-rv32-${{ matrix.config }}-${{ matrix.testcase }}
+          path: |
+            ci-results/
+            verif/sim/out*/
+          retention-days: 14
+
+  execute-rv64-tier2:
+    name: RV64 Tier2 ${{ matrix.config }} / ${{ matrix.testcase }}
+    runs-on: ubuntu-latest
+    needs: setup-tools
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - config: cv64a6_imafdc_sv39_hpdcache_wb
+            testcase: cv64a6_imafdc_tests
+            mode: script
+            simulator: veri-testharness,spike
+            install_script: ""
+            testlist: ""
+            test_name: ""
+            linker: ""
+
+          - config: cv64a6_imafdc_sv39_hpdcache_wb
+            testcase: dv-riscv-arch-test
+            mode: testlist
+            simulator: veri-testharness,spike
+            install_script: install-riscv-arch-test
+            testlist: "../tests/testlist_riscv-arch-test-cv64a6_imafdc_sv39.yaml"
+            test_name: ""
+            linker: "../tests/riscv-arch-test/riscv-target/spike/link.ld"
+
+          - config: cv64a6_imafdc_sv39_hpdcache_wb
+            testcase: dv-riscv-tests-v
+            mode: testlist
+            simulator: veri-testharness,spike
+            install_script: install-riscv-tests
+            testlist: "../tests/testlist_riscv-tests-cv64a6_imafdc_sv39-v.yaml"
+            test_name: ""
+            linker: ""
+
+          - config: cv64a6_imafdc_sv39_hpdcache_wb
+            testcase: dv-riscv-tests-p
+            mode: testlist
+            simulator: veri-testharness,spike
+            install_script: install-riscv-tests
+            testlist: "../tests/testlist_riscv-tests-cv64a6_imafdc_sv39-p.yaml"
+            test_name: ""
+            linker: ""
+
+          - config: cv64a6_imafdc_sv39_hpdcache_wb
+            testcase: dv-riscv-compliance
+            mode: testlist
+            simulator: veri-testharness,spike
+            install_script: install-riscv-compliance
+            testlist: "../tests/testlist_riscv-compliance-cv64a6_imafdc_sv39.yaml"
+            test_name: ""
+            linker: ""
+
+          - config: cv64a6_imafdc_sv39_hpdcache_wb
+            testcase: benchmark
+            mode: script
+            simulator: veri-testharness,spike
+            install_script: ""
+            testlist: ""
+            test_name: ""
+            linker: ""
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup CVA6 Environment
+        uses: ./.github/actions/setup-cva6-env
+
+      - name: Install prerequisites
+        run: source ci/install-prereq.sh
+
+      - name: Run Tier 2 for ${{ matrix.config }} / ${{ matrix.testcase }}
+        run: |
+          set -x
+          mkdir -p ci-results
+          echo "1" > ci-results/exit_code
+          source verif/sim/setup-env.sh
+          rc=0
+
+          if [ "${{ matrix.mode }}" = "testlist" ]; then
+            if [[ "${{ matrix.simulator }}" == *"veri-testharness"* ]]; then
+              source verif/regress/install-verilator.sh
+            fi
+            source verif/regress/install-spike.sh
+            if [ -n "${{ matrix.install_script }}" ]; then
+              source verif/regress/${{ matrix.install_script }}.sh
+            fi
+            LINKER_OPT=""
+            if [ -n "${{ matrix.linker }}" ]; then
+              LINKER_OPT="--linker=${{ matrix.linker }}"
+            fi
+            cd verif/sim
+            python3 cva6.py \
+              --testlist=${{ matrix.testlist }} \
+              --target ${{ matrix.config }} \
+              --iss_yaml=cva6.yaml \
+              --iss=${{ matrix.simulator }} \
+              --issrun_opts="+tb_performance_mode+debug_disable=1+UVM_VERBOSITY=UVM_NONE" \
+              $LINKER_OPT \
+              || rc=$?
+            cd -
+          else
+            DV_SIMULATORS=${{ matrix.simulator }} \
+            DV_TARGET=${{ matrix.config }} \
+              bash verif/regress/${{ matrix.testcase }}.sh || rc=$?
+          fi
+
+          echo "$rc" > ci-results/exit_code
+          find verif/sim -name "iss_regr.log" -exec cp {} ci-results/ \; 2>/dev/null || true
+          exit $rc
+
+      - name: Upload Results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tier2-rv64-${{ matrix.config }}-${{ matrix.testcase }}
+          path: |
+            ci-results/
+            verif/sim/out*/
+          retention-days: 14
