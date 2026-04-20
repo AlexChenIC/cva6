@@ -1,21 +1,21 @@
 # Copyright 2026 OpenHW Group
 # Licensed under the Apache License, Version 2.0, see LICENSE for details.
 # SPDX-License-Identifier: Apache-2.0
-
 # ================================================================================
 # OpenHW CVA6 CI - Tier 2: Daily Verilator Regression
 # ================================================================================
 #
 # PURPOSE:
-#   Comprehensive daily regression against the three primary "green"
-#   configurations. Runs the full suite of Verilator-compatible testcases for
-#   each config, providing thorough functional coverage on a nightly cadence.
+#   Nightly non-blocking Verilator regression for the three phase-1 "green"
+#   configurations selected for the first GitHub CI rollout.
+#   Runs a curated Tier 2 set of functional and workload-oriented tests,
+#   expanding coverage beyond Tier 1 without claiming full Verilator exhaustiveness.
 #
-# SCHEDULE: Daily at 15:00 UTC (16:00 CET / 17:00 CEST)
+# SCHEDULE: Daily at 22:00 UTC (23:00 CET / 00:00 CEST)
 #
 # TRIGGER POLICY:
-#   schedule          → Automatic daily regression (15:00 UTC)
-#   workflow_dispatch → On-demand full regression for manual validation
+#   schedule          → Automatic daily regression (22:00 UTC)
+#   workflow_dispatch → On-demand Tier 2 regression for manual validation
 #
 # COVERED CONFIGURATIONS (Green Config subset — Jérôme's color-coded figure):
 #   RV32:
@@ -50,18 +50,13 @@
 #   - hwconfig_tests and coremark require DV_HWCONFIG_OPTS, encoded via the
 #     matrix hwconfig_opts field and applied in the run step.
 #   - coremark uses veri-testharness only: spike times out on long benchmark loops.
-#
-# RELATIONSHIP TO OTHER WORKFLOWS:
-#   - Tier 1 (openhw-cva6-ci-tier1.yml) : PR gate, minimal sanity only
-#   - Tier 2 (this file)                 : comprehensive daily, superset of Tier 1
-#   - openhw-apu-full.yml                : extended full-APU regression (36 jobs)
 # ================================================================================
 
 name: openhw-cva6-ci-tier2
 
 on:
   schedule:
-    - cron: '0 15 * * *'   # 15:00 UTC = 16:00 CET / 17:00 CEST
+    - cron: '0 22 * * *'   # 22:00 UTC = 23:00 CET / 00:00 CEST
   workflow_dispatch:
 
 concurrency:
@@ -126,7 +121,7 @@ jobs:
             test_name: ""
             linker: ""
 
-          # RISC-V architecture compliance (~105 tests)
+          # RISC-V architecture test suite (~105 tests)
           - config: cv32a65x
             testcase: dv-riscv-arch-test
             mode: testlist
@@ -226,7 +221,7 @@ jobs:
             test_name: ""
             linker: ""
 
-          # RISC-V architecture compliance
+          # RISC-V architecture test suite
           - config: cv32a60x
             testcase: dv-riscv-arch-test
             mode: testlist
@@ -367,7 +362,7 @@ jobs:
             test_name: ""
             linker: ""
 
-          # RISC-V architecture compliance
+          # RISC-V architecture test suite
           - config: cv64a6_imafdc_sv39_hpdcache_wb
             testcase: dv-riscv-arch-test
             mode: testlist
@@ -480,76 +475,3 @@ jobs:
             ci-results/
             verif/sim/out*/
           retention-days: 14
-
-  # ============================================================
-  # Stage 4: Daily Regression Report
-  # ============================================================
-  tier2-report:
-    name: Tier 2 Daily Report
-    runs-on: ubuntu-latest
-    needs: [execute-rv32-tier2, execute-rv64-tier2]
-    if: always() && !cancelled()
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Download all artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: artifacts/
-
-      - name: Generate report
-        run: |
-          echo "## CVA6 Tier 2 Daily Regression — $(date -u '+%Y-%m-%d %H:%M UTC')" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "| Test Job | Status |" >> $GITHUB_STEP_SUMMARY
-          echo "|----------|--------|" >> $GITHUB_STEP_SUMMARY
-
-          any_failure=0
-          for dir in artifacts/tier2-*/; do
-            [ ! -d "$dir" ] && continue
-            name=$(basename "$dir")
-            exit_code_file="$dir/ci-results/exit_code"
-            if [ -f "$exit_code_file" ]; then
-              ec=$(cat "$exit_code_file" | tr -d '[:space:]')
-            else
-              ec="missing"
-            fi
-            if [ "$ec" = "0" ]; then
-              status="✅ PASS"
-            elif [ "$ec" = "missing" ]; then
-              status="⚠️ No result"; any_failure=1
-            else
-              status="❌ FAIL (exit $ec)"; any_failure=1
-            fi
-            echo "| \`$name\` | $status |" >> $GITHUB_STEP_SUMMARY
-          done
-
-          echo "" >> $GITHUB_STEP_SUMMARY
-          if [ "$any_failure" -eq 0 ]; then
-            echo "**Overall: ✅ ALL PASSED**" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "**Overall: ❌ FAILURES DETECTED** — see table above" >> $GITHUB_STEP_SUMMARY
-          fi
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "---" >> $GITHUB_STEP_SUMMARY
-          echo "*OpenHW CVA6 CI — Tier 2 Daily Verilator Regression*" >> $GITHUB_STEP_SUMMARY
-
-      - name: Fail if any test failed
-        run: |
-          any_failed=0
-          for dir in artifacts/tier2-*/; do
-            [ ! -d "$dir" ] && continue
-            exit_code_file="$dir/ci-results/exit_code"
-            if [ -f "$exit_code_file" ]; then
-              ec=$(cat "$exit_code_file" | tr -d '[:space:]')
-              if [ "$ec" != "0" ]; then
-                echo "::error::Failed: $(basename "$dir") (exit $ec)"
-                any_failed=1
-              fi
-            else
-              echo "::error::Missing result: $(basename "$dir")"
-              any_failed=1
-            fi
-          done
-          [ "$any_failed" -eq 0 ] && echo "All Tier 2 tests passed."
-          exit $any_failed
