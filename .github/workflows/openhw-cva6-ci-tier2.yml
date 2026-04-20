@@ -6,12 +6,12 @@
 # ================================================================================
 #
 # PURPOSE:
-#   Nightly non-blocking Verilator regression for the three phase-1 "green"
+#   Nightly Verilator regression for the three phase-1 "green"
 #   configurations selected for the first GitHub CI rollout.
 #   Runs a curated Tier 2 set of functional and workload-oriented tests,
-#   expanding coverage beyond Tier 1 without claiming full Verilator exhaustiveness.
+#   expanding coverage beyond Tier 1.
 #
-# SCHEDULE: Daily at 22:00 UTC (23:00 CET / 00:00 CEST)
+# SCHEDULE: Daily at 22:00 UTC (00:00 CEST)
 #
 # TRIGGER POLICY:
 #   schedule          → Automatic daily regression (22:00 UTC)
@@ -28,8 +28,8 @@
 #   cv32a65x (10 jobs):
 #     smoke-tests, cv32a6_tests, dv-riscv-arch-test, dv-riscv-tests-p,
 #     dv-riscv-compliance, dv-riscv-csr-access-test,
-#     dv-csr-embedded-tests [veri-testharness only],
-#     hwconfig_tests, coremark [veri-testharness only], benchmark
+#     dv-csr-embedded-tests,
+#     hwconfig_tests, coremark, benchmark
 #
 #   cv32a60x (6 jobs):
 #     cv32a6_tests, dv-riscv-arch-test, dv-riscv-tests-p,
@@ -44,7 +44,8 @@
 # NOTES:
 #   - "dv-riscv-tests-v" / "dv-riscv-tests-p" are job label names, not script
 #     names. They run via python3 cva6.py --testlist= (no .sh equivalent).
-#     Splitting v/p into separate jobs enables per-mode failure isolation.
+#     Splitting v（virtual mode）/p （physical mode） into separate jobs enables
+#     per-mode failure isolation.
 #   - dv-csr-embedded-tests uses veri-testharness only: spike does not emulate
 #     embedded CSR side effects.
 #   - hwconfig_tests and coremark require DV_HWCONFIG_OPTS, encoded via the
@@ -56,7 +57,7 @@ name: openhw-cva6-ci-tier2
 
 on:
   schedule:
-    - cron: '0 22 * * *'   # 22:00 UTC = 23:00 CET / 00:00 CEST
+    - cron: "0 22 * * *" # 22:00 UTC = 00:00 CEST
   workflow_dispatch:
 
 concurrency:
@@ -96,9 +97,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
-
           # ----------------------------------------------------------
-          # cv32a65x — dual-issue RV32, no MMU, hwconfig-capable
+          # cv32a65x — dual-issue RV32, no MMU
           # ----------------------------------------------------------
 
           # Quick sanity check (~1 test)
@@ -207,8 +207,6 @@ jobs:
 
           # ----------------------------------------------------------
           # cv32a60x — single-issue RV32, no MMU
-          # Note: hwconfig_tests/coremark/dv-csr-embedded-tests are
-          #       cv32a65x-specific and not applicable here.
           # ----------------------------------------------------------
 
           # CVA6-specific directed tests
@@ -347,7 +345,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-
           # ----------------------------------------------------------
           # cv64a6_imafdc_sv39_hpdcache_wb — RV64 HPDcache + write-back
           # ----------------------------------------------------------

@@ -1,14 +1,47 @@
+# Copyright 2026 OpenHW Group
+# Licensed under the Apache License, Version 2.0, see LICENSE for details.
+# SPDX-License-Identifier: Apache-2.0
+# ================================================================================
+# OpenHW CVA6 CI - Tier 1: Fast Verilator Sanity
+# ================================================================================
+#
+# PURPOSE:
+#   Fast Verilator-based sanity regression for the three phase-1 "green"
+#   configurations selected for the first GitHub CI rollout.
+#   Runs one representative smoke or directed test per approved
+#   configuration to provide quick developer feedback on pushes and
+#   pull-requests.
+#
+# TRIGGER POLICY:
+#   push              -> Fast developer feedback on every pushed branch
+#   pull_request      -> Fast validation for code review / PR gating
+#   workflow_dispatch -> On-demand rerun for manual validation
+#
+# COVERED CONFIGURATIONS (Phase-1 Green Config subset):
+#   RV32:
+#     - cv32a65x                        (dual-issue, no MMU)
+#     - cv32a60x                        (single-issue, no MMU)
+#   RV64:
+#     - cv64a6_imafdc_sv39_hpdcache_wb  (HPDcache + write-back)
+#
+# TEST SUITES PER CONFIG:
+#   - cv32a65x                       -> smoke-tests-cv32a65x
+#   - cv32a60x                       -> cv32a6_tests
+#   - cv64a6_imafdc_sv39_hpdcache_wb -> cv64a6_imafdc_tests
+#
+# NOTES:
+#   - Phase 1 Tier 1 is Verilator-only. 
+#   - Tier 1 is intentionally narrower than Tier 2: the goal is fast signal,
+#     not broad regression depth.
+#   - Whether Tier 1 blocks a merge is controlled by GitHub branch protection,
+#     not by the workflow YAML alone.
+# ================================================================================
+
 name: openhw-cva6-ci-tier1
 
 on:
-  pull_request:
-    branches:
-      - master
-      - main
-      - dev
   push:
-    branches:
-      - task/ci_flow
+  pull_request:
   workflow_dispatch:
 
 concurrency:
@@ -21,6 +54,9 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
 jobs:
+  # ============================================================
+  # Stage 1: Populate tool cache
+  # ============================================================
   setup-tools:
     name: Setup Tools
     runs-on: ubuntu-latest
@@ -34,6 +70,9 @@ jobs:
         with:
           install-tools: "true"
 
+  # ============================================================
+  # Stage 2: RV32 Fast Sanity (parallel matrix jobs)
+  # ============================================================
   execute-rv32-tier1:
     name: RV32 Tier1 ${{ matrix.config }} / ${{ matrix.testcase }}
     runs-on: ubuntu-latest
@@ -42,6 +81,10 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # ----------------------------------------------------------
+          # cv32a65x - dual-issue RV32, no MMU
+          # ----------------------------------------------------------
+          # Quickest RV32 sanity signal for the higher-feature RV32 core
           - config: cv32a65x
             testcase: smoke-tests-cv32a65x
             mode: script
@@ -49,9 +92,12 @@ jobs:
             install_script: ""
             testlist: ""
             test_name: ""
-            c_test: ""
             linker: ""
 
+          # ----------------------------------------------------------
+          # cv32a60x - single-issue RV32, no MMU
+          # ----------------------------------------------------------
+          # Directed sanity regression; no dedicated workflow-native smoke exists
           - config: cv32a60x
             testcase: cv32a6_tests
             mode: script
@@ -59,7 +105,6 @@ jobs:
             install_script: ""
             testlist: ""
             test_name: ""
-            c_test: ""
             linker: ""
 
     steps:
@@ -79,9 +124,6 @@ jobs:
           mkdir -p ci-results
           echo "1" > ci-results/exit_code
           source verif/sim/setup-env.sh
-          CC_OPTS="-static -mcmodel=medany -fvisibility=hidden -nostdlib -nostartfiles \
-            -g ../tests/custom/common/syscalls.c ../tests/custom/common/crt.S \
-            -I../tests/custom/env -I../tests/custom/common -lgcc"
           rc=0
 
           if [ "${{ matrix.mode }}" = "testlist" ]; then
@@ -131,6 +173,9 @@ jobs:
             verif/sim/out*/
           retention-days: 14
 
+  # ============================================================
+  # Stage 3: RV64 Fast Sanity
+  # ============================================================
   execute-rv64-tier1:
     name: RV64 Tier1 ${{ matrix.config }} / ${{ matrix.testcase }}
     runs-on: ubuntu-latest
@@ -139,6 +184,10 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # ----------------------------------------------------------
+          # cv64a6_imafdc_sv39_hpdcache_wb - RV64 HPDcache + write-back
+          # ----------------------------------------------------------
+          # Fast RV64 sanity using the existing directed script
           - config: cv64a6_imafdc_sv39_hpdcache_wb
             testcase: cv64a6_imafdc_tests
             mode: script
@@ -146,7 +195,6 @@ jobs:
             install_script: ""
             testlist: ""
             test_name: ""
-            c_test: ""
             linker: ""
 
     steps:
@@ -168,9 +216,38 @@ jobs:
           source verif/sim/setup-env.sh
           rc=0
 
-          DV_SIMULATORS=${{ matrix.simulator }} \
-          DV_TARGET=${{ matrix.config }} \
-            bash verif/regress/${{ matrix.testcase }}.sh || rc=$?
+          if [ "${{ matrix.mode }}" = "testlist" ]; then
+            if [[ "${{ matrix.simulator }}" == *"veri-testharness"* ]]; then
+              source verif/regress/install-verilator.sh
+            fi
+            source verif/regress/install-spike.sh
+            if [ -n "${{ matrix.install_script }}" ]; then
+              source verif/regress/${{ matrix.install_script }}.sh
+            fi
+            LINKER_OPT=""
+            if [ -n "${{ matrix.linker }}" ]; then
+              LINKER_OPT="--linker=${{ matrix.linker }}"
+            fi
+            TEST_OPT=""
+            if [ -n "${{ matrix.test_name }}" ]; then
+              TEST_OPT="--test ${{ matrix.test_name }}"
+            fi
+            cd verif/sim
+            python3 cva6.py \
+              --testlist=${{ matrix.testlist }} \
+              --target ${{ matrix.config }} \
+              --iss_yaml=cva6.yaml \
+              --iss=${{ matrix.simulator }} \
+              --issrun_opts="+tb_performance_mode+debug_disable=1+UVM_VERBOSITY=UVM_NONE" \
+              $LINKER_OPT \
+              ${TEST_OPT} \
+              || rc=$?
+            cd -
+          else
+            DV_SIMULATORS=${{ matrix.simulator }} \
+            DV_TARGET=${{ matrix.config }} \
+              bash verif/regress/${{ matrix.testcase }}.sh || rc=$?
+          fi
 
           echo "$rc" > ci-results/exit_code
           find verif/sim -name "iss_regr.log" -exec cp {} ci-results/ \; 2>/dev/null || true
