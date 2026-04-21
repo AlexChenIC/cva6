@@ -9,12 +9,10 @@
 #   Fast Verilator-based sanity regression for the three phase-1 "green"
 #   configurations selected for the first GitHub CI rollout.
 #   Runs one representative smoke or directed test per approved
-#   configuration to provide quick developer feedback on pushes and
-#   pull-requests.
+#   configuration to provide automatic sanity checks for pull-requests.
 #
 # TRIGGER POLICY:
-#   push              -> Fast developer feedback on every pushed branch
-#   pull_request      -> Fast validation for code review / PR gating
+#   pull_request      -> Automatic sanity checks for PRs targeting master
 #   workflow_dispatch -> On-demand rerun for manual validation
 #
 # COVERED CONFIGURATIONS (Phase-1 Green Config subset):
@@ -30,18 +28,17 @@
 #   - cv64a6_imafdc_sv39_hpdcache_wb -> cv64a6_imafdc_tests
 #
 # NOTES:
-#   - Phase 1 Tier 1 is Verilator-only. 
+#   - Phase 1 Tier 1 is Verilator-only.
 #   - Tier 1 is intentionally narrower than Tier 2: the goal is fast signal,
 #     not broad regression depth.
-#   - Whether Tier 1 blocks a merge is controlled by GitHub branch protection,
-#     not by the workflow YAML alone.
 # ================================================================================
 
 name: openhw-cva6-ci-tier1
 
 on:
-  push:
   pull_request:
+    branches:
+      - master
   workflow_dispatch:
 
 concurrency:

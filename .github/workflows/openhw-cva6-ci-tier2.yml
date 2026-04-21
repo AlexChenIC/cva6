@@ -11,13 +11,13 @@
 #   Runs a curated Tier 2 set of functional and workload-oriented tests,
 #   expanding coverage beyond Tier 1.
 #
-# SCHEDULE: Daily at 22:00 UTC (00:00 CEST)
+# SCHEDULE: Daily at 22:00 UTC
 #
 # TRIGGER POLICY:
-#   schedule          → Automatic daily regression (22:00 UTC)
-#   workflow_dispatch → On-demand Tier 2 regression for manual validation
+#   schedule          -> Automatic daily regression (22:00 UTC)
+#   workflow_dispatch -> On-demand Tier 2 regression for manual validation
 #
-# COVERED CONFIGURATIONS (Green Config subset — Jérôme's color-coded figure):
+# COVERED CONFIGURATIONS (Green Config subset from Jerome's color-coded figure):
 #   RV32:
 #     - cv32a65x                        (dual-issue, no MMU)    [10 testcases]
 #     - cv32a60x                        (single-issue, no MMU)  [ 6 testcases]
@@ -44,7 +44,7 @@
 # NOTES:
 #   - "dv-riscv-tests-v" / "dv-riscv-tests-p" are job label names, not script
 #     names. They run via python3 cva6.py --testlist= (no .sh equivalent).
-#     Splitting v（virtual mode）/p （physical mode） into separate jobs enables
+#     Splitting v (virtual mode) / p (physical mode) into separate jobs enables
 #     per-mode failure isolation.
 #   - dv-csr-embedded-tests uses veri-testharness only: spike does not emulate
 #     embedded CSR side effects.
@@ -57,7 +57,7 @@ name: openhw-cva6-ci-tier2
 
 on:
   schedule:
-    - cron: "0 22 * * *" # 22:00 UTC = 00:00 CEST
+    - cron: "0 22 * * *" # 22:00 UTC
   workflow_dispatch:
 
 concurrency:
@@ -98,7 +98,7 @@ jobs:
       matrix:
         include:
           # ----------------------------------------------------------
-          # cv32a65x — dual-issue RV32, no MMU
+          # cv32a65x - dual-issue RV32, no MMU
           # ----------------------------------------------------------
 
           # Quick sanity check (~1 test)
@@ -161,7 +161,7 @@ jobs:
             test_name: ""
             linker: ""
 
-          # Embedded CSR behavior (~5 tests); veri-testharness only —
+          # Embedded CSR behavior (~5 tests); veri-testharness only -
           # spike does not emulate embedded CSR side effects
           - config: cv32a65x
             testcase: dv-csr-embedded-tests
@@ -183,7 +183,7 @@ jobs:
             linker: ""
             hwconfig_opts: cv32a65x
 
-          # CoreMark benchmark on hwconfig; veri-testharness only —
+          # CoreMark benchmark on hwconfig; veri-testharness only -
           # spike times out on long-running benchmark loops
           - config: cv32a65x
             testcase: coremark
@@ -206,7 +206,7 @@ jobs:
             linker: ""
 
           # ----------------------------------------------------------
-          # cv32a60x — single-issue RV32, no MMU
+          # cv32a60x - single-issue RV32, no MMU
           # ----------------------------------------------------------
 
           # CVA6-specific directed tests
@@ -346,7 +346,7 @@ jobs:
       matrix:
         include:
           # ----------------------------------------------------------
-          # cv64a6_imafdc_sv39_hpdcache_wb — RV64 HPDcache + write-back
+          # cv64a6_imafdc_sv39_hpdcache_wb - RV64 HPDcache + write-back
           # ----------------------------------------------------------
 
           # CVA6-specific directed tests
@@ -370,7 +370,7 @@ jobs:
             linker: "../tests/riscv-arch-test/riscv-target/spike/link.ld"
 
           # Standard RISC-V tests, virtual-mode (SV39 MMU)
-          # "dv-riscv-tests-v" is a job label — runs via cva6.py --testlist,
+          # "dv-riscv-tests-v" is a job label - runs via cva6.py --testlist,
           # there is no verif/regress/dv-riscv-tests-v.sh
           - config: cv64a6_imafdc_sv39_hpdcache_wb
             testcase: dv-riscv-tests-v
@@ -382,7 +382,7 @@ jobs:
             linker: ""
 
           # Standard RISC-V tests, physical-mode
-          # "dv-riscv-tests-p" is a job label — same note as dv-riscv-tests-v above
+          # "dv-riscv-tests-p" is a job label - same note as dv-riscv-tests-v above
           - config: cv64a6_imafdc_sv39_hpdcache_wb
             testcase: dv-riscv-tests-p
             mode: testlist
@@ -392,7 +392,7 @@ jobs:
             test_name: ""
             linker: ""
 
-          # RISC-V compliance suite (uses sv39 testlist — valid for hpdcache_wb)
+          # RISC-V compliance suite (uses sv39 testlist - valid for hpdcache_wb)
           - config: cv64a6_imafdc_sv39_hpdcache_wb
             testcase: dv-riscv-compliance
             mode: testlist
