@@ -1,5 +1,60 @@
 [
   {
+    "id": 24919383732,
+    "source": "github-actions",
+    "simulator": "verilator",
+    "run_number": 16,
+    "status": "completed",
+    "conclusion": "success",
+    "html_url": "https://github.com/AlexChenIC/cva6/actions/runs/24919383732",
+    "head_branch": "master",
+    "head_sha": "e6264ca8",
+    "event": "workflow_dispatch",
+    "created_at": "2026-04-25T01:33:11Z",
+    "updated_at": "2026-04-25T01:44:01Z",
+    "run_started_at": "2026-04-25T01:33:11Z",
+    "duration_seconds": 650,
+    "total_jobs": 3,
+    "passed_jobs": 3,
+    "failed_jobs": 0,
+    "skipped_jobs": 0,
+    "jobs": [
+      {
+        "name": "RV32 Tier1 cv32a60x / cv32a6_tests",
+        "conclusion": "success",
+        "started_at": "2026-04-25T01:35:28Z",
+        "completed_at": "2026-04-25T01:39:18Z",
+        "duration_seconds": 230,
+        "html_url": "https://github.com/AlexChenIC/cva6/actions/runs/24919383732/job/72977903376",
+        "arch": "rv32",
+        "config": "cv32a60x",
+        "testcase": "cv32a6_tests"
+      },
+      {
+        "name": "RV32 Tier1 cv32a65x / smoke-tests-cv32a65x",
+        "conclusion": "success",
+        "started_at": "2026-04-25T01:37:13Z",
+        "completed_at": "2026-04-25T01:39:29Z",
+        "duration_seconds": 136,
+        "html_url": "https://github.com/AlexChenIC/cva6/actions/runs/24919383732/job/72977903380",
+        "arch": "rv32",
+        "config": "cv32a65x",
+        "testcase": "smoke-tests-cv32a65x"
+      },
+      {
+        "name": "RV64 Tier1 cv64a6_imafdc_sv39_hpdcache_wb / cv64a6_imafdc_tests",
+        "conclusion": "success",
+        "started_at": "2026-04-25T01:38:18Z",
+        "completed_at": "2026-04-25T01:44:01Z",
+        "duration_seconds": 343,
+        "html_url": "https://github.com/AlexChenIC/cva6/actions/runs/24919383732/job/72977903392",
+        "arch": "rv64",
+        "config": "cv64a6_imafdc_sv39_hpdcache_wb",
+        "testcase": "cv64a6_imafdc_tests"
+      }
+    ]
+  },
+  {
     "id": 24657153960,
     "source": "github-actions",
     "simulator": "verilator",
