@@ -25,6 +25,18 @@ WORKFLOWS = {
 }
 
 MAX_HISTORY = 50
+SKIP_BRANCH_PREFIXES = ("ci/demo-",)
+SKIP_CONCLUSIONS = {"cancelled"}
+
+
+def should_keep_run(run: dict) -> bool:
+    """Return False for temporary validation/noise runs that should not be charted."""
+    branch = run.get("head_branch", "") or ""
+    if any(branch.startswith(prefix) for prefix in SKIP_BRANCH_PREFIXES):
+        return False
+    if run.get("conclusion", "") in SKIP_CONCLUSIONS:
+        return False
+    return True
 
 
 def gh_api(endpoint: str, repo: str) -> dict:
@@ -205,7 +217,7 @@ def main():
         print(f"{'='*60}")
 
         json_path = data_dir / f"runs_{wf_name}.json"
-        existing = load_existing(json_path)
+        existing = [run for run in load_existing(json_path) if should_keep_run(run)]
         existing_ids = {r["id"] for r in existing}
 
         print(f"  Existing records: {len(existing)}")
@@ -217,6 +229,12 @@ def main():
         # Only process new runs (incremental update)
         new_runs = []
         for run in runs:
+            if not should_keep_run(run):
+                print(
+                    f"  Skipping run #{run['run_number']} (id={run['id']}) - "
+                    "temporary/cancelled run"
+                )
+                continue
             if run["id"] in existing_ids:
                 print(f"  Skipping run #{run['run_number']} (id={run['id']}) - already exists")
                 continue
