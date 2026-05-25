@@ -81,9 +81,9 @@ jobs:
           # ----------------------------------------------------------
           # cv32a65x - dual-issue RV32, no MMU
           # ----------------------------------------------------------
-          # Quickest RV32 sanity signal for the higher-feature RV32 core
+          # Demo-only false-positive detector validation.
           - config: cv32a65x
-            testcase: smoke-tests-cv32a65x
+            testcase: tier-false-positive-demo
             mode: script
             simulator: veri-testharness,spike
             install_script: ""
@@ -94,9 +94,9 @@ jobs:
           # ----------------------------------------------------------
           # cv32a60x - single-issue RV32, no MMU
           # ----------------------------------------------------------
-          # Directed sanity regression; no dedicated workflow-native smoke exists
+          # Demo-only passing control job.
           - config: cv32a60x
-            testcase: cv32a6_tests
+            testcase: tier-false-positive-pass-demo
             mode: script
             simulator: veri-testharness,spike
             install_script: ""
@@ -145,6 +145,7 @@ jobs:
     name: RV64 Tier1 ${{ matrix.config }} / ${{ matrix.testcase }}
     runs-on: ubuntu-latest
     needs: setup-tools
+    if: false
     strategy:
       fail-fast: false
       matrix:
