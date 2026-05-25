@@ -1,5 +1,49 @@
 [
   {
+    "id": 26402370715,
+    "source": "github-actions",
+    "simulator": "verilator",
+    "run_number": 19,
+    "status": "completed",
+    "conclusion": "failure",
+    "html_url": "https://github.com/AlexChenIC/cva6/actions/runs/26402370715",
+    "head_branch": "ci/demo-tier1-failure-detection",
+    "head_sha": "eb38f831",
+    "event": "workflow_dispatch",
+    "created_at": "2026-05-25T13:14:30Z",
+    "updated_at": "2026-05-25T13:18:12Z",
+    "run_started_at": "2026-05-25T13:14:30Z",
+    "duration_seconds": 222,
+    "total_jobs": 2,
+    "passed_jobs": 1,
+    "failed_jobs": 1,
+    "skipped_jobs": 0,
+    "jobs": [
+      {
+        "name": "RV32 Tier1 cv32a65x / tier-false-positive-demo",
+        "conclusion": "failure",
+        "started_at": "2026-05-25T13:16:32Z",
+        "completed_at": "2026-05-25T13:17:36Z",
+        "duration_seconds": 64,
+        "html_url": "https://github.com/AlexChenIC/cva6/actions/runs/26402370715/job/77717802654",
+        "arch": "rv32",
+        "config": "cv32a65x",
+        "testcase": "tier-false-positive-demo"
+      },
+      {
+        "name": "RV32 Tier1 cv32a60x / tier-false-positive-pass-demo",
+        "conclusion": "success",
+        "started_at": "2026-05-25T13:16:33Z",
+        "completed_at": "2026-05-25T13:18:11Z",
+        "duration_seconds": 98,
+        "html_url": "https://github.com/AlexChenIC/cva6/actions/runs/26402370715/job/77717802685",
+        "arch": "rv32",
+        "config": "cv32a60x",
+        "testcase": "tier-false-positive-pass-demo"
+      }
+    ]
+  },
+  {
     "id": 26142641176,
     "source": "github-actions",
     "simulator": "verilator",
