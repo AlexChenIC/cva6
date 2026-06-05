@@ -1,5 +1,236 @@
 [
   {
+    "id": 26999257498,
+    "source": "github-actions",
+    "simulator": "verilator",
+    "run_number": 75,
+    "status": "completed",
+    "conclusion": "success",
+    "html_url": "https://github.com/AlexChenIC/cva6/actions/runs/26999257498",
+    "head_branch": "master",
+    "head_sha": "795a9d60",
+    "event": "schedule",
+    "created_at": "2026-06-05T06:26:04Z",
+    "updated_at": "2026-06-05T07:03:52Z",
+    "run_started_at": "2026-06-05T06:26:04Z",
+    "duration_seconds": 2268,
+    "total_jobs": 19,
+    "passed_jobs": 19,
+    "failed_jobs": 0,
+    "skipped_jobs": 0,
+    "jobs": [
+      {
+        "name": "RV64 smoke-tests-cv64a6_imafdc_sv39 (cv64a6_imafdc_sv39)",
+        "conclusion": "success",
+        "started_at": "2026-06-05T06:26:58Z",
+        "completed_at": "2026-06-05T06:32:02Z",
+        "duration_seconds": 304,
+        "html_url": "https://github.com/AlexChenIC/cva6/actions/runs/26999257498/job/79675805690",
+        "arch": "rv64",
+        "config": "cv64a6_imafdc_sv39",
+        "testcase": "smoke-tests-cv64a6_imafdc_sv39"
+      },
+      {
+        "name": "RV64 cv64a6_imafdc_tests (cv64a6_imafdc_sv39)",
+        "conclusion": "success",
+        "started_at": "2026-06-05T06:26:58Z",
+        "completed_at": "2026-06-05T06:32:17Z",
+        "duration_seconds": 319,
+        "html_url": "https://github.com/AlexChenIC/cva6/actions/runs/26999257498/job/79675805713",
+        "arch": "rv64",
+        "config": "cv64a6_imafdc_sv39",
+        "testcase": "cv64a6_imafdc_tests"
+      },
+      {
+        "name": "RV64 benchmark (cv64a6_imafdc_sv39)",
+        "conclusion": "success",
+        "started_at": "2026-06-05T06:26:58Z",
+        "completed_at": "2026-06-05T06:28:15Z",
+        "duration_seconds": 77,
+        "html_url": "https://github.com/AlexChenIC/cva6/actions/runs/26999257498/job/79675805715",
+        "arch": "rv64",
+        "config": "cv64a6_imafdc_sv39",
+        "testcase": "benchmark"
+      },
+      {
+        "name": "RV64 cv64a6_imafdc_tests (cv64a6_imafdc_sv39_hpdcache)",
+        "conclusion": "success",
+        "started_at": "2026-06-05T06:26:58Z",
+        "completed_at": "2026-06-05T06:32:20Z",
+        "duration_seconds": 322,
+        "html_url": "https://github.com/AlexChenIC/cva6/actions/runs/26999257498/job/79675805720",
+        "arch": "rv64",
+        "config": "cv64a6_imafdc_sv39_hpdcache",
+        "testcase": "cv64a6_imafdc_tests"
+      },
+      {
+        "name": "RV64 dv-riscv-compliance (cv64a6_imafdc_sv39)",
+        "conclusion": "success",
+        "started_at": "2026-06-05T06:26:59Z",
+        "completed_at": "2026-06-05T06:59:34Z",
+        "duration_seconds": 1955,
+        "html_url": "https://github.com/AlexChenIC/cva6/actions/runs/26999257498/job/79675805724",
+        "arch": "rv64",
+        "config": "cv64a6_imafdc_sv39",
+        "testcase": "dv-riscv-compliance"
+      },
+      {
+        "name": "RV64 dv-riscv-compliance (cv64a6_imafdc_sv39_hpdcache)",
+        "conclusion": "success",
+        "started_at": "2026-06-05T06:26:58Z",
+        "completed_at": "2026-06-05T07:03:51Z",
+        "duration_seconds": 2213,
+        "html_url": "https://github.com/AlexChenIC/cva6/actions/runs/26999257498/job/79675805732",
+        "arch": "rv64",
+        "config": "cv64a6_imafdc_sv39_hpdcache",
+        "testcase": "dv-riscv-compliance"
+      },
+      {
+        "name": "RV32 dv-csr-embedded-tests (cv32a65x)",
+        "conclusion": "success",
+        "started_at": "2026-06-05T06:26:58Z",
+        "completed_at": "2026-06-05T06:30:28Z",
+        "duration_seconds": 210,
+        "html_url": "https://github.com/AlexChenIC/cva6/actions/runs/26999257498/job/79675805745",
+        "arch": "rv32",
+        "config": "cv32a65x",
+        "testcase": "dv-csr-embedded-tests"
+      },
+      {
+        "name": "RV32 dv-riscv-tests (cv32a65x)",
+        "conclusion": "success",
+        "started_at": "2026-06-05T06:26:58Z",
+        "completed_at": "2026-06-05T06:37:59Z",
+        "duration_seconds": 661,
+        "html_url": "https://github.com/AlexChenIC/cva6/actions/runs/26999257498/job/79675805755",
+        "arch": "rv32",
+        "config": "cv32a65x",
+        "testcase": "dv-riscv-tests"
+      },
+      {
+        "name": "RV32 dv-riscv-csr-access-test (cv32a65x)",
+        "conclusion": "success",
+        "started_at": "2026-06-05T06:26:58Z",
+        "completed_at": "2026-06-05T06:28:35Z",
+        "duration_seconds": 97,
+        "html_url": "https://github.com/AlexChenIC/cva6/actions/runs/26999257498/job/79675805759",
+        "arch": "rv32",
+        "config": "cv32a65x",
+        "testcase": "dv-riscv-csr-access-test"
+      },
+      {
+        "name": "RV32 benchmark (cv32a65x)",
+        "conclusion": "success",
+        "started_at": "2026-06-05T06:26:58Z",
+        "completed_at": "2026-06-05T06:28:04Z",
+        "duration_seconds": 66,
+        "html_url": "https://github.com/AlexChenIC/cva6/actions/runs/26999257498/job/79675805763",
+        "arch": "rv32",
+        "config": "cv32a65x",
+        "testcase": "benchmark"
+      },
+      {
+        "name": "RV64 benchmark (cv64a6_imafdc_sv39_hpdcache)",
+        "conclusion": "success",
+        "started_at": "2026-06-05T06:26:58Z",
+        "completed_at": "2026-06-05T06:28:03Z",
+        "duration_seconds": 65,
+        "html_url": "https://github.com/AlexChenIC/cva6/actions/runs/26999257498/job/79675805768",
+        "arch": "rv64",
+        "config": "cv64a6_imafdc_sv39_hpdcache",
+        "testcase": "benchmark"
+      },
+      {
+        "name": "RV32 smoke-tests-cv32a65x (cv32a65x)",
+        "conclusion": "success",
+        "started_at": "2026-06-05T06:26:58Z",
+        "completed_at": "2026-06-05T06:28:56Z",
+        "duration_seconds": 118,
+        "html_url": "https://github.com/AlexChenIC/cva6/actions/runs/26999257498/job/79675805788",
+        "arch": "rv32",
+        "config": "cv32a65x",
+        "testcase": "smoke-tests-cv32a65x"
+      },
+      {
+        "name": "RV32 cv32a6_tests (cv32a65x)",
+        "conclusion": "success",
+        "started_at": "2026-06-05T06:26:58Z",
+        "completed_at": "2026-06-05T06:30:01Z",
+        "duration_seconds": 183,
+        "html_url": "https://github.com/AlexChenIC/cva6/actions/runs/26999257498/job/79675805794",
+        "arch": "rv32",
+        "config": "cv32a65x",
+        "testcase": "cv32a6_tests"
+      },
+      {
+        "name": "RV32 dv-riscv-tests (cv32a6_imac_sv32)",
+        "conclusion": "success",
+        "started_at": "2026-06-05T06:26:59Z",
+        "completed_at": "2026-06-05T06:36:23Z",
+        "duration_seconds": 564,
+        "html_url": "https://github.com/AlexChenIC/cva6/actions/runs/26999257498/job/79675805795",
+        "arch": "rv32",
+        "config": "cv32a6_imac_sv32",
+        "testcase": "dv-riscv-tests"
+      },
+      {
+        "name": "RV32 dv-riscv-compliance (cv32a65x)",
+        "conclusion": "success",
+        "started_at": "2026-06-05T06:26:58Z",
+        "completed_at": "2026-06-05T06:54:40Z",
+        "duration_seconds": 1662,
+        "html_url": "https://github.com/AlexChenIC/cva6/actions/runs/26999257498/job/79675805797",
+        "arch": "rv32",
+        "config": "cv32a65x",
+        "testcase": "dv-riscv-compliance"
+      },
+      {
+        "name": "RV32 dv-riscv-compliance (cv32a6_imac_sv32)",
+        "conclusion": "success",
+        "started_at": "2026-06-05T06:26:58Z",
+        "completed_at": "2026-06-05T06:52:51Z",
+        "duration_seconds": 1553,
+        "html_url": "https://github.com/AlexChenIC/cva6/actions/runs/26999257498/job/79675805799",
+        "arch": "rv32",
+        "config": "cv32a6_imac_sv32",
+        "testcase": "dv-riscv-compliance"
+      },
+      {
+        "name": "RV32 dv-riscv-mmu-sv32-test (cv32a6_imac_sv32)",
+        "conclusion": "success",
+        "started_at": "2026-06-05T06:26:58Z",
+        "completed_at": "2026-06-05T06:33:45Z",
+        "duration_seconds": 407,
+        "html_url": "https://github.com/AlexChenIC/cva6/actions/runs/26999257498/job/79675805801",
+        "arch": "rv32",
+        "config": "cv32a6_imac_sv32",
+        "testcase": "dv-riscv-mmu-sv32-test"
+      },
+      {
+        "name": "RV32 benchmark (cv32a6_imac_sv32)",
+        "conclusion": "success",
+        "started_at": "2026-06-05T06:26:58Z",
+        "completed_at": "2026-06-05T06:28:46Z",
+        "duration_seconds": 108,
+        "html_url": "https://github.com/AlexChenIC/cva6/actions/runs/26999257498/job/79675805804",
+        "arch": "rv32",
+        "config": "cv32a6_imac_sv32",
+        "testcase": "benchmark"
+      },
+      {
+        "name": "RV32 dv-riscv-arch-test (cv32a65x)",
+        "conclusion": "success",
+        "started_at": "2026-06-05T06:26:58Z",
+        "completed_at": "2026-06-05T06:56:26Z",
+        "duration_seconds": 1768,
+        "html_url": "https://github.com/AlexChenIC/cva6/actions/runs/26999257498/job/79675805809",
+        "arch": "rv32",
+        "config": "cv32a65x",
+        "testcase": "dv-riscv-arch-test"
+      }
+    ]
+  },
+  {
     "id": 26935612947,
     "source": "github-actions",
     "simulator": "verilator",
@@ -10545,83 +10776,6 @@
         "arch": "rv64",
         "config": "cv64a6_imafdc_sv39",
         "testcase": "benchmark"
-      }
-    ]
-  },
-  {
-    "id": 23519902191,
-    "source": "github-actions",
-    "simulator": "verilator",
-    "run_number": 25,
-    "status": "completed",
-    "conclusion": "success",
-    "html_url": "https://github.com/AlexChenIC/cva6/actions/runs/23519902191",
-    "head_branch": "task/ci_flow",
-    "head_sha": "d3c6e157",
-    "event": "push",
-    "created_at": "2026-03-25T01:05:55Z",
-    "updated_at": "2026-03-25T01:18:18Z",
-    "run_started_at": "2026-03-25T01:05:55Z",
-    "duration_seconds": 743,
-    "total_jobs": 5,
-    "passed_jobs": 5,
-    "failed_jobs": 0,
-    "skipped_jobs": 0,
-    "jobs": [
-      {
-        "name": "RV32 benchmark (cv32a65x)",
-        "conclusion": "success",
-        "started_at": "2026-03-25T01:11:45Z",
-        "completed_at": "2026-03-25T01:12:59Z",
-        "duration_seconds": 74,
-        "html_url": "https://github.com/AlexChenIC/cva6/actions/runs/23519902191/job/68460901866",
-        "arch": "rv32",
-        "config": "cv32a65x",
-        "testcase": "benchmark"
-      },
-      {
-        "name": "RV64 benchmark (cv64a6_imafdc_sv39)",
-        "conclusion": "success",
-        "started_at": "2026-03-25T01:08:39Z",
-        "completed_at": "2026-03-25T01:09:48Z",
-        "duration_seconds": 69,
-        "html_url": "https://github.com/AlexChenIC/cva6/actions/runs/23519902191/job/68460901870",
-        "arch": "rv64",
-        "config": "cv64a6_imafdc_sv39",
-        "testcase": "benchmark"
-      },
-      {
-        "name": "RV64 cv64a6_imafdc_tests (cv64a6_imafdc_sv39)",
-        "conclusion": "success",
-        "started_at": "2026-03-25T01:08:15Z",
-        "completed_at": "2026-03-25T01:13:39Z",
-        "duration_seconds": 324,
-        "html_url": "https://github.com/AlexChenIC/cva6/actions/runs/23519902191/job/68460901871",
-        "arch": "rv64",
-        "config": "cv64a6_imafdc_sv39",
-        "testcase": "cv64a6_imafdc_tests"
-      },
-      {
-        "name": "RV64 smoke-tests-cv64a6_imafdc_sv39 (cv64a6_imafdc_sv39)",
-        "conclusion": "success",
-        "started_at": "2026-03-25T01:13:01Z",
-        "completed_at": "2026-03-25T01:18:17Z",
-        "duration_seconds": 316,
-        "html_url": "https://github.com/AlexChenIC/cva6/actions/runs/23519902191/job/68460901872",
-        "arch": "rv64",
-        "config": "cv64a6_imafdc_sv39",
-        "testcase": "smoke-tests-cv64a6_imafdc_sv39"
-      },
-      {
-        "name": "RV32 smoke-tests-cv32a65x (cv32a65x)",
-        "conclusion": "success",
-        "started_at": "2026-03-25T01:08:08Z",
-        "completed_at": "2026-03-25T01:10:20Z",
-        "duration_seconds": 132,
-        "html_url": "https://github.com/AlexChenIC/cva6/actions/runs/23519902191/job/68460901880",
-        "arch": "rv32",
-        "config": "cv32a65x",
-        "testcase": "smoke-tests-cv32a65x"
       }
     ]
   }
