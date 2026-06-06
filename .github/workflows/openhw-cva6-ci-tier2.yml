@@ -6,9 +6,10 @@
 # ================================================================================
 #
 # PURPOSE:
-#   Nightly Verilator regression aligned with the remaining coverage from the
-#   legacy ci.yml workflow after the fast Tier 1 split.
-#   Runs the heavier legacy CI regression jobs where longer runtime is acceptable.
+#   Nightly Verilator regression for the phase-1 tier coverage,
+#   extended with the remaining legacy ci.yml regression coverage.
+#   Runs a curated Tier 2 set of functional and workload-oriented tests,
+#   expanding coverage beyond Tier 1.
 #
 # SCHEDULE: Daily at 22:00 UTC
 #
@@ -16,23 +17,46 @@
 #   schedule          -> Automatic daily regression (22:00 UTC)
 #   workflow_dispatch -> On-demand Tier 2 regression for manual validation
 #
-# COVERED CONFIGURATIONS (remaining legacy ci.yml coverage after Tier 1):
+# COVERED CONFIGURATIONS (phase-1 tier coverage + legacy ci.yml configs):
 #   RV32:
-#     - cv32a65x                        (dual-issue, no MMU)    [1 testcase]
+#     - cv32a65x                        (dual-issue, no MMU)    [ 8 testcases]
+#     - cv32a60x                        (single-issue, no MMU)  [ 4 testcases]
 #   RV64:
-#     - cv64a6_imafdc_sv39_hpdcache     (HPDcache)              [1 testcase]
-#     - cv64a6_imafdc_sv39_hpdcache_wb  (HPDcache + write-back) [1 testcase]
+#     - cv64a6_imafdc_sv39_hpdcache     (HPDcache)              [ 1 testcase ]
+#     - cv64a6_imafdc_sv39_hpdcache_wb  (HPDcache + write-back) [ 5 testcases]
 #
 # TEST SUITES PER CONFIG:
-#   - cv32a65x                       -> dv-riscv-arch-test
-#   - cv64a6_imafdc_sv39_hpdcache    -> dv-riscv-arch-test
-#   - cv64a6_imafdc_sv39_hpdcache_wb -> dv-riscv-arch-test
+#   cv32a65x (8 jobs):
+#     smoke-tests, cv32a6_tests, dv-riscv-arch-test, dv-riscv-tests-p,
+#     dv-riscv-compliance, dv-csr-embedded-tests,
+#     hwconfig_tests, coremark
+#
+#   cv32a60x (4 jobs):
+#     cv32a6_tests, dv-riscv-arch-test, dv-riscv-tests-p,
+#     dv-riscv-compliance
+#   (Note: hwconfig/coremark/dv-csr-embedded-tests are cv32a65x-specific)
+#
+#   cv64a6_imafdc_sv39_hpdcache_wb (5 jobs):
+#     cv64a6_imafdc_tests, dv-riscv-arch-test,
+#     dv-riscv-tests-v [testlist], dv-riscv-tests-p [testlist],
+#     dv-riscv-compliance [testlist]
+#
+#   cv64a6_imafdc_sv39_hpdcache (1 job):
+#     dv-riscv-arch-test
 #
 # NOTES:
-#   - Configurations with only one legacy ci.yml testcase are fully covered by
-#     Tier 1 and therefore do not need an additional Tier 2 job for parity.
-#   - Broader regression suites can be added later as a separate coverage
-#     expansion once their runtime and failure reporting are agreed.
+#   - "dv-riscv-tests-v" / "dv-riscv-tests-p" are job label names, not script
+#     names. They run via python3 cva6.py --testlist= (no .sh equivalent).
+#     Splitting v (virtual mode) / p (physical mode) into separate jobs enables
+#     per-mode failure isolation.
+#   - dv-csr-embedded-tests uses veri-testharness only: spike does not emulate
+#     embedded CSR side effects.
+#   - hwconfig_tests and coremark require DV_HWCONFIG_OPTS, encoded via the
+#     matrix hwconfig_opts field and applied in the run step.
+#   - coremark uses veri-testharness only: spike times out on long benchmark loops.
+#   - benchmark and dv-riscv-csr-access-test are intentionally excluded from
+#     Phase 1 Tier 2 until their legacy regression scripts propagate failures
+#     and produce trustworthy artifacts.
 # ================================================================================
 
 name: openhw-cva6-ci-tier2
@@ -83,13 +107,131 @@ jobs:
           # cv32a65x - dual-issue RV32, no MMU
           # ----------------------------------------------------------
 
-          # RISC-V architecture test suite from legacy ci.yml
+          # Quick sanity check (~1 test)
           - config: cv32a65x
-            testcase: dv-riscv-arch-test
+            testcase: smoke-tests-cv32a65x
             mode: script
             simulator: veri-testharness,spike
             install_script: ""
             testlist: ""
+            test_name: ""
+            linker: ""
+
+          # CVA6-specific directed tests
+          - config: cv32a65x
+            testcase: cv32a6_tests
+            mode: script
+            simulator: veri-testharness,spike
+            install_script: ""
+            testlist: ""
+            test_name: ""
+            linker: ""
+
+          # RISC-V architecture test suite (~105 tests)
+          - config: cv32a65x
+            testcase: dv-riscv-arch-test
+            mode: testlist
+            simulator: veri-testharness,spike
+            install_script: install-riscv-arch-test
+            testlist: "../tests/testlist_riscv-arch-test-cv32a65x.yaml"
+            test_name: ""
+            linker: "../tests/riscv-arch-test/riscv-target/spike/link.ld"
+
+          # Standard RISC-V tests, p-mode only (no MMU on cv32a65x, ~94 tests)
+          - config: cv32a65x
+            testcase: dv-riscv-tests-p
+            mode: testlist
+            simulator: veri-testharness,spike
+            install_script: install-riscv-tests
+            testlist: "../tests/testlist_riscv-tests-cv32a65x-p.yaml"
+            test_name: ""
+            linker: ""
+
+          # RISC-V compliance suite (~183 tests)
+          - config: cv32a65x
+            testcase: dv-riscv-compliance
+            mode: testlist
+            simulator: veri-testharness,spike
+            install_script: install-riscv-compliance
+            testlist: "../tests/testlist_riscv-compliance-cv32a65x.yaml"
+            test_name: ""
+            linker: ""
+
+          # Embedded CSR behavior (~5 tests); veri-testharness only -
+          # spike does not emulate embedded CSR side effects
+          - config: cv32a65x
+            testcase: dv-csr-embedded-tests
+            mode: script
+            simulator: veri-testharness
+            install_script: ""
+            testlist: ""
+            test_name: ""
+            linker: ""
+
+          # hwconfig toolchain sanity (requires DV_HWCONFIG_OPTS)
+          - config: cv32a65x
+            testcase: hwconfig_tests
+            mode: script
+            simulator: veri-testharness,spike
+            install_script: ""
+            testlist: ""
+            test_name: ""
+            linker: ""
+            hwconfig_opts: cv32a65x
+
+          # CoreMark benchmark on hwconfig; veri-testharness only -
+          # spike times out on long-running benchmark loops
+          - config: cv32a65x
+            testcase: coremark
+            mode: script
+            simulator: veri-testharness
+            install_script: ""
+            testlist: ""
+            test_name: ""
+            linker: ""
+            hwconfig_opts: cv32a65x
+
+          # ----------------------------------------------------------
+          # cv32a60x - single-issue RV32, no MMU
+          # ----------------------------------------------------------
+
+          # CVA6-specific directed tests
+          - config: cv32a60x
+            testcase: cv32a6_tests
+            mode: script
+            simulator: veri-testharness,spike
+            install_script: ""
+            testlist: ""
+            test_name: ""
+            linker: ""
+
+          # RISC-V architecture test suite
+          - config: cv32a60x
+            testcase: dv-riscv-arch-test
+            mode: testlist
+            simulator: veri-testharness,spike
+            install_script: install-riscv-arch-test
+            testlist: "../tests/testlist_riscv-arch-test-cv32a60x.yaml"
+            test_name: ""
+            linker: "../tests/riscv-arch-test/riscv-target/spike/link.ld"
+
+          # Standard RISC-V tests, p-mode only (no MMU on cv32a60x)
+          - config: cv32a60x
+            testcase: dv-riscv-tests-p
+            mode: testlist
+            simulator: veri-testharness,spike
+            install_script: install-riscv-tests
+            testlist: "../tests/testlist_riscv-tests-cv32a60x-p.yaml"
+            test_name: ""
+            linker: ""
+
+          # RISC-V compliance suite
+          - config: cv32a60x
+            testcase: dv-riscv-compliance
+            mode: testlist
+            simulator: veri-testharness,spike
+            install_script: install-riscv-compliance
+            testlist: "../tests/testlist_riscv-compliance-cv32a60x.yaml"
             test_name: ""
             linker: ""
 
@@ -140,10 +282,23 @@ jobs:
       matrix:
         include:
           # ----------------------------------------------------------
-          # Legacy ci.yml RV64 architecture tests
+          # Legacy ci.yml HPDcache architecture coverage
           # ----------------------------------------------------------
           - config: cv64a6_imafdc_sv39_hpdcache
             testcase: dv-riscv-arch-test
+            mode: testlist
+            simulator: veri-testharness,spike
+            install_script: install-riscv-arch-test
+            testlist: "../tests/testlist_riscv-arch-test-cv64a6_imafdc_sv39.yaml"
+            test_name: ""
+            linker: "../tests/riscv-arch-test/riscv-target/spike/link.ld"
+
+          # ----------------------------------------------------------
+          # cv64a6_imafdc_sv39_hpdcache_wb - RV64 HPDcache + write-back
+          # ----------------------------------------------------------
+          # CVA6-specific directed tests
+          - config: cv64a6_imafdc_sv39_hpdcache_wb
+            testcase: cv64a6_imafdc_tests
             mode: script
             simulator: veri-testharness,spike
             install_script: ""
@@ -151,12 +306,46 @@ jobs:
             test_name: ""
             linker: ""
 
+          # RISC-V architecture test suite
           - config: cv64a6_imafdc_sv39_hpdcache_wb
             testcase: dv-riscv-arch-test
-            mode: script
+            mode: testlist
             simulator: veri-testharness,spike
-            install_script: ""
-            testlist: ""
+            install_script: install-riscv-arch-test
+            testlist: "../tests/testlist_riscv-arch-test-cv64a6_imafdc_sv39.yaml"
+            test_name: ""
+            linker: "../tests/riscv-arch-test/riscv-target/spike/link.ld"
+
+          # Standard RISC-V tests, virtual-mode (SV39 MMU)
+          # "dv-riscv-tests-v" is a job label - runs via cva6.py --testlist,
+          # there is no verif/regress/dv-riscv-tests-v.sh
+          - config: cv64a6_imafdc_sv39_hpdcache_wb
+            testcase: dv-riscv-tests-v
+            mode: testlist
+            simulator: veri-testharness,spike
+            install_script: install-riscv-tests
+            testlist: "../tests/testlist_riscv-tests-cv64a6_imafdc_sv39-v.yaml"
+            test_name: ""
+            linker: ""
+
+          # Standard RISC-V tests, physical-mode
+          # "dv-riscv-tests-p" is a job label - same note as dv-riscv-tests-v above
+          - config: cv64a6_imafdc_sv39_hpdcache_wb
+            testcase: dv-riscv-tests-p
+            mode: testlist
+            simulator: veri-testharness,spike
+            install_script: install-riscv-tests
+            testlist: "../tests/testlist_riscv-tests-cv64a6_imafdc_sv39-p.yaml"
+            test_name: ""
+            linker: ""
+
+          # RISC-V compliance suite (uses sv39 testlist - valid for hpdcache_wb)
+          - config: cv64a6_imafdc_sv39_hpdcache_wb
+            testcase: dv-riscv-compliance
+            mode: testlist
+            simulator: veri-testharness,spike
+            install_script: install-riscv-compliance
+            testlist: "../tests/testlist_riscv-compliance-cv64a6_imafdc_sv39.yaml"
             test_name: ""
             linker: ""
 

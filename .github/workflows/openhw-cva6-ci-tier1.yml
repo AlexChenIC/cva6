@@ -6,18 +6,19 @@
 # ================================================================================
 #
 # PURPOSE:
-#   Fast Verilator-based sanity regression aligned with the configuration
-#   coverage from the legacy ci.yml workflow.
-#   Runs one representative directed test per legacy CI configuration to
-#   provide automatic sanity checks for pull-requests.
+#   Fast Verilator-based sanity regression for the phase-1 tier coverage,
+#   extended with the legacy ci.yml configuration coverage.
+#   Runs representative smoke or directed tests to provide automatic sanity
+#   checks for pull-requests.
 #
 # TRIGGER POLICY:
 #   pull_request      -> Automatic sanity checks for PRs targeting master
 #   workflow_dispatch -> On-demand rerun for manual validation
 #
-# COVERED CONFIGURATIONS (legacy ci.yml parity):
+# COVERED CONFIGURATIONS (phase-1 tier coverage + legacy ci.yml configs):
 #   RV32:
 #     - cv32a65x                        (dual-issue, no MMU)
+#     - cv32a60x                        (single-issue, no MMU)
 #   RV64:
 #     - cv64a6_imafdc_sv39_hpdcache     (HPDcache)
 #     - cv64a6_imafdc_sv39_hpdcache_wb  (HPDcache + write-back)
@@ -25,13 +26,14 @@
 #     - cv64a6_imafdc_sv39              (baseline SV39)
 #
 # TEST SUITES PER CONFIG:
-#   - cv32a65x                       -> cv32a6_tests
+#   - cv32a65x                       -> smoke-tests-cv32a65x, cv32a6_tests
+#   - cv32a60x                       -> cv32a6_tests
 #   - each RV64 configuration        -> cv64a6_imafdc_tests
 #
 # NOTES:
-#   - Tier 1 is Verilator + Spike tandem, matching the legacy ci.yml flow.
-#   - Tier 1 is intentionally narrow: one representative testcase per
-#     configuration for fast PR-gate signal.
+#   - Phase 1 Tier 1 is Verilator + Spike tandem.
+#   - Tier 1 is intentionally narrower than Tier 2: the goal is fast signal,
+#     not broad regression depth.
 # ================================================================================
 
 name: openhw-cva6-ci-tier1
@@ -82,7 +84,31 @@ jobs:
           # ----------------------------------------------------------
           # cv32a65x - dual-issue RV32, no MMU
           # ----------------------------------------------------------
+          # Quickest RV32 sanity signal for the higher-feature RV32 core
           - config: cv32a65x
+            testcase: smoke-tests-cv32a65x
+            mode: script
+            simulator: veri-testharness,spike
+            install_script: ""
+            testlist: ""
+            test_name: ""
+            linker: ""
+
+          # Legacy ci.yml RV32 sanity coverage
+          - config: cv32a65x
+            testcase: cv32a6_tests
+            mode: script
+            simulator: veri-testharness,spike
+            install_script: ""
+            testlist: ""
+            test_name: ""
+            linker: ""
+
+          # ----------------------------------------------------------
+          # cv32a60x - single-issue RV32, no MMU
+          # ----------------------------------------------------------
+          # Directed sanity regression; no dedicated workflow-native smoke exists
+          - config: cv32a60x
             testcase: cv32a6_tests
             mode: script
             simulator: veri-testharness,spike
@@ -137,7 +163,7 @@ jobs:
       matrix:
         include:
           # ----------------------------------------------------------
-          # Legacy ci.yml RV64 configurations
+          # Phase-1 and legacy ci.yml RV64 configurations
           # ----------------------------------------------------------
           - config: cv64a6_imafdc_sv39_hpdcache
             testcase: cv64a6_imafdc_tests
