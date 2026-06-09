@@ -24,7 +24,7 @@
 #   RV64:
 #     - cv64a6_imafdc_sv39_hpdcache     (HPDcache)              [ 5 testcases]
 #     - cv64a6_imafdc_sv39_hpdcache_wb  (HPDcache + write-back) [ 5 testcases]
-#     - cv64a6_imafdc_sv39_wb           (write-back)            [ 5 testcases]
+#     - cv64a6_imafdc_sv39_wb           (write-back)            [ 4 testcases]
 #     - cv64a6_imafdc_sv39              (baseline SV39)         [ 5 testcases]
 #
 # TEST SUITES PER CONFIG:
@@ -38,8 +38,13 @@
 #     dv-riscv-compliance
 #   (Note: hwconfig/coremark/dv-csr-embedded-tests are cv32a65x-specific)
 #
-#   each RV64 configuration (5 jobs):
+#   RV64 configurations with crypto ISA support (5 jobs):
 #     cv64a6_imafdc_tests, dv-riscv-arch-test,
+#     dv-riscv-tests-v [testlist], dv-riscv-tests-p [testlist],
+#     dv-riscv-compliance [testlist]
+#
+#   cv64a6_imafdc_sv39_wb (4 jobs):
+#     cv64a6_imafdc_tests,
 #     dv-riscv-tests-v [testlist], dv-riscv-tests-p [testlist],
 #     dv-riscv-compliance [testlist]
 #
@@ -404,16 +409,6 @@ jobs:
             testlist: ""
             test_name: ""
             linker: ""
-
-          # RISC-V architecture test suite
-          - config: cv64a6_imafdc_sv39_wb
-            testcase: dv-riscv-arch-test
-            mode: testlist
-            simulator: veri-testharness,spike
-            install_script: install-riscv-arch-test
-            testlist: "../tests/testlist_riscv-arch-test-cv64a6_imafdc_sv39.yaml"
-            test_name: ""
-            linker: "../tests/riscv-arch-test/riscv-target/spike/link.ld"
 
           # Standard RISC-V tests, virtual-mode (SV39 MMU)
           # "dv-riscv-tests-v" is a job label - runs via cva6.py --testlist,
