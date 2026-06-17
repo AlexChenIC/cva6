@@ -1,5 +1,93 @@
 [
   {
+    "id": 27684582940,
+    "source": "github-actions",
+    "simulator": "verilator",
+    "run_number": 28,
+    "status": "completed",
+    "conclusion": "success",
+    "html_url": "https://github.com/AlexChenIC/cva6/actions/runs/27684582940",
+    "head_branch": "ci/harden-tier-ci-clean",
+    "head_sha": "f8f662a4",
+    "event": "workflow_dispatch",
+    "created_at": "2026-06-17T11:08:03Z",
+    "updated_at": "2026-06-17T11:12:47Z",
+    "run_started_at": "2026-06-17T11:08:03Z",
+    "duration_seconds": 284,
+    "total_jobs": 6,
+    "passed_jobs": 6,
+    "failed_jobs": 0,
+    "skipped_jobs": 0,
+    "jobs": [
+      {
+        "name": "RV64 Tier1 cv64a6_imafdc_sv39 / smoke-riscv-tests-v",
+        "conclusion": "success",
+        "started_at": "2026-06-17T11:09:29Z",
+        "completed_at": "2026-06-17T11:12:46Z",
+        "duration_seconds": 197,
+        "html_url": "https://github.com/AlexChenIC/cva6/actions/runs/27684582940/job/81880340832",
+        "arch": "rv64",
+        "config": "cv64a6_imafdc_sv39",
+        "testcase": "smoke-riscv-tests-v"
+      },
+      {
+        "name": "RV32 Tier1 cv32a65x / smoke-riscv-tests-p",
+        "conclusion": "success",
+        "started_at": "2026-06-17T11:09:28Z",
+        "completed_at": "2026-06-17T11:11:34Z",
+        "duration_seconds": 126,
+        "html_url": "https://github.com/AlexChenIC/cva6/actions/runs/27684582940/job/81880340833",
+        "arch": "rv32",
+        "config": "cv32a65x",
+        "testcase": "smoke-riscv-tests-p"
+      },
+      {
+        "name": "RV64 Tier1 cv64a6_imafdc_sv39_hpdcache_wb / smoke-riscv-tests-v",
+        "conclusion": "success",
+        "started_at": "2026-06-17T11:09:35Z",
+        "completed_at": "2026-06-17T11:12:28Z",
+        "duration_seconds": 173,
+        "html_url": "https://github.com/AlexChenIC/cva6/actions/runs/27684582940/job/81880340840",
+        "arch": "rv64",
+        "config": "cv64a6_imafdc_sv39_hpdcache_wb",
+        "testcase": "smoke-riscv-tests-v"
+      },
+      {
+        "name": "RV64 Tier1 cv64a6_imafdc_sv39_wb / smoke-riscv-tests-v",
+        "conclusion": "success",
+        "started_at": "2026-06-17T11:09:35Z",
+        "completed_at": "2026-06-17T11:12:20Z",
+        "duration_seconds": 165,
+        "html_url": "https://github.com/AlexChenIC/cva6/actions/runs/27684582940/job/81880340866",
+        "arch": "rv64",
+        "config": "cv64a6_imafdc_sv39_wb",
+        "testcase": "smoke-riscv-tests-v"
+      },
+      {
+        "name": "RV32 Tier1 cv32a60x / smoke-riscv-tests-p",
+        "conclusion": "success",
+        "started_at": "2026-06-17T11:09:29Z",
+        "completed_at": "2026-06-17T11:11:32Z",
+        "duration_seconds": 123,
+        "html_url": "https://github.com/AlexChenIC/cva6/actions/runs/27684582940/job/81880340882",
+        "arch": "rv32",
+        "config": "cv32a60x",
+        "testcase": "smoke-riscv-tests-p"
+      },
+      {
+        "name": "RV64 Tier1 cv64a6_imafdc_sv39_hpdcache / smoke-riscv-tests-v",
+        "conclusion": "success",
+        "started_at": "2026-06-17T11:09:29Z",
+        "completed_at": "2026-06-17T11:12:44Z",
+        "duration_seconds": 195,
+        "html_url": "https://github.com/AlexChenIC/cva6/actions/runs/27684582940/job/81880340900",
+        "arch": "rv64",
+        "config": "cv64a6_imafdc_sv39_hpdcache",
+        "testcase": "smoke-riscv-tests-v"
+      }
+    ]
+  },
+  {
     "id": 27676114528,
     "source": "github-actions",
     "simulator": "verilator",
