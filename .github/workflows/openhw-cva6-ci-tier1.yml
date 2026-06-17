@@ -8,8 +8,8 @@
 # PURPOSE:
 #   Fast Verilator-based sanity regression for the phase-1 tier coverage,
 #   extended with the legacy ci.yml configuration coverage.
-#   Runs representative smoke or directed tests to provide automatic sanity
-#   checks for pull-requests.
+#   Runs exactly one lightweight smoke test per covered configuration to
+#   provide quick automatic sanity checks for pull-requests.
 #
 # TRIGGER POLICY:
 #   pull_request      -> Automatic sanity checks for PRs targeting master
@@ -26,14 +26,14 @@
 #     - cv64a6_imafdc_sv39              (baseline SV39)
 #
 # TEST SUITES PER CONFIG:
-#   - cv32a65x                       -> smoke-tests-cv32a65x, cv32a6_tests
-#   - cv32a60x                       -> cv32a6_tests
-#   - each RV64 configuration        -> cv64a6_imafdc_tests
+#   - each RV32 configuration        -> smoke-riscv-tests-p / rv32ui-p-add
+#   - each RV64 configuration        -> smoke-riscv-tests-v / rv64ui-v-add
 #
 # NOTES:
 #   - Phase 1 Tier 1 is Verilator + Spike tandem.
 #   - Tier 1 is intentionally narrower than Tier 2: the goal is fast signal,
-#     not broad regression depth.
+#     not broad regression depth. Directed tests and full regressions are kept
+#     in Tier 2/nightly.
 # ================================================================================
 
 name: openhw-cva6-ci-tier1
@@ -84,37 +84,27 @@ jobs:
           # ----------------------------------------------------------
           # cv32a65x - dual-issue RV32, no MMU
           # ----------------------------------------------------------
-          # Quickest RV32 sanity signal for the higher-feature RV32 core
+          # One p-mode RISC-V ISA smoke test for the higher-feature RV32 core.
           - config: cv32a65x
-            testcase: smoke-tests-cv32a65x
-            mode: script
+            testcase: smoke-riscv-tests-p
+            mode: testlist
             simulator: veri-testharness,spike
-            install_script: ""
-            testlist: ""
-            test_name: ""
-            linker: ""
-
-          # Legacy ci.yml RV32 sanity coverage
-          - config: cv32a65x
-            testcase: cv32a6_tests
-            mode: script
-            simulator: veri-testharness,spike
-            install_script: ""
-            testlist: ""
-            test_name: ""
+            install_script: install-riscv-tests
+            testlist: "../tests/testlist_riscv-tests-cv32a65x-p.yaml"
+            test_name: rv32ui-p-add
             linker: ""
 
           # ----------------------------------------------------------
           # cv32a60x - single-issue RV32, no MMU
           # ----------------------------------------------------------
-          # Directed sanity regression; no dedicated workflow-native smoke exists
+          # Same p-mode smoke test on the single-issue RV32 core.
           - config: cv32a60x
-            testcase: cv32a6_tests
-            mode: script
+            testcase: smoke-riscv-tests-p
+            mode: testlist
             simulator: veri-testharness,spike
-            install_script: ""
-            testlist: ""
-            test_name: ""
+            install_script: install-riscv-tests
+            testlist: "../tests/testlist_riscv-tests-cv32a60x-p.yaml"
+            test_name: rv32ui-p-add
             linker: ""
 
     steps:
@@ -165,40 +155,41 @@ jobs:
           # ----------------------------------------------------------
           # Phase-1 and legacy ci.yml RV64 configurations
           # ----------------------------------------------------------
+          # One v-mode RISC-V ISA smoke test per RV64 SV39 configuration.
           - config: cv64a6_imafdc_sv39_hpdcache
-            testcase: cv64a6_imafdc_tests
-            mode: script
+            testcase: smoke-riscv-tests-v
+            mode: testlist
             simulator: veri-testharness,spike
-            install_script: ""
-            testlist: ""
-            test_name: ""
+            install_script: install-riscv-tests
+            testlist: "../tests/testlist_riscv-tests-cv64a6_imafdc_sv39-v.yaml"
+            test_name: rv64ui-v-add
             linker: ""
 
           - config: cv64a6_imafdc_sv39_hpdcache_wb
-            testcase: cv64a6_imafdc_tests
-            mode: script
+            testcase: smoke-riscv-tests-v
+            mode: testlist
             simulator: veri-testharness,spike
-            install_script: ""
-            testlist: ""
-            test_name: ""
+            install_script: install-riscv-tests
+            testlist: "../tests/testlist_riscv-tests-cv64a6_imafdc_sv39-v.yaml"
+            test_name: rv64ui-v-add
             linker: ""
 
           - config: cv64a6_imafdc_sv39_wb
-            testcase: cv64a6_imafdc_tests
-            mode: script
+            testcase: smoke-riscv-tests-v
+            mode: testlist
             simulator: veri-testharness,spike
-            install_script: ""
-            testlist: ""
-            test_name: ""
+            install_script: install-riscv-tests
+            testlist: "../tests/testlist_riscv-tests-cv64a6_imafdc_sv39-v.yaml"
+            test_name: rv64ui-v-add
             linker: ""
 
           - config: cv64a6_imafdc_sv39
-            testcase: cv64a6_imafdc_tests
-            mode: script
+            testcase: smoke-riscv-tests-v
+            mode: testlist
             simulator: veri-testharness,spike
-            install_script: ""
-            testlist: ""
-            test_name: ""
+            install_script: install-riscv-tests
+            testlist: "../tests/testlist_riscv-tests-cv64a6_imafdc_sv39-v.yaml"
+            test_name: rv64ui-v-add
             linker: ""
 
     steps:
