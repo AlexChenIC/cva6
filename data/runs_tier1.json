@@ -1,5 +1,104 @@
 [
   {
+    "id": 27676114528,
+    "source": "github-actions",
+    "simulator": "verilator",
+    "run_number": 27,
+    "status": "completed",
+    "conclusion": "success",
+    "html_url": "https://github.com/AlexChenIC/cva6/actions/runs/27676114528",
+    "head_branch": "master",
+    "head_sha": "1577e464",
+    "event": "workflow_dispatch",
+    "created_at": "2026-06-17T08:29:33Z",
+    "updated_at": "2026-06-17T09:29:43Z",
+    "run_started_at": "2026-06-17T08:29:33Z",
+    "duration_seconds": 3610,
+    "total_jobs": 7,
+    "passed_jobs": 7,
+    "failed_jobs": 0,
+    "skipped_jobs": 0,
+    "jobs": [
+      {
+        "name": "RV32 Tier1 cv32a65x / cv32a6_tests",
+        "conclusion": "success",
+        "started_at": "2026-06-17T09:02:24Z",
+        "completed_at": "2026-06-17T09:06:07Z",
+        "duration_seconds": 223,
+        "html_url": "https://github.com/AlexChenIC/cva6/actions/runs/27676114528/job/81854645560",
+        "arch": "rv32",
+        "config": "cv32a65x",
+        "testcase": "cv32a6_tests"
+      },
+      {
+        "name": "RV64 Tier1 cv64a6_imafdc_sv39_hpdcache / cv64a6_imafdc_tests",
+        "conclusion": "success",
+        "started_at": "2026-06-17T09:23:13Z",
+        "completed_at": "2026-06-17T09:28:36Z",
+        "duration_seconds": 323,
+        "html_url": "https://github.com/AlexChenIC/cva6/actions/runs/27676114528/job/81854645563",
+        "arch": "rv64",
+        "config": "cv64a6_imafdc_sv39_hpdcache",
+        "testcase": "cv64a6_imafdc_tests"
+      },
+      {
+        "name": "RV64 Tier1 cv64a6_imafdc_sv39_wb / cv64a6_imafdc_tests",
+        "conclusion": "success",
+        "started_at": "2026-06-17T08:54:43Z",
+        "completed_at": "2026-06-17T08:59:55Z",
+        "duration_seconds": 312,
+        "html_url": "https://github.com/AlexChenIC/cva6/actions/runs/27676114528/job/81854645567",
+        "arch": "rv64",
+        "config": "cv64a6_imafdc_sv39_wb",
+        "testcase": "cv64a6_imafdc_tests"
+      },
+      {
+        "name": "RV32 Tier1 cv32a65x / smoke-tests-cv32a65x",
+        "conclusion": "success",
+        "started_at": "2026-06-17T09:15:12Z",
+        "completed_at": "2026-06-17T09:17:12Z",
+        "duration_seconds": 120,
+        "html_url": "https://github.com/AlexChenIC/cva6/actions/runs/27676114528/job/81854645580",
+        "arch": "rv32",
+        "config": "cv32a65x",
+        "testcase": "smoke-tests-cv32a65x"
+      },
+      {
+        "name": "RV64 Tier1 cv64a6_imafdc_sv39 / cv64a6_imafdc_tests",
+        "conclusion": "success",
+        "started_at": "2026-06-17T09:24:33Z",
+        "completed_at": "2026-06-17T09:29:42Z",
+        "duration_seconds": 309,
+        "html_url": "https://github.com/AlexChenIC/cva6/actions/runs/27676114528/job/81854645589",
+        "arch": "rv64",
+        "config": "cv64a6_imafdc_sv39",
+        "testcase": "cv64a6_imafdc_tests"
+      },
+      {
+        "name": "RV64 Tier1 cv64a6_imafdc_sv39_hpdcache_wb / cv64a6_imafdc_tests",
+        "conclusion": "success",
+        "started_at": "2026-06-17T08:47:44Z",
+        "completed_at": "2026-06-17T08:53:11Z",
+        "duration_seconds": 327,
+        "html_url": "https://github.com/AlexChenIC/cva6/actions/runs/27676114528/job/81854645593",
+        "arch": "rv64",
+        "config": "cv64a6_imafdc_sv39_hpdcache_wb",
+        "testcase": "cv64a6_imafdc_tests"
+      },
+      {
+        "name": "RV32 Tier1 cv32a60x / cv32a6_tests",
+        "conclusion": "success",
+        "started_at": "2026-06-17T09:26:31Z",
+        "completed_at": "2026-06-17T09:29:37Z",
+        "duration_seconds": 186,
+        "html_url": "https://github.com/AlexChenIC/cva6/actions/runs/27676114528/job/81854645597",
+        "arch": "rv32",
+        "config": "cv32a60x",
+        "testcase": "cv32a6_tests"
+      }
+    ]
+  },
+  {
     "id": 27675668982,
     "source": "github-actions",
     "simulator": "verilator",
