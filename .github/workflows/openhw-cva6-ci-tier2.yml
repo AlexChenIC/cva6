@@ -9,7 +9,8 @@
 #   Nightly Verilator regression for the phase-1 tier coverage,
 #   extended so legacy ci.yml coverage is a Tier 2 subset.
 #   Runs a curated Tier 2 set of functional and workload-oriented tests,
-#   expanding coverage beyond Tier 1.
+#   expanding coverage beyond Tier 1. Directed suites that are too broad for
+#   the fast Tier 1 PR gate are kept here.
 #
 # SCHEDULE: Daily at 22:00 UTC
 #
