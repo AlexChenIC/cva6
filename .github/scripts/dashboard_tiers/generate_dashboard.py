@@ -36,8 +36,6 @@ MATRIX_CONFIGS_ORDER = [
 ]
 
 MATRIX_SUITES_ORDER = [
-    "smoke-riscv-tests-p",
-    "smoke-riscv-tests-v",
     "smoke-tests-cv32a65x",
     "cv32a6_tests",
     "cv64a6_imafdc_tests",

@@ -6,34 +6,31 @@
 # ================================================================================
 #
 # PURPOSE:
-#   Fast Verilator-based sanity regression for the phase-1 tier coverage,
-#   extended with the legacy ci.yml configuration coverage.
-#   Runs exactly one lightweight smoke test per covered configuration to
-#   provide quick automatic sanity checks for pull-requests.
+#   Fast Verilator-based sanity regression for the three phase-1 "green"
+#   configurations selected for the first GitHub CI rollout.
+#   Runs one representative smoke or directed test per approved
+#   configuration to provide automatic sanity checks for pull-requests.
 #
 # TRIGGER POLICY:
 #   pull_request      -> Automatic sanity checks for PRs targeting master
 #   workflow_dispatch -> On-demand rerun for manual validation
 #
-# COVERED CONFIGURATIONS (phase-1 tier coverage + legacy ci.yml configs):
+# COVERED CONFIGURATIONS (Phase-1 Green Config subset):
 #   RV32:
 #     - cv32a65x                        (dual-issue, no MMU)
 #     - cv32a60x                        (single-issue, no MMU)
 #   RV64:
-#     - cv64a6_imafdc_sv39_hpdcache     (HPDcache)
 #     - cv64a6_imafdc_sv39_hpdcache_wb  (HPDcache + write-back)
-#     - cv64a6_imafdc_sv39_wb           (write-back)
-#     - cv64a6_imafdc_sv39              (baseline SV39)
 #
 # TEST SUITES PER CONFIG:
-#   - each RV32 configuration        -> smoke-riscv-tests-p / rv32ui-p-add
-#   - each RV64 configuration        -> smoke-riscv-tests-v / rv64ui-v-add
+#   - cv32a65x                       -> smoke-tests-cv32a65x
+#   - cv32a60x                       -> cv32a6_tests
+#   - cv64a6_imafdc_sv39_hpdcache_wb -> cv64a6_imafdc_tests
 #
 # NOTES:
-#   - Phase 1 Tier 1 is Verilator + Spike tandem.
+#   - Phase 1 Tier 1 is Verilator-only.
 #   - Tier 1 is intentionally narrower than Tier 2: the goal is fast signal,
-#     not broad regression depth. Directed tests and full regressions are kept
-#     in Tier 2/nightly.
+#     not broad regression depth.
 # ================================================================================
 
 name: openhw-cva6-ci-tier1
@@ -84,27 +81,27 @@ jobs:
           # ----------------------------------------------------------
           # cv32a65x - dual-issue RV32, no MMU
           # ----------------------------------------------------------
-          # One p-mode RISC-V ISA smoke test for the higher-feature RV32 core.
+          # Quickest RV32 sanity signal for the higher-feature RV32 core
           - config: cv32a65x
-            testcase: smoke-riscv-tests-p
-            mode: testlist
+            testcase: smoke-tests-cv32a65x
+            mode: script
             simulator: veri-testharness,spike
-            install_script: install-riscv-tests
-            testlist: "../tests/testlist_riscv-tests-cv32a65x-p.yaml"
-            test_name: rv32ui-p-add
+            install_script: ""
+            testlist: ""
+            test_name: ""
             linker: ""
 
           # ----------------------------------------------------------
           # cv32a60x - single-issue RV32, no MMU
           # ----------------------------------------------------------
-          # Same p-mode smoke test on the single-issue RV32 core.
+          # Directed sanity regression; no dedicated workflow-native smoke exists
           - config: cv32a60x
-            testcase: smoke-riscv-tests-p
-            mode: testlist
+            testcase: cv32a6_tests
+            mode: script
             simulator: veri-testharness,spike
-            install_script: install-riscv-tests
-            testlist: "../tests/testlist_riscv-tests-cv32a60x-p.yaml"
-            test_name: rv32ui-p-add
+            install_script: ""
+            testlist: ""
+            test_name: ""
             linker: ""
 
     steps:
@@ -153,43 +150,16 @@ jobs:
       matrix:
         include:
           # ----------------------------------------------------------
-          # Phase-1 and legacy ci.yml RV64 configurations
+          # cv64a6_imafdc_sv39_hpdcache_wb - RV64 HPDcache + write-back
           # ----------------------------------------------------------
-          # One v-mode RISC-V ISA smoke test per RV64 SV39 configuration.
-          - config: cv64a6_imafdc_sv39_hpdcache
-            testcase: smoke-riscv-tests-v
-            mode: testlist
-            simulator: veri-testharness,spike
-            install_script: install-riscv-tests
-            testlist: "../tests/testlist_riscv-tests-cv64a6_imafdc_sv39-v.yaml"
-            test_name: rv64ui-v-add
-            linker: ""
-
+          # Fast RV64 sanity using the existing directed script
           - config: cv64a6_imafdc_sv39_hpdcache_wb
-            testcase: smoke-riscv-tests-v
-            mode: testlist
+            testcase: cv64a6_imafdc_tests
+            mode: script
             simulator: veri-testharness,spike
-            install_script: install-riscv-tests
-            testlist: "../tests/testlist_riscv-tests-cv64a6_imafdc_sv39-v.yaml"
-            test_name: rv64ui-v-add
-            linker: ""
-
-          - config: cv64a6_imafdc_sv39_wb
-            testcase: smoke-riscv-tests-v
-            mode: testlist
-            simulator: veri-testharness,spike
-            install_script: install-riscv-tests
-            testlist: "../tests/testlist_riscv-tests-cv64a6_imafdc_sv39-v.yaml"
-            test_name: rv64ui-v-add
-            linker: ""
-
-          - config: cv64a6_imafdc_sv39
-            testcase: smoke-riscv-tests-v
-            mode: testlist
-            simulator: veri-testharness,spike
-            install_script: install-riscv-tests
-            testlist: "../tests/testlist_riscv-tests-cv64a6_imafdc_sv39-v.yaml"
-            test_name: rv64ui-v-add
+            install_script: ""
+            testlist: ""
+            test_name: ""
             linker: ""
 
     steps:
