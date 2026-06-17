@@ -15,7 +15,7 @@
     }
     body { background: #f5f6fa; }
 
-    /* Navbar — light background so logo is visible */
+    /* Navbar - light background so logo is visible */
     .top-navbar { background: #fff; border-bottom: 1px solid #dee2e6; }
     .navbar-brand { font-weight: 700; letter-spacing: -0.5px; display: flex; align-items: center; color: #212529; }
     .navbar-brand img { height: 32px; margin-right: 12px; }
@@ -72,7 +72,7 @@
 <body>
 
 <!-- ============================================================ -->
-<!-- Section 1: Navbar — white background -->
+<!-- Section 1: Navbar - white background -->
 <!-- ============================================================ -->
 <nav class="navbar navbar-expand-lg top-navbar shadow-sm">
   <div class="container-fluid">
@@ -331,7 +331,7 @@
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <script>
 // ============================================================
-// Matrix data (all workflows combined) — injected by Jinja2
+// Matrix data (all workflows combined) - injected by Jinja2
 // ============================================================
 const matrixData   = {{ matrix_data_json|safe }};
 const matrixConfigs = {{ matrix_configs_json|safe }};
@@ -339,7 +339,7 @@ const matrixSuites  = {{ matrix_suites_json|safe }};
 
 /**
  * Render the test matrix table for a given workflow.
- * Only shows configs × suites that the selected workflow covers.
+ * Only shows configs x suites that the selected workflow covers.
  */
 function renderMatrix(wfKey) {
   const thead = document.getElementById('matrixHead');

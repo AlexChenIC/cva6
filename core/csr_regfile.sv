@@ -1938,8 +1938,10 @@ module csr_regfile
       endcase
     end
     if (CVA6Cfg.IS_XLEN64) begin
-      mstatus_d.sxl = riscv::XLEN_64;
-      mstatus_d.uxl = riscv::XLEN_64;
+      if (CVA6Cfg.RVS) mstatus_d.sxl = riscv::XLEN_64;
+      else mstatus_d.sxl = riscv::XLEN_NA;
+      if (CVA6Cfg.RVU) mstatus_d.uxl = riscv::XLEN_64;
+      else mstatus_d.uxl = riscv::XLEN_NA;
     end
     if (!CVA6Cfg.RVU) begin
       mstatus_d.mpp = riscv::PRIV_LVL_M;
@@ -2742,7 +2744,7 @@ module csr_regfile
 
   // determine if mprv needs to be considered if in debug mode
   assign mprv = (CVA6Cfg.DebugEn && debug_mode_q && !dcsr_q.mprven) ? 1'b0 : mstatus_q.mprv;
-  assign debug_mode_o = debug_mode_q;
+  assign debug_mode_o = CVA6Cfg.DebugEn ? debug_mode_q : 1'b0;
   assign single_step_o = CVA6Cfg.DebugEn ? dcsr_q.step : 1'b0;
   assign mcountinhibit_o = {{29 - MHPMCounterNum{1'b0}}, mcountinhibit_q};
 

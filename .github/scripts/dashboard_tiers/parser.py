@@ -54,7 +54,7 @@ def parse_job_name(job_name: str, workflow_name: str) -> Optional[dict]:
             "testcase": testcase,
         }
 
-    # --- openhw-apu-full / openhw-quick-regress ---
+    # --- tier workflows and similar matrix-style workflows ---
     # Format: "RV64 {testcase} ({config})" or "RV32 {testcase} ({config})"
     m = re.match(r"^(RV(?:32|64))\s+(.+?)\s+\(([^)]+)\)$", name)
     if m:
@@ -110,7 +110,7 @@ def parse_job_name(job_name: str, workflow_name: str) -> Optional[dict]:
                 "testcase": params[0],
             }
 
-    # Unrecognized job name — skip it
+    # Unrecognized job name - skip it
     return None
 
 
@@ -126,9 +126,9 @@ def arch_from_config(config: str) -> str:
 if __name__ == "__main__":
     # Quick self-test
     test_cases = [
-        ("RV64 dv-riscv-arch-test (cv64a6_imafdc_sv39)", "openhw-apu-full"),
-        ("RV32 smoke-tests-cv32a65x (cv32a65x)", "openhw-apu-full"),
-        ("RV64 benchmark (cv64a6_imafdc_sv39_hpdcache_wb)", "openhw-quick-regress"),
+        ("RV64 Tier2 cv64a6_imafdc_sv39_hpdcache_wb / dv-riscv-arch-test", "tier2"),
+        ("RV32 Tier1 cv32a65x / smoke-tests-cv32a65x", "tier1"),
+        ("RV64 Tier2 cv64a6_imafdc_sv39_hpdcache_wb / benchmark", "tier2"),
         (
             "execute-riscv64-tests (cv64a6_imafdc_tests, cv64a6_imafdc_sv39_hpdcache, veri-testharness)",
             "ci",
@@ -137,8 +137,8 @@ if __name__ == "__main__":
             "execute-riscv32-tests (dv-riscv-arch-test, cv32a65x, veri-testharness)",
             "ci",
         ),
-        ("Setup Tools", "openhw-apu-full"),
-        ("Test Summary", "openhw-apu-full"),
+        ("Setup Tools", "tier2"),
+        ("Test Summary", "tier1"),
     ]
 
     for job_name, wf in test_cases:

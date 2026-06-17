@@ -101,9 +101,9 @@ def build_matrix(all_data: dict) -> tuple:
     """Build unified config x testsuite matrix from ALL workflows.
 
     Each cell is a dict keyed by workflow name, e.g.:
-        matrix["cv64a6_imafdc_sv39"]["dv-riscv-arch-test"] = {
+        matrix["cv64a6_imafdc_sv39_hpdcache_wb"]["dv-riscv-arch-test"] = {
             "ci": {"conclusion": "success", "html_url": "..."},
-            "openhw-apu-full": {"conclusion": "success", "html_url": "..."},
+            "tier2": {"conclusion": "success", "html_url": "..."},
         }
 
     Returns: (matrix_data, configs_used, suites_used)
