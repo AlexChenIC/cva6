@@ -252,7 +252,7 @@ module cva6_ptw
   );
 
 
-  assign ypb_mmu_ptw_req_o.be = CVA6Cfg.XLEN == 32 ? be_gen_32(
+  assign ypb_mmu_ptw_req_o.be = CVA6Cfg.IS_XLEN32 ? be_gen_32(
       ypb_mmu_ptw_req_o.vaddr[1:0], ypb_mmu_ptw_req_o.size
   ) : '1;
 
@@ -406,7 +406,7 @@ module cva6_ptw
           // Invalid PTE
           // -------------
           // If pte.v = 0, or if pte.r = 0 and pte.w = 1, or if pte.reserved !=0 in sv39 and sv39x4, stop and raise a page-fault exception.
-          if (!pte.v || (!pte.r && pte.w) || (|pte.reserved && CVA6Cfg.XLEN == 64))
+          if (!pte.v || (!pte.r && pte.w) || (|pte.reserved && CVA6Cfg.IS_XLEN64))
             state_d = PROPAGATE_ERROR;
           // -----------
           // Valid PTE
