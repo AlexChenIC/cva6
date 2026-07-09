@@ -111,7 +111,7 @@ certify:
 	  echo "No .elf files found under $$ROOT"; \
 	  exit 2; \
 	fi; \
-	PASS=0; FAIL=0; TOTAL=0; \
+	PASS=0; FAIL=0; TOTAL=0; FIRST_FAIL_LOG=""; \
 	for ELF in $$ELFS; do \
 	  TOTAL=$$((TOTAL+1)); \
 	  REL="$${ELF#$$ROOT/}"; \
@@ -123,9 +123,15 @@ certify:
 	  # Using the CVA6 Variane_testharness binary directly \
 	  $(CVA6_REPO_DIR)/work-ver/Variane_testharness \
 	    $$ELF \
+	    $(issrun_opts) \
+	    ++$$ELF \
 	    +elf_file=$$ELF \
+	    +core_name=$(target) \
+	    $(spike-yaml-plusarg) \
 	    +tohost_addr=0x$$TOHOST_ADDR \
 	    +signature=$$ELF.signature_output \
+	    +UVM_TESTNAME=uvmt_cva6_firmware_test_c \
+	    +report_file=$$LOG.yaml \
 	    > "$$LOG" 2>&1; \
 	  RC=$$?; \
 	  set -e; \
@@ -136,12 +142,18 @@ certify:
 	  else \
 	    echo "FAIL    $$REL" | tee -a "$$SUMMARY"; \
 	    FAIL=$$((FAIL+1)); \
+	    if [ -z "$$FIRST_FAIL_LOG" ]; then FIRST_FAIL_LOG="$$LOG"; fi; \
 	  fi; \
 	done; \
 	echo "" | tee -a "$$SUMMARY"; \
 	echo "TOTAL=$$TOTAL PASS=$$PASS FAIL=$$FAIL" | tee -a "$$SUMMARY"; \
 	echo "Summary saved to: $$SUMMARY"; \
-	true
+	if [ $$FAIL -ne 0 ]; then \
+	  echo ""; \
+	  echo "First failing ACT4 log: $$FIRST_FAIL_LOG"; \
+	  tail -n 120 "$$FIRST_FAIL_LOG"; \
+	  exit 1; \
+	fi
 
 .PHONY: gen-certify
 gen-certify: gen certify
