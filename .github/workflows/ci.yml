@@ -61,6 +61,7 @@ jobs:
     env:
       SPIKE_TANDEM: 1
     strategy:
+      fail-fast: false
       matrix:
         testcase:  [ cv64a6_imafdc_tests ]
         config:    [ cv64a6_imafdc_sv39_hpdcache, cv64a6_imafdc_sv39_hpdcache_wb, cv64a6_imafdc_sv39_wb, cv64a6_imafdc_sv39 ]
@@ -120,11 +121,24 @@ jobs:
           source verif/sim/setup-env.sh
           DV_SIMULATORS=${{matrix.simulator}},spike DV_TARGET=${{matrix.config}} bash verif/regress/${{matrix.testcase}}.sh
 
+    - name: Print simulation logs on failure
+      if: failure()
+      run: |
+          echo "Available simulation outputs:"
+          find verif/sim -maxdepth 3 -type f \( -name '*.log.iss' -o -name 'iss_regr.log' -o -name '*.log.yaml' \) -print || true
+          while IFS= read -r log; do
+            echo "::group::$log"
+            tail -n 120 "$log" || true
+            echo "::endgroup::"
+          done < <(find verif/sim -maxdepth 3 -type f -name '*.log.iss' | sort | head -n 20)
+
     - name: Upload Lint Report to Github
+      if: always()
       uses: actions/upload-artifact@v4
       with:
         name: ${{matrix.simulator}}.${{matrix.testcase}}.${{matrix.config}}
         path: 'verif/sim/out*'
+        if-no-files-found: ignore
         retention-days: 10
 
 
@@ -134,6 +148,7 @@ jobs:
     env:
       SPIKE_TANDEM: 1
     strategy:
+      fail-fast: false
       matrix:
         testcase:  [ dv-riscv-arch-test, cv32a6_tests ]
         config:    [ cv32a65x_axi ]
@@ -186,9 +201,22 @@ jobs:
           source verif/sim/setup-env.sh
           DV_SIMULATORS=${{matrix.simulator}},spike DV_TARGET=${{matrix.config}} bash verif/regress/${{matrix.testcase}}.sh
 
+    - name: Print simulation logs on failure
+      if: failure()
+      run: |
+          echo "Available simulation outputs:"
+          find verif/sim -maxdepth 3 -type f \( -name '*.log.iss' -o -name 'iss_regr.log' -o -name '*.log.yaml' \) -print || true
+          while IFS= read -r log; do
+            echo "::group::$log"
+            tail -n 120 "$log" || true
+            echo "::endgroup::"
+          done < <(find verif/sim -maxdepth 3 -type f -name '*.log.iss' | sort | head -n 20)
+
     - name: Upload Lint Report to Github
+      if: always()
       uses: actions/upload-artifact@v4
       with:
         name: ${{matrix.simulator}}.${{matrix.testcase}}.${{matrix.config}}
         path: 'verif/sim/out*'
+        if-no-files-found: ignore
         retention-days: 10
