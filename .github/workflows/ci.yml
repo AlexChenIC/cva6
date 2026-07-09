@@ -182,6 +182,75 @@ jobs:
           path: tools/spike/
           key: ${{ runner.os }}-build-${{ env.cache-name }}-${{ hashFiles('verif/regress/install-spike.sh')}}-${{ steps.core-v-submodule-hash.outputs.hash }}
 
+    - name: Install uv for ACT4
+      if: matrix.testcase == 'wrapper-cv32a65x-act'
+      uses: astral-sh/setup-uv@v8.3.2
+      with:
+          version: '0.11.7'
+
+    - name: Install Ruby/Bundler for ACT4
+      if: matrix.testcase == 'wrapper-cv32a65x-act'
+      uses: ruby/setup-ruby@v1
+      with:
+          ruby-version: '3.4.9'
+          bundler: 'Gemfile.lock'
+          working-directory: external/act4/framework/src/act/data
+
+    - name: Cache ACT4 GCC
+      id: cache-act4-gcc
+      if: matrix.testcase == 'wrapper-cv32a65x-act'
+      uses: actions/cache@v5
+      with:
+          path: tools/act4-gcc/
+          key: ${{ runner.os }}-act4-gcc-xpack-riscv-none-elf-gcc-15.2.0-1
+
+    - name: Install ACT4 GCC
+      if: matrix.testcase == 'wrapper-cv32a65x-act' && steps.cache-act4-gcc.outputs.cache-hit != 'true'
+      run: |
+          set -euo pipefail
+          mkdir -p tools/act4-gcc
+          curl -L -o /tmp/act4-gcc.tar.gz https://github.com/xpack-dev-tools/riscv-none-elf-gcc-xpack/releases/download/v15.2.0-1/xpack-riscv-none-elf-gcc-15.2.0-1-linux-x64.tar.gz
+          echo "aaaa8060c914851a3e5ee1ba82cc3d6f80972f90638a05c6e823a37557a33758  /tmp/act4-gcc.tar.gz" | sha256sum -c -
+          tar -xzf /tmp/act4-gcc.tar.gz --strip-components=1 -C tools/act4-gcc
+
+    - name: Add ACT4 GCC to PATH
+      if: matrix.testcase == 'wrapper-cv32a65x-act'
+      run: |
+          set -euo pipefail
+          mkdir -p tools/act4-gcc/aliases
+          for tool in addr2line ar as c++ c++filt cpp elfedit g++ gcc gcc-ar gcc-nm gcc-ranlib gcov gcov-dump gcov-tool gdb gdb-add-index gprof ld ld.bfd lto-dump nm objcopy objdump ranlib readelf size strings strip; do
+            if [ -x "tools/act4-gcc/bin/riscv-none-elf-${tool}" ]; then
+              ln -sf "../bin/riscv-none-elf-${tool}" "tools/act4-gcc/aliases/riscv64-unknown-elf-${tool}"
+            fi
+          done
+          tools/act4-gcc/aliases/riscv64-unknown-elf-gcc -dumpversion
+          echo "${{ github.workspace }}/tools/act4-gcc/aliases" >> "$GITHUB_PATH"
+          echo "${{ github.workspace }}/tools/act4-gcc/bin" >> "$GITHUB_PATH"
+
+    - name: Cache ACT4 Sail
+      id: cache-act4-sail
+      if: matrix.testcase == 'wrapper-cv32a65x-act'
+      uses: actions/cache@v5
+      with:
+          path: tools/act4-sail/
+          key: ${{ runner.os }}-act4-sail-riscv-0.10
+
+    - name: Install ACT4 Sail
+      if: matrix.testcase == 'wrapper-cv32a65x-act' && steps.cache-act4-sail.outputs.cache-hit != 'true'
+      run: |
+          set -euo pipefail
+          mkdir -p tools/act4-sail
+          curl -L -o /tmp/act4-sail.tar.gz https://github.com/riscv/sail-riscv/releases/download/0.10/sail-riscv-Linux-x86_64.tar.gz
+          echo "cb66af6efb5d1ebb812cf19ca2156c2b1020881f08f16c40136da7e84af299ca  /tmp/act4-sail.tar.gz" | sha256sum -c -
+          tar -xzf /tmp/act4-sail.tar.gz --strip-components=1 -C tools/act4-sail
+
+    - name: Add ACT4 Sail to PATH
+      if: matrix.testcase == 'wrapper-cv32a65x-act'
+      run: |
+          set -euo pipefail
+          tools/act4-sail/bin/sail_riscv_sim --version
+          echo "${{ github.workspace }}/tools/act4-sail/bin" >> "$GITHUB_PATH"
+
     - name: Run Tests
       run: |
           set -x
