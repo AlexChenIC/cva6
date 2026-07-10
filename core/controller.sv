@@ -85,11 +85,6 @@ module controller
   logic fence_active_d, fence_active_q;
   logic flush_dcache;
 
-  // A normal FENCE need not flush the single-core HPDCache-WB configuration,
-  // but FENCE.I must still write back data before invalidating the I-cache.
-  localparam bit FlushDcacheOnFenceI =
-      CVA6Cfg.DcacheFlushOnFence || (CVA6Cfg.DCacheType == config_pkg::HPDCACHE_WB);
-
   // ------------
   // Flush CTRL
   // ------------
@@ -147,7 +142,7 @@ module controller
       flush_icache_o         = 1'b1;
       // this is not needed in the case since we
       // have a write-through cache in this case
-      if (FlushDcacheOnFenceI) begin
+      if (CVA6Cfg.DcacheFlushOnFence) begin
         flush_dcache   = 1'b1;
         fence_active_d = 1'b1;
       end
@@ -155,7 +150,7 @@ module controller
 
     // this is not needed in the case since we
     // have a write-through cache in this case
-    if (FlushDcacheOnFenceI) begin
+    if (CVA6Cfg.DcacheFlushOnFence) begin
       // wait for the acknowledge here
       if (flush_dcache_ack_i && fence_active_q) begin
         fence_active_d = 1'b0;
@@ -247,7 +242,7 @@ module controller
   // ----------------------
   always_comb begin
     // halt the core if the fence is active
-    halt_o = halt_csr_i || halt_acc_i || (FlushDcacheOnFenceI && fence_active_q);
+    halt_o = halt_csr_i || halt_acc_i || (CVA6Cfg.DcacheFlushOnFence && fence_active_q);
   end
 
   // ----------------------
