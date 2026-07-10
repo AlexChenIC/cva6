@@ -63,7 +63,8 @@ jobs:
     strategy:
       matrix:
         testcase:  [ cv64a6_imafdc_tests ]
-        config:    [ cv64a6_imafdc_sv39_hpdcache, cv64a6_imafdc_sv39_hpdcache_wb, cv64a6_imafdc_sv39_wb, cv64a6_imafdc_sv39 ]
+        # master_candidate removed the legacy WT/WB cache subsystems.
+        config:    [ cv64a6_imafdc_sv39_hpdcache, cv64a6_imafdc_sv39_hpdcache_wb ]
         simulator: [ veri-testharness ]
         include:
           - testcase: dv-riscv-arch-test
