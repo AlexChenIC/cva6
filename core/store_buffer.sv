@@ -138,7 +138,7 @@ module store_buffer
   // we will never kill a request in the store buffer since we already know that the translation is valid
   // e.g.: a kill request will only be necessary if we are not sure if the requested memory address will result in a TLB fault
 
-  assign rvfi_mem_paddr_o = direct_req_from_speculative ? speculative_queue_q[speculative_read_pointer_q].address : commit_queue_n[commit_read_pointer_n].address;
+  assign rvfi_mem_paddr_o = speculative_queue_q[speculative_read_pointer_q].address;
 
   assign ypb_store_req_o.vreq = '0;
   assign ypb_store_req_o.vaddr = '0;
