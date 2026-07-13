@@ -29,10 +29,13 @@ if ! [ -n "$DV_SIMULATORS" ]; then
   DV_SIMULATORS=veri-testharness,spike
 fi
 
+# AXI variants share ISA testlists with their non-AXI base configuration.
+DV_TESTLIST_TARGET="${DV_TARGET%_axi}"
+
 if [[ "$DV_TARGET" =~ cv64a6_imafdc* ]] ; then
   TESTLIST=../tests/testlist_riscv-arch-test-cv64a6_imafdc_sv39.yaml
 else
-  TESTLIST=../tests/testlist_riscv-arch-test-$DV_TARGET.yaml
+  TESTLIST=../tests/testlist_riscv-arch-test-$DV_TESTLIST_TARGET.yaml
 fi
 
 if ! [ -n "$UVM_VERBOSITY" ]; then
