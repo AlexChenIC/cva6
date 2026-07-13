@@ -1,0 +1,14 @@
+diff --git a/config/cores/cva6/cv32a65x/cv32a65x.yaml b/config/cores/cva6/cv32a65x/cv32a65x.yaml
+--- a/config/cores/cva6/cv32a65x/cv32a65x.yaml
++++ b/config/cores/cva6/cv32a65x/cv32a65x.yaml
+@@ -115,8 +115,8 @@ params:
+   HPM_COUNTER_EN:
+     [
+-      true,
+       false,
+-      true,
++      false,
++      false,
+       false,
+       false,
+       false,

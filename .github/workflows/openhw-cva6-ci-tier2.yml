@@ -19,16 +19,16 @@
 #
 # COVERED CONFIGURATIONS (Green Config subset from Jerome's color-coded figure):
 #   RV32:
-#     - cv32a65x                        (dual-issue, no MMU)    [ 8 testcases]
+#     - cv32a65x                        (dual-issue, no MMU)    [ 9 jobs]
 #     - cv32a60x                        (single-issue, no MMU)  [ 4 testcases]
 #   RV64:
 #     - cv64a6_imafdc_sv39_hpdcache_wb  (HPDcache + write-back) [ 5 testcases]
 #
 # TEST SUITES PER CONFIG:
-#   cv32a65x (8 jobs):
+#   cv32a65x (9 jobs):
 #     smoke-tests, cv32a6_tests, dv-riscv-arch-test, dv-riscv-tests-p,
 #     dv-riscv-compliance, dv-csr-embedded-tests,
-#     hwconfig_tests, coremark
+#     hwconfig_tests, coremark, act4-certification
 #
 #   cv32a60x (4 jobs):
 #     cv32a6_tests, dv-riscv-arch-test, dv-riscv-tests-p,
@@ -50,6 +50,8 @@
 #   - hwconfig_tests and coremark require DV_HWCONFIG_OPTS, encoded via the
 #     matrix hwconfig_opts field and applied in the run step.
 #   - coremark uses veri-testharness only: spike times out on long benchmark loops.
+#   - act4-certification is a dedicated job because it generates the ACT4 corpus
+#     before running the full cv32a65x Verilator/tandem certification flow.
 #   - benchmark and dv-riscv-csr-access-test are intentionally excluded from
 #     Phase 1 Tier 2 until their legacy regression scripts propagate failures
 #     and produce trustworthy artifacts.
@@ -267,7 +269,46 @@ jobs:
           retention-days: 14
 
   # ============================================================
-  # Stage 3: RV64 Regression (parallel matrix jobs)
+  # Stage 3: RV32 ACT4 Certification
+  # ============================================================
+  execute-rv32-act4-tier2:
+    name: RV32 Tier2 cv32a65x / act4-certification
+    runs-on: ubuntu-latest
+    needs: setup-tools
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - name: Setup CVA6 Environment
+        uses: ./.github/actions/setup-cva6-env
+
+      - name: Install prerequisites
+        run: source ci/install-prereq.sh
+
+      - name: Setup ACT4 Environment
+        uses: ./.github/actions/setup-act4-env
+
+      - name: Run Tier 2 for cv32a65x / act4-certification
+        env:
+          DV_TARGET: cv32a65x
+          DV_SIMULATORS: veri-testharness,spike
+          ACT4_EXPECTED_TESTS: "124"
+        run: bash .github/scripts/run-act4-tier.sh
+
+      - name: Upload Results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tier2-rv32-cv32a65x-act4-certification
+          path: |
+            ci-results/
+            verif/sim/simulation_results/act4/
+          retention-days: 14
+
+  # ============================================================
+  # Stage 4: RV64 Regression (parallel matrix jobs)
   # ============================================================
   execute-rv64-tier2:
     name: RV64 Tier2 ${{ matrix.config }} / ${{ matrix.testcase }}
