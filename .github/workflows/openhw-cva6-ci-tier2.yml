@@ -15,7 +15,7 @@
 #
 # TRIGGER POLICY:
 #   schedule          -> Automatic daily regression (22:00 UTC)
-#   workflow_dispatch -> On-demand Tier 2 regression for manual validation
+#   workflow_dispatch -> On-demand full Tier 2 or ACT4-only validation
 #
 # COVERED CONFIGURATIONS (Green Config subset from Jerome's color-coded figure):
 #   RV32:
@@ -63,6 +63,12 @@ on:
   schedule:
     - cron: "0 22 * * *" # 22:00 UTC
   workflow_dispatch:
+    inputs:
+      act4_only:
+        description: Run only the cv32a65x ACT4 certification job
+        required: false
+        default: false
+        type: boolean
 
 concurrency:
   group: openhw-cva6-ci-tier2-${{ github.ref }}
@@ -95,6 +101,7 @@ jobs:
   # ============================================================
   execute-rv32-tier2:
     name: RV32 Tier2 ${{ matrix.config }} / ${{ matrix.testcase }}
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.act4_only == false }}
     runs-on: ubuntu-latest
     needs: setup-tools
     strategy:
@@ -312,6 +319,7 @@ jobs:
   # ============================================================
   execute-rv64-tier2:
     name: RV64 Tier2 ${{ matrix.config }} / ${{ matrix.testcase }}
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.act4_only == false }}
     runs-on: ubuntu-latest
     needs: setup-tools
     strategy:

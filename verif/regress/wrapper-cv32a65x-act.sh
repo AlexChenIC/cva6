@@ -95,13 +95,15 @@ report_is_passing() {
 actual_act4_sha="$(git -C "${ACT4_PKG}" rev-parse HEAD)"
 [[ "${actual_act4_sha}" == "${ACT4_EXPECTED_SHA}" ]] || fail \
   "ACT4 pin mismatch: expected ${ACT4_EXPECTED_SHA}, got ${actual_act4_sha}"
-act4_status="$(
-  git -C "${ACT4_PKG}" status --porcelain --untracked-files=all --ignore-submodules=none \
-    | grep -Ev '^\?\? framework/src/act/data/vendor/bundle/' \
-    || true
-)"
-if [[ -n "${act4_status}" ]]; then
-  printf '%s\n' "${act4_status}" >&2
+act4_status=()
+while IFS= read -r -d '' status_entry; do
+  case "${status_entry}" in
+    "?? framework/src/act/data/vendor/bundle/"*) ;;
+    *) act4_status+=("${status_entry}") ;;
+  esac
+done < <(git -C "${ACT4_PKG}" status --porcelain -z --untracked-files=all --ignore-submodules=none)
+if [[ "${#act4_status[@]}" -ne 0 ]]; then
+  printf '%s\n' "${act4_status[@]}" >&2
   fail "ACT4 submodule contains changes outside the locked Bundler install directory"
 fi
 
