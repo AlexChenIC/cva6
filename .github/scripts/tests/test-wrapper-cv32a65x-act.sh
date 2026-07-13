@@ -43,6 +43,7 @@ run_case() {
     "${fake_root}/riscv" \
     "${act4_gcc_alias_dir}" \
     "${fake_act4}/config/cores/cva6/cv32a65x" \
+    "${fake_act4}/framework/src/act/data/vendor/bundle/mock-gem" \
     "${fake_bin}"
 
   cp "${SOURCE_PATCH}" "${fake_root}/verif/regress/act4/cv32a65x-hpm.patch"
@@ -159,6 +160,8 @@ run_case() {
   git -C "${fake_act4}" add config
   git -C "${fake_act4}" commit -qm "fixture"
   expected_sha="$(git -C "${fake_act4}" rev-parse HEAD)"
+  # ruby/setup-ruby installs locked gems here before the wrapper runs.
+  : > "${fake_act4}/framework/src/act/data/vendor/bundle/mock-gem/library.rb"
   if [[ "${sim_mode}" == "dirty-act4" ]]; then
     : > "${fake_act4}/untracked-input.yaml"
   fi

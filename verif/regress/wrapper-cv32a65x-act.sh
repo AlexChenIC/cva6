@@ -95,9 +95,15 @@ report_is_passing() {
 actual_act4_sha="$(git -C "${ACT4_PKG}" rev-parse HEAD)"
 [[ "${actual_act4_sha}" == "${ACT4_EXPECTED_SHA}" ]] || fail \
   "ACT4 pin mismatch: expected ${ACT4_EXPECTED_SHA}, got ${actual_act4_sha}"
-act4_status="$(git -C "${ACT4_PKG}" status --porcelain --untracked-files=all --ignore-submodules=none)"
-[[ -z "${act4_status}" ]] || fail \
-  "ACT4 submodule must be clean before applying the CV32A65x compatibility patch"
+act4_status="$(
+  git -C "${ACT4_PKG}" status --porcelain --untracked-files=all --ignore-submodules=none \
+    | grep -Ev '^\?\? framework/src/act/data/vendor/bundle/' \
+    || true
+)"
+if [[ -n "${act4_status}" ]]; then
+  printf '%s\n' "${act4_status}" >&2
+  fail "ACT4 submodule contains changes outside the locked Bundler install directory"
+fi
 
 if git -C "${ACT4_PKG}" apply --check "${ACT4_CONFIG_PATCH}"; then
   ACT4_CONFIG_BACKUP="$(mktemp)"
