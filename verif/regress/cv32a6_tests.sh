@@ -36,6 +36,9 @@ if ! [ -n "$DV_TARGET" ]; then
   DV_TARGET=cv32a65x
 fi
 
+# AXI variants share ISA testlists with their non-AXI base configuration.
+DV_TESTLIST_TARGET="${DV_TARGET%_axi}"
+
 if ! [ -n "$UVM_VERBOSITY" ]; then
   export UVM_VERBOSITY=UVM_NONE
 fi
@@ -55,7 +58,7 @@ riscv_tests_list=(
   rv32ui-p-jal
 )
 for t in ${riscv_tests_list[@]} ; do
-  python3 cva6.py --testlist=../tests/testlist_riscv-tests-${DV_TARGET}-p.yaml --test $t --iss_yaml cva6.yaml --target ${DV_TARGET} --iss=$DV_SIMULATORS $DV_OPTS
+  python3 cva6.py --testlist=../tests/testlist_riscv-tests-${DV_TESTLIST_TARGET}-p.yaml --test $t --iss_yaml cva6.yaml --target ${DV_TARGET} --iss=$DV_SIMULATORS $DV_OPTS
   [[ $? > 0 ]] && ((errors++))
 done
 
