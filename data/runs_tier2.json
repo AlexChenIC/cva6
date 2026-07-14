@@ -1,5 +1,38 @@
 [
   {
+    "id": 29295786805,
+    "source": "github-actions",
+    "simulator": "verilator",
+    "run_number": 147,
+    "status": "completed",
+    "conclusion": "failure",
+    "html_url": "https://github.com/AlexChenIC/cva6/actions/runs/29295786805",
+    "head_branch": "alex/pr3265-act4-tier2-ci-prevalidation-20260713",
+    "head_sha": "14a4e7b1",
+    "event": "workflow_dispatch",
+    "created_at": "2026-07-14T00:23:29Z",
+    "updated_at": "2026-07-14T01:01:36Z",
+    "run_started_at": "2026-07-14T00:23:29Z",
+    "duration_seconds": 2287,
+    "total_jobs": 1,
+    "passed_jobs": 0,
+    "failed_jobs": 1,
+    "skipped_jobs": 0,
+    "jobs": [
+      {
+        "name": "RV32 Tier2 cv32a65x / act4-certification",
+        "conclusion": "failure",
+        "started_at": "2026-07-14T00:24:34Z",
+        "completed_at": "2026-07-14T01:01:35Z",
+        "duration_seconds": 2221,
+        "html_url": "https://github.com/AlexChenIC/cva6/actions/runs/29295786805/job/86969002469",
+        "arch": "rv32",
+        "config": "cv32a65x",
+        "testcase": "act4-certification"
+      }
+    ]
+  },
+  {
     "id": 29295433802,
     "source": "github-actions",
     "simulator": "verilator",
@@ -11579,215 +11612,6 @@
         "arch": "rv64",
         "config": "cv64a6_imafdc_sv39",
         "testcase": "cv64a6_imafdc_tests"
-      }
-    ]
-  },
-  {
-    "id": 27199227323,
-    "source": "github-actions",
-    "simulator": "verilator",
-    "run_number": 97,
-    "status": "completed",
-    "conclusion": "success",
-    "html_url": "https://github.com/AlexChenIC/cva6/actions/runs/27199227323",
-    "head_branch": "codex/verify-pr3343-tier-ci",
-    "head_sha": "3b2422a8",
-    "event": "workflow_dispatch",
-    "created_at": "2026-06-09T10:12:28Z",
-    "updated_at": "2026-06-09T12:47:45Z",
-    "run_started_at": "2026-06-09T10:12:28Z",
-    "duration_seconds": 9317,
-    "total_jobs": 17,
-    "passed_jobs": 17,
-    "failed_jobs": 0,
-    "skipped_jobs": 0,
-    "jobs": [
-      {
-        "name": "RV64 Tier2 cv64a6_imafdc_sv39_hpdcache_wb / dv-riscv-tests-p",
-        "conclusion": "success",
-        "started_at": "2026-06-09T10:49:14Z",
-        "completed_at": "2026-06-09T11:12:38Z",
-        "duration_seconds": 1404,
-        "html_url": "https://github.com/AlexChenIC/cva6/actions/runs/27199227323/job/80301711822",
-        "arch": "rv64",
-        "config": "cv64a6_imafdc_sv39_hpdcache_wb",
-        "testcase": "dv-riscv-tests-p"
-      },
-      {
-        "name": "RV64 Tier2 cv64a6_imafdc_sv39_hpdcache_wb / dv-riscv-tests-v",
-        "conclusion": "success",
-        "started_at": "2026-06-09T11:44:05Z",
-        "completed_at": "2026-06-09T12:47:44Z",
-        "duration_seconds": 3819,
-        "html_url": "https://github.com/AlexChenIC/cva6/actions/runs/27199227323/job/80301711838",
-        "arch": "rv64",
-        "config": "cv64a6_imafdc_sv39_hpdcache_wb",
-        "testcase": "dv-riscv-tests-v"
-      },
-      {
-        "name": "RV64 Tier2 cv64a6_imafdc_sv39_hpdcache_wb / dv-riscv-arch-test",
-        "conclusion": "success",
-        "started_at": "2026-06-09T10:39:13Z",
-        "completed_at": "2026-06-09T11:25:50Z",
-        "duration_seconds": 2797,
-        "html_url": "https://github.com/AlexChenIC/cva6/actions/runs/27199227323/job/80301711839",
-        "arch": "rv64",
-        "config": "cv64a6_imafdc_sv39_hpdcache_wb",
-        "testcase": "dv-riscv-arch-test"
-      },
-      {
-        "name": "RV64 Tier2 cv64a6_imafdc_sv39_hpdcache_wb / cv64a6_imafdc_tests",
-        "conclusion": "success",
-        "started_at": "2026-06-09T11:48:47Z",
-        "completed_at": "2026-06-09T11:53:51Z",
-        "duration_seconds": 304,
-        "html_url": "https://github.com/AlexChenIC/cva6/actions/runs/27199227323/job/80301711900",
-        "arch": "rv64",
-        "config": "cv64a6_imafdc_sv39_hpdcache_wb",
-        "testcase": "cv64a6_imafdc_tests"
-      },
-      {
-        "name": "RV64 Tier2 cv64a6_imafdc_sv39_hpdcache_wb / dv-riscv-compliance",
-        "conclusion": "success",
-        "started_at": "2026-06-09T11:55:17Z",
-        "completed_at": "2026-06-09T12:24:41Z",
-        "duration_seconds": 1764,
-        "html_url": "https://github.com/AlexChenIC/cva6/actions/runs/27199227323/job/80301711909",
-        "arch": "rv64",
-        "config": "cv64a6_imafdc_sv39_hpdcache_wb",
-        "testcase": "dv-riscv-compliance"
-      },
-      {
-        "name": "RV32 Tier2 cv32a65x / dv-csr-embedded-tests",
-        "conclusion": "success",
-        "started_at": "2026-06-09T11:23:52Z",
-        "completed_at": "2026-06-09T11:28:00Z",
-        "duration_seconds": 248,
-        "html_url": "https://github.com/AlexChenIC/cva6/actions/runs/27199227323/job/80301711952",
-        "arch": "rv32",
-        "config": "cv32a65x",
-        "testcase": "dv-csr-embedded-tests"
-      },
-      {
-        "name": "RV32 Tier2 cv32a65x / smoke-tests-cv32a65x",
-        "conclusion": "success",
-        "started_at": "2026-06-09T11:47:19Z",
-        "completed_at": "2026-06-09T11:49:53Z",
-        "duration_seconds": 154,
-        "html_url": "https://github.com/AlexChenIC/cva6/actions/runs/27199227323/job/80301711954",
-        "arch": "rv32",
-        "config": "cv32a65x",
-        "testcase": "smoke-tests-cv32a65x"
-      },
-      {
-        "name": "RV32 Tier2 cv32a65x / dv-riscv-arch-test",
-        "conclusion": "success",
-        "started_at": "2026-06-09T11:49:55Z",
-        "completed_at": "2026-06-09T12:10:24Z",
-        "duration_seconds": 1229,
-        "html_url": "https://github.com/AlexChenIC/cva6/actions/runs/27199227323/job/80301711970",
-        "arch": "rv32",
-        "config": "cv32a65x",
-        "testcase": "dv-riscv-arch-test"
-      },
-      {
-        "name": "RV32 Tier2 cv32a65x / cv32a6_tests",
-        "conclusion": "success",
-        "started_at": "2026-06-09T11:54:18Z",
-        "completed_at": "2026-06-09T11:57:21Z",
-        "duration_seconds": 183,
-        "html_url": "https://github.com/AlexChenIC/cva6/actions/runs/27199227323/job/80301711978",
-        "arch": "rv32",
-        "config": "cv32a65x",
-        "testcase": "cv32a6_tests"
-      },
-      {
-        "name": "RV32 Tier2 cv32a60x / cv32a6_tests",
-        "conclusion": "success",
-        "started_at": "2026-06-09T11:23:52Z",
-        "completed_at": "2026-06-09T11:27:03Z",
-        "duration_seconds": 191,
-        "html_url": "https://github.com/AlexChenIC/cva6/actions/runs/27199227323/job/80301711988",
-        "arch": "rv32",
-        "config": "cv32a60x",
-        "testcase": "cv32a6_tests"
-      },
-      {
-        "name": "RV32 Tier2 cv32a60x / dv-riscv-tests-p",
-        "conclusion": "success",
-        "started_at": "2026-06-09T11:41:38Z",
-        "completed_at": "2026-06-09T11:54:17Z",
-        "duration_seconds": 759,
-        "html_url": "https://github.com/AlexChenIC/cva6/actions/runs/27199227323/job/80301712000",
-        "arch": "rv32",
-        "config": "cv32a60x",
-        "testcase": "dv-riscv-tests-p"
-      },
-      {
-        "name": "RV32 Tier2 cv32a65x / dv-riscv-tests-p",
-        "conclusion": "success",
-        "started_at": "2026-06-09T11:18:03Z",
-        "completed_at": "2026-06-09T11:28:41Z",
-        "duration_seconds": 638,
-        "html_url": "https://github.com/AlexChenIC/cva6/actions/runs/27199227323/job/80301712008",
-        "arch": "rv32",
-        "config": "cv32a65x",
-        "testcase": "dv-riscv-tests-p"
-      },
-      {
-        "name": "RV32 Tier2 cv32a60x / dv-riscv-compliance",
-        "conclusion": "success",
-        "started_at": "2026-06-09T11:30:40Z",
-        "completed_at": "2026-06-09T11:53:59Z",
-        "duration_seconds": 1399,
-        "html_url": "https://github.com/AlexChenIC/cva6/actions/runs/27199227323/job/80301712022",
-        "arch": "rv32",
-        "config": "cv32a60x",
-        "testcase": "dv-riscv-compliance"
-      },
-      {
-        "name": "RV32 Tier2 cv32a60x / dv-riscv-arch-test",
-        "conclusion": "success",
-        "started_at": "2026-06-09T11:53:43Z",
-        "completed_at": "2026-06-09T12:19:15Z",
-        "duration_seconds": 1532,
-        "html_url": "https://github.com/AlexChenIC/cva6/actions/runs/27199227323/job/80301712040",
-        "arch": "rv32",
-        "config": "cv32a60x",
-        "testcase": "dv-riscv-arch-test"
-      },
-      {
-        "name": "RV32 Tier2 cv32a65x / hwconfig_tests",
-        "conclusion": "success",
-        "started_at": "2026-06-09T11:52:55Z",
-        "completed_at": "2026-06-09T11:55:15Z",
-        "duration_seconds": 140,
-        "html_url": "https://github.com/AlexChenIC/cva6/actions/runs/27199227323/job/80301712043",
-        "arch": "rv32",
-        "config": "cv32a65x",
-        "testcase": "hwconfig_tests"
-      },
-      {
-        "name": "RV32 Tier2 cv32a65x / dv-riscv-compliance",
-        "conclusion": "success",
-        "started_at": "2026-06-09T11:53:52Z",
-        "completed_at": "2026-06-09T12:21:19Z",
-        "duration_seconds": 1647,
-        "html_url": "https://github.com/AlexChenIC/cva6/actions/runs/27199227323/job/80301712057",
-        "arch": "rv32",
-        "config": "cv32a65x",
-        "testcase": "dv-riscv-compliance"
-      },
-      {
-        "name": "RV32 Tier2 cv32a65x / coremark",
-        "conclusion": "success",
-        "started_at": "2026-06-09T11:54:01Z",
-        "completed_at": "2026-06-09T12:01:13Z",
-        "duration_seconds": 432,
-        "html_url": "https://github.com/AlexChenIC/cva6/actions/runs/27199227323/job/80301712089",
-        "arch": "rv32",
-        "config": "cv32a65x",
-        "testcase": "coremark"
       }
     ]
   }
