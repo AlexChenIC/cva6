@@ -15,8 +15,16 @@ runs:
         enable-cache: "true"
         cache-dependency-glob: external/act4/uv.lock
 
+    - name: Cache ACT4 UDB binary dependencies
+      uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
+      with:
+        path: tools/act4-udb-cache/
+        key: ${{ runner.os }}-${{ runner.arch }}-act4-udb-${{ hashFiles('external/act4/framework/src/act/data/Gemfile.lock') }}
+
     - name: Setup Ruby and Bundler
       uses: ruby/setup-ruby@d45b1a4e94b71acab930e56e79c6aa188764e7f9 # v1, 2026-07-02
+      env:
+        XDG_CACHE_HOME: ${{ github.workspace }}/tools/act4-udb-cache
       with:
         ruby-version: "3.4.9"
         bundler: Gemfile.lock
@@ -26,14 +34,25 @@ runs:
     - name: Configure ACT4 UDB
       shell: bash
       working-directory: external/act4/framework/src/act/data
+      env:
+        XDG_CACHE_HOME: ${{ github.workspace }}/tools/act4-udb-cache
       run: |
         set -euo pipefail
         udb_bin_dir="${GITHUB_WORKSPACE}/tools/act4-ruby-bin"
+        udb_gem_dir="$(bundle info udb --path)"
+        udb_build_dir="${RUNNER_TEMP}/act4-udb-extension"
         rm -rf "${udb_bin_dir}"
+        rm -rf "${udb_build_dir}"
+        mkdir -p "${udb_build_dir}"
+        (
+          cd "${udb_build_dir}"
+          ruby "${udb_gem_dir}/ext/udb_download/extconf.rb"
+        )
         BUNDLE_BIN="${udb_bin_dir}" bundle binstubs udb --force
         [[ -x "${udb_bin_dir}/udb" ]]
         "${udb_bin_dir}/udb" --help >/dev/null
         echo "ACT4_UDB_BIN_DIR=${udb_bin_dir}" >> "${GITHUB_ENV}"
+        echo "XDG_CACHE_HOME=${XDG_CACHE_HOME}" >> "${GITHUB_ENV}"
         echo "${udb_bin_dir}" >> "${GITHUB_PATH}"
 
     - name: Cache ACT4 GCC
