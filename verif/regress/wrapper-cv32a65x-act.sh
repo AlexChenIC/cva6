@@ -24,6 +24,7 @@ ACT4_EXPECTED_TESTS="${ACT4_EXPECTED_TESTS:-124}"
 ACT4_EXPECTED_GCC_VERSION="${ACT4_EXPECTED_GCC_VERSION:-15.2.0}"
 ACT4_GCC_ALIAS_DIR="${ACT4_GCC_ALIAS_DIR:-${CVA6_REPO_DIR}/tools/act4-gcc/aliases}"
 ACT4_SAIL_BIN_DIR="${ACT4_SAIL_BIN_DIR:-${CVA6_REPO_DIR}/tools/act4-sail/bin}"
+ACT4_UDB_BIN_DIR="${ACT4_UDB_BIN_DIR:-${CVA6_REPO_DIR}/tools/act4-ruby-bin}"
 
 detect_jobs() {
   if command -v nproc >/dev/null 2>&1; then
@@ -138,9 +139,12 @@ fi
 if [[ -d "${ACT4_SAIL_BIN_DIR}" ]]; then
   PATH="${ACT4_SAIL_BIN_DIR}:${PATH}"
 fi
+if [[ -d "${ACT4_UDB_BIN_DIR}" ]]; then
+  PATH="${ACT4_UDB_BIN_DIR}:${PATH}"
+fi
 export PATH
 
-for command_name in git make ruby uv bundle riscv64-unknown-elf-gcc riscv64-unknown-elf-nm sail_riscv_sim; do
+for command_name in git make ruby uv bundle udb riscv64-unknown-elf-gcc riscv64-unknown-elf-nm sail_riscv_sim; do
   command -v "${command_name}" >/dev/null 2>&1 || fail "required command not found: ${command_name}"
 done
 

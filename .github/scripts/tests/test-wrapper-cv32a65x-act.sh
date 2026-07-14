@@ -35,6 +35,7 @@ run_case() {
   local config_path="${fake_act4}/config/cores/cva6/cv32a65x/cv32a65x.yaml"
   local expected_manifest="${fixture}/expected-manifest.txt"
   local act4_gcc_alias_dir="${fake_root}/tools/act4-gcc/aliases"
+  local act4_udb_bin_dir="${fake_root}/tools/act4-ruby-bin"
 
   mkdir -p \
     "${fake_root}/verif/regress/act4" \
@@ -42,6 +43,7 @@ run_case() {
     "${fake_root}/config/gen_from_riscv_config/cv32a65x/spike" \
     "${fake_root}/riscv" \
     "${act4_gcc_alias_dir}" \
+    "${act4_udb_bin_dir}" \
     "${fake_act4}/config/cores/cva6/cv32a65x" \
     "${fake_act4}/framework/src/act/data/vendor/bundle/mock gem" \
     "${fake_bin}"
@@ -57,6 +59,7 @@ run_case() {
   for command_name in uv bundle sail_riscv_sim; do
     write_executable "${fake_bin}/${command_name}" '#!/usr/bin/env bash' 'exit 0'
   done
+  write_executable "${act4_udb_bin_dir}/udb" '#!/usr/bin/env bash' 'exit 0'
 
   # setup-env.sh would leave this generic GCC first on PATH.
   write_executable "${fake_bin}/riscv64-unknown-elf-gcc" \
@@ -174,6 +177,7 @@ run_case() {
   ACT4_EXPECTED_MANIFEST="${expected_manifest}" \
   ACT4_EXPECTED_TESTS=1 \
   ACT4_GCC_ALIAS_DIR="${act4_gcc_alias_dir}" \
+  ACT4_UDB_BIN_DIR="${act4_udb_bin_dir}" \
   ACT4_RESULTS_DIR="${results}" \
   RISCV="${fake_root}/riscv" \
   NUM_JOBS=2 \

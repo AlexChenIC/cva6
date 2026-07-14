@@ -23,6 +23,19 @@ runs:
         bundler-cache: "true"
         working-directory: external/act4/framework/src/act/data
 
+    - name: Configure ACT4 UDB
+      shell: bash
+      working-directory: external/act4/framework/src/act/data
+      run: |
+        set -euo pipefail
+        udb_bin_dir="${GITHUB_WORKSPACE}/tools/act4-ruby-bin"
+        rm -rf "${udb_bin_dir}"
+        bundle binstubs udb --path="${udb_bin_dir}" --force
+        [[ -x "${udb_bin_dir}/udb" ]]
+        "${udb_bin_dir}/udb" --help >/dev/null
+        echo "ACT4_UDB_BIN_DIR=${udb_bin_dir}" >> "${GITHUB_ENV}"
+        echo "${udb_bin_dir}" >> "${GITHUB_PATH}"
+
     - name: Cache ACT4 GCC
       id: cache-act4-gcc
       uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
