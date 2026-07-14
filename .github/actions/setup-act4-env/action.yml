@@ -30,7 +30,7 @@ runs:
         set -euo pipefail
         udb_bin_dir="${GITHUB_WORKSPACE}/tools/act4-ruby-bin"
         rm -rf "${udb_bin_dir}"
-        bundle binstubs udb --path="${udb_bin_dir}" --force
+        BUNDLE_BIN="${udb_bin_dir}" bundle binstubs udb --force
         [[ -x "${udb_bin_dir}/udb" ]]
         "${udb_bin_dir}/udb" --help >/dev/null
         echo "ACT4_UDB_BIN_DIR=${udb_bin_dir}" >> "${GITHUB_ENV}"
