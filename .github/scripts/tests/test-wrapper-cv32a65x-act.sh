@@ -100,6 +100,7 @@ run_case() {
   write_executable "${fixture}/simulator-template.sh" \
     '#!/usr/bin/env bash' \
     'set -euo pipefail' \
+    'elf="$1"' \
     'report_file=""' \
     'have_core=0' \
     'have_config=0' \
@@ -118,44 +119,69 @@ run_case() {
     'done' \
     '[[ -n "${report_file}" ]] || exit 2' \
     '[[ "${have_core}${have_config}${have_elf}${have_max_cycles}${have_uvm_test}" == "11111" ]] || exit 3' \
-    'mkdir -p "$(dirname "${report_file}")"' \
-    'if [[ "${MOCK_SIM_MODE}" == "pass" ]]; then' \
-    '  printf "exit_cause: SUCCESS\\nexit_code: 0x0000\\ninstr_count: 0x10\\nmismatches_count: 0x0\\n" > "${report_file}"' \
-    '  echo '\''RVCP-SUMMARY: TEST PASSED - Test File "mock.elf"'\''' \
-    '  echo "SIMULATION PASSED"' \
-    'elif [[ "${MOCK_SIM_MODE}" == "process-failure" ]]; then' \
-    '  printf "exit_cause: SUCCESS\\nexit_code: 0x0000\\ninstr_count: 0x10\\nmismatches_count: 0x0\\n" > "${report_file}"' \
-    '  echo '\''RVCP-SUMMARY: TEST PASSED - Test File "mock.elf"'\''' \
-    '  echo "SIMULATION PASSED"' \
-    '  exit 9' \
-    'elif [[ "${MOCK_SIM_MODE}" == "bad-report" ]]; then' \
-    '  printf "exit_cause: SUCCESS\\nexit_code: 0x0000\\ninstr_count: 0x10\\nmismatches_count: 0x1\\n" > "${report_file}"' \
-    '  echo '\''RVCP-SUMMARY: TEST PASSED - Test File "mock.elf"'\''' \
-    '  echo "SIMULATION PASSED"' \
-    'elif [[ "${MOCK_SIM_MODE}" == "rvcp-failure" ]]; then' \
-    '  printf "exit_cause: SUCCESS\\nexit_code: 0x0000\\ninstr_count: 0x10\\nmismatches_count: 0x0\\n" > "${report_file}"' \
-    '  echo '\''RVCP-SUMMARY: TEST FAILED - Test File "mock.elf"'\''' \
-    '  echo "SIMULATION PASSED"' \
-    'elif [[ "${MOCK_SIM_MODE}" == "missing-rvcp" ]]; then' \
-    '  printf "exit_cause: SUCCESS\\nexit_code: 0x0000\\ninstr_count: 0x10\\nmismatches_count: 0x0\\n" > "${report_file}"' \
-    '  echo "SIMULATION PASSED"' \
-    'elif [[ "${MOCK_SIM_MODE}" == "zero-instr" ]]; then' \
-    '  printf "exit_cause: SUCCESS\\nexit_code: 0x0000\\ninstr_count: 0x0\\nmismatches_count: 0x0\\n" > "${report_file}"' \
-    '  echo '\''RVCP-SUMMARY: TEST PASSED - Test File "mock.elf"'\''' \
-    '  echo "SIMULATION PASSED"' \
-    'elif [[ "${MOCK_SIM_MODE}" == "bad-exit-cause" ]]; then' \
-    '  printf "exit_cause: MISMATCH\\nexit_code: 0x0000\\ninstr_count: 0x10\\nmismatches_count: 0x0\\n" > "${report_file}"' \
-    '  echo '\''RVCP-SUMMARY: TEST PASSED - Test File "mock.elf"'\''' \
-    '  echo "SIMULATION PASSED"' \
-    'elif [[ "${MOCK_SIM_MODE}" == "duplicate-report-key" ]]; then' \
-    '  printf "exit_cause: MISMATCH\\nexit_cause: SUCCESS\\nexit_code: 0x0000\\ninstr_count: 0x10\\nmismatches_count: 0x0\\n" > "${report_file}"' \
-    '  echo '\''RVCP-SUMMARY: TEST PASSED - Test File "mock.elf"'\''' \
-    '  echo "SIMULATION PASSED"' \
-    'else' \
-    '  printf "exit_cause: MISMATCH\\nexit_code: 0x0001\\ninstr_count: 0x10\\nmismatches_count: 0x1\\n" > "${report_file}"' \
-    '  echo '\''RVCP-SUMMARY: TEST FAILED - Test File "mock.elf"'\''' \
-    '  echo "SIMULATION FAILED"' \
-    'fi'
+    'emit_tohost_pass() { echo "${elf} *** SUCCESS *** (tohost = 0) after 42 cycles"; }' \
+    'emit_rvcp_pass() { echo '\''RVCP-SUMMARY: TEST PASSED - Test File "mock.S"'\''; }' \
+    'emit_termination() { echo '\''*** [rvfi_tracer] INFO: Simulation terminated after 41 cycles!'\''; }' \
+    'emit_pass() { emit_tohost_pass; emit_rvcp_pass; emit_termination; }' \
+    'write_report() {' \
+    '  mkdir -p "$(dirname "${report_file}")"' \
+    '  printf "%b" "$1" > "${report_file}"' \
+    '}' \
+    'case "${MOCK_SIM_MODE}" in' \
+    '  pass) emit_pass ;;' \
+    '  pass-with-report)' \
+    '    write_report "exit_cause: SUCCESS\\nexit_code: 0x0000\\ninstr_count: 0x10\\nmismatches_count: 0x0\\n"' \
+    '    emit_pass' \
+    '    ;;' \
+    '  process-failure) emit_pass; exit 9 ;;' \
+    '  tohost-failure)' \
+    '    echo "${elf} *** FAILED *** (tohost = 1) after 42 cycles"' \
+    '    emit_rvcp_pass' \
+    '    emit_termination' \
+    '    ;;' \
+    '  tohost-conflict) emit_pass; echo "${elf} *** FAILED *** (tohost = 1) after 43 cycles" ;;' \
+    '  missing-tohost) emit_rvcp_pass; emit_termination ;;' \
+    '  wrong-elf)' \
+    '    echo "/tmp/not-the-current-test.elf *** SUCCESS *** (tohost = 0) after 42 cycles"' \
+    '    emit_rvcp_pass' \
+    '    emit_termination' \
+    '    ;;' \
+    '  duplicate-tohost) emit_tohost_pass; emit_tohost_pass; emit_rvcp_pass; emit_termination ;;' \
+    '  rvcp-failure)' \
+    '    emit_tohost_pass' \
+    '    echo '\''RVCP-SUMMARY: TEST FAILED - Test File "mock.S"'\''' \
+    '    emit_termination' \
+    '    ;;' \
+    '  rvcp-conflict) emit_pass; echo '\''RVCP-SUMMARY: TEST FAILED - Test File "mock.S"'\'' ;;' \
+    '  missing-rvcp) emit_tohost_pass; emit_termination ;;' \
+    '  wrong-rvcp)' \
+    '    emit_tohost_pass' \
+    '    echo '\''RVCP-SUMMARY: TEST PASSED - Test File "another-test.S"'\''' \
+    '    emit_termination' \
+    '    ;;' \
+    '  duplicate-rvcp) emit_tohost_pass; emit_rvcp_pass; emit_rvcp_pass; emit_termination ;;' \
+    '  missing-termination) emit_tohost_pass; emit_rvcp_pass ;;' \
+    '  duplicate-termination) emit_tohost_pass; emit_rvcp_pass; emit_termination; emit_termination ;;' \
+    '  uvm-error) emit_pass; echo "UVM_ERROR @ 42 ns : spike_tandem PC Mismatch" ;;' \
+    '  simulation-failure) emit_pass; echo "SIMULATION FAILED" ;;' \
+    '  bad-report)' \
+    '    write_report "exit_cause: SUCCESS\\nexit_code: 0x0000\\ninstr_count: 0x10\\nmismatches_count: 0x1\\n"' \
+    '    emit_pass' \
+    '    ;;' \
+    '  zero-instr)' \
+    '    write_report "exit_cause: SUCCESS\\nexit_code: 0x0000\\ninstr_count: 0x0\\nmismatches_count: 0x0\\n"' \
+    '    emit_pass' \
+    '    ;;' \
+    '  bad-exit-cause)' \
+    '    write_report "exit_cause: MISMATCH\\nexit_code: 0x0000\\ninstr_count: 0x10\\nmismatches_count: 0x0\\n"' \
+    '    emit_pass' \
+    '    ;;' \
+    '  duplicate-report-key)' \
+    '    write_report "exit_cause: MISMATCH\\nexit_cause: SUCCESS\\nexit_code: 0x0000\\ninstr_count: 0x10\\nmismatches_count: 0x0\\n"' \
+    '    emit_pass' \
+    '    ;;' \
+    '  *) exit 4 ;;' \
+    'esac'
 
   git init -q "${fake_act4}"
   git -C "${fake_act4}" config user.name "ACT4 Tier Test"
@@ -203,11 +229,23 @@ run_case() {
 }
 
 run_case success pass 0 "TOTAL=1 PASS=1 FAIL=0"
-run_case simulation-failure fail 1 "TOTAL=1 PASS=0 FAIL=1"
+run_case success-with-optional-report pass-with-report 0 "TOTAL=1 PASS=1 FAIL=0"
 run_case simulator-process-failure process-failure 1 "TOTAL=1 PASS=0 FAIL=1"
+run_case tohost-failure tohost-failure 1 "TOTAL=1 PASS=0 FAIL=1"
+run_case conflicting-tohost-results tohost-conflict 1 "TOTAL=1 PASS=0 FAIL=1"
+run_case missing-tohost-success missing-tohost 1 "TOTAL=1 PASS=0 FAIL=1"
+run_case wrong-elf-success wrong-elf 1 "TOTAL=1 PASS=0 FAIL=1"
+run_case duplicate-tohost-success duplicate-tohost 1 "TOTAL=1 PASS=0 FAIL=1"
 run_case report-mismatch bad-report 1 "TOTAL=1 PASS=0 FAIL=1"
 run_case rvcp-failure rvcp-failure 1 "TOTAL=1 PASS=0 FAIL=1"
+run_case conflicting-rvcp-results rvcp-conflict 1 "TOTAL=1 PASS=0 FAIL=1"
 run_case missing-rvcp missing-rvcp 1 "TOTAL=1 PASS=0 FAIL=1"
+run_case wrong-rvcp-test-name wrong-rvcp 1 "TOTAL=1 PASS=0 FAIL=1"
+run_case duplicate-rvcp-pass duplicate-rvcp 1 "TOTAL=1 PASS=0 FAIL=1"
+run_case missing-normal-termination missing-termination 1 "TOTAL=1 PASS=0 FAIL=1"
+run_case duplicate-normal-termination duplicate-termination 1 "TOTAL=1 PASS=0 FAIL=1"
+run_case tandem-uvm-error uvm-error 1 "TOTAL=1 PASS=0 FAIL=1"
+run_case simulation-failure simulation-failure 1 "TOTAL=1 PASS=0 FAIL=1"
 run_case zero-instruction-report zero-instr 1 "TOTAL=1 PASS=0 FAIL=1"
 run_case bad-exit-cause bad-exit-cause 1 "TOTAL=1 PASS=0 FAIL=1"
 run_case duplicate-report-key duplicate-report-key 1 "TOTAL=1 PASS=0 FAIL=1"

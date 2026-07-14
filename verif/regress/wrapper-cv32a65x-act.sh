@@ -225,21 +225,64 @@ while IFS= read -r -d '' elf; do
     set -e
   fi
 
-  report_ok=0
-  if [[ -f "${report_file}" ]] && report_is_passing "${report_file}"; then
-    report_ok=1
+  # The standalone harness can finish through rvfi_tracer before Spike emits a
+  # report. Validate a report when present, but bind the required verdicts to
+  # the current ELF and ACT4 source name below.
+  report_ok=1
+  report_state="absent"
+  if [[ -e "${report_file}" ]]; then
+    report_state="invalid"
+    report_ok=0
+    if [[ -f "${report_file}" ]] && report_is_passing "${report_file}"; then
+      report_state="passing"
+      report_ok=1
+    fi
   fi
 
-  simulation_pass_count="$(grep -Ec '^[[:space:]]*SIMULATION PASSED( with WARNINGS)?[[:space:]]*$' "${log_file}" || true)"
+  expected_test_file="$(basename "${elf%.*}").S"
+  expected_rvcp_line="RVCP-SUMMARY: TEST PASSED - Test File \"${expected_test_file}\""
+  tohost_success_count="$(awk -v prefix="${elf} *** SUCCESS *** (tohost = 0) after " \
+    'index($0, prefix) == 1 && $0 ~ /[0-9]+ cycles$/ { count++ } END { print count + 0 }' \
+    "${log_file}")"
+  any_tohost_success_count="$(grep -Ec ' \*\*\* SUCCESS \*\*\* \(tohost = 0\) after [0-9]+ cycles$' \
+    "${log_file}" || true)"
+  tohost_fail_count="$(grep -Ec ' \*\*\* FAILED \*\*\* \(tohost = ' "${log_file}" || true)"
+  rvcp_pass_count="$(grep -Fxc -- "${expected_rvcp_line}" "${log_file}" || true)"
+  any_rvcp_pass_count="$(grep -Ec '^RVCP-SUMMARY: TEST PASSED - Test File "[^"]+"$' \
+    "${log_file}" || true)"
+  rvcp_fail_count="$(grep -Ec '^RVCP-SUMMARY: TEST (FAILED|SIGRUN) - Test File "[^"]+"$' \
+    "${log_file}" || true)"
+  termination_count="$(grep -Ec '^\*\*\* \[rvfi_tracer\] INFO: Simulation terminated after[[:space:]]+[0-9]+ cycles!$' \
+    "${log_file}" || true)"
   simulation_fail_count="$(grep -Ec '^[[:space:]]*SIMULATION FAILED' "${log_file}" || true)"
-  rvcp_pass_count="$(grep -Ec 'RVCP-SUMMARY: TEST PASSED - Test File "[^"]+"' "${log_file}" || true)"
-  rvcp_fail_count="$(grep -Ec 'RVCP-SUMMARY: TEST (FAILED|SIGRUN) - Test File "[^"]+"' "${log_file}" || true)"
+  tandem_error_count="$(grep -Eic 'UVM_(ERROR|FATAL)([[:space:]]|@)|spike_tandem.*Mismatch' \
+    "${log_file}" || true)"
+
+  verdict_file="${log_file}.verdict"
+  {
+    printf 'sim_rc=%s\n' "${sim_rc}"
+    printf 'expected_tohost_success=%s\n' "${tohost_success_count}"
+    printf 'all_tohost_success=%s\n' "${any_tohost_success_count}"
+    printf 'tohost_failure=%s\n' "${tohost_fail_count}"
+    printf 'expected_rvcp_pass=%s\n' "${rvcp_pass_count}"
+    printf 'all_rvcp_pass=%s\n' "${any_rvcp_pass_count}"
+    printf 'rvcp_failure=%s\n' "${rvcp_fail_count}"
+    printf 'normal_termination=%s\n' "${termination_count}"
+    printf 'simulation_failure=%s\n' "${simulation_fail_count}"
+    printf 'tandem_error=%s\n' "${tandem_error_count}"
+    printf 'tandem_report=%s\n' "${report_state}"
+  } > "${verdict_file}"
 
   if [[ "${sim_rc}" -eq 0 ]] \
-    && [[ "${simulation_pass_count}" -ge 1 ]] \
-    && [[ "${simulation_fail_count}" -eq 0 ]] \
-    && [[ "${rvcp_pass_count}" -ge 1 ]] \
+    && [[ "${tohost_success_count}" -eq 1 ]] \
+    && [[ "${any_tohost_success_count}" -eq 1 ]] \
+    && [[ "${tohost_fail_count}" -eq 0 ]] \
+    && [[ "${rvcp_pass_count}" -eq 1 ]] \
+    && [[ "${any_rvcp_pass_count}" -eq 1 ]] \
     && [[ "${rvcp_fail_count}" -eq 0 ]] \
+    && [[ "${termination_count}" -eq 1 ]] \
+    && [[ "${simulation_fail_count}" -eq 0 ]] \
+    && [[ "${tandem_error_count}" -eq 0 ]] \
     && [[ "${report_ok}" -eq 1 ]]; then
     printf "PASS    %s\n" "${relative_path}" | tee -a "${SUMMARY_FILE}"
     pass=$((pass + 1))
@@ -261,6 +304,7 @@ if [[ "${total}" -ne "${ACT4_EXPECTED_TESTS}" \
   || "${pass}" -ne "${total}" ]]; then
   if [[ -n "${first_fail_log}" ]]; then
     echo "First failing ACT4 log: ${first_fail_log}" >&2
+    cat "${first_fail_log}.verdict" >&2
     tail -n 120 "${first_fail_log}" >&2
   fi
   exit 1
