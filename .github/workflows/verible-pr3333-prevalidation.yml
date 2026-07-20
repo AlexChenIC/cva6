@@ -1,0 +1,26 @@
+# Personal-fork-only prevalidation for the PR #3333 port onto PR #3331.
+name: verible-pr3333-prevalidation
+
+on:
+  push:
+    branches:
+      - jchen/pr3331-verible-3333-b9e7eeba
+  workflow_dispatch:
+
+jobs:
+  format-and-xlen:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: chipsalliance/verible-formatter-action@main
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          files: '$(find core -regex ".*\.\(v\|sv\)$" | grep -v "^core/include/.*_config_pkg\.sv$")'
+          fail_on_formatting_suggestions: true
+      - name: Check CVA6Cfg XLEN attribute usage
+        if: always()
+        run: |
+          chmod +x util/sanitize/systemverilog/xlen_misuse.sh
+          util/sanitize/systemverilog/xlen_misuse.sh
