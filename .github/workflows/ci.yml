@@ -142,6 +142,10 @@ jobs:
         testcase:  [ dv-riscv-arch-test, cv32a6_tests ]
         config:    [ cv32a65x_axi, cv32a60x_axi ]
         simulator: [ veri-testharness ]
+        include:
+          - testcase: dv-riscv-mmu-sv32-test
+            config: cv32a6_imac_sv32
+            simulator: veri-testharness
     needs:
       build-riscv-tests
     steps:
