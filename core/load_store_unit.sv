@@ -223,6 +223,8 @@ module load_store_unit
   exception_t                              pmp_exception;
   fetch_arsp_t                             pmp_fetch_arsp;
   logic                                    pmp_translation_valid;
+  logic                                    pmp_is_store;
+  logic        [         CVA6Cfg.VLEN-1:0] pmp_vaddr;
   logic                                    dtlb_hit;
   logic        [         CVA6Cfg.PPNW-1:0] dtlb_ppn;
 
@@ -283,6 +285,8 @@ module load_store_unit
         .lsu_dtlb_ppn_o(dtlb_ppn),  // send in the same cycle as the request
 
         .lsu_valid_o    (pmp_translation_valid),
+        .lsu_is_store_o (pmp_is_store),
+        .lsu_vaddr_o    (pmp_vaddr),
         .lsu_paddr_o    (lsu_paddr),
         .lsu_exception_o(pmp_exception),
 
@@ -331,6 +335,8 @@ module load_store_unit
     assign pmp_fetch_arsp.fetch_exception = 'h0;
     assign pmp_exception = misaligned_exception;
     assign pmp_translation_valid = translation_req;
+    assign pmp_is_store = st_translation_req;
+    assign pmp_vaddr = mmu_vaddr;
 
     if (CVA6Cfg.VLEN > CVA6Cfg.PLEN) begin
       assign lsu_paddr = mmu_vaddr[CVA6Cfg.PLEN-1:0];
@@ -361,9 +367,9 @@ module load_store_unit
       .icache_fetch_vaddr_i(fetch_areq_i.fetch_vaddr),
       .lsu_valid_i         (pmp_translation_valid),
       .lsu_paddr_i         (lsu_paddr),
-      .lsu_vaddr_i         (mmu_vaddr),
+      .lsu_vaddr_i         (pmp_vaddr),
       .lsu_exception_i     (pmp_exception),
-      .lsu_is_store_i      (st_translation_req),
+      .lsu_is_store_i      (pmp_is_store),
       .lsu_valid_o         (translation_valid),
       .lsu_paddr_o         (mmu_paddr),
       .lsu_exception_o     (mmu_exception),
