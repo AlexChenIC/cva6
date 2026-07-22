@@ -134,10 +134,15 @@ jobs:
     env:
       SPIKE_TANDEM: 1
     strategy:
+      fail-fast: false
       matrix:
         testcase:  [ dv-riscv-arch-test, cv32a6_tests ]
         config:    [ cv32a65x_axi ]
         simulator: [ veri-testharness ]
+        include:
+          - testcase: dv-riscv-mmu-sv32-test
+            config: cv32a6_imac_sv32
+            simulator: veri-testharness
     needs:
       build-riscv-tests
     steps:
@@ -181,12 +186,14 @@ jobs:
     - name: Run Tests
       run: |
           set -x
+          mkdir -p "verif/sim/out_$(date +%F)"
           export RISCV=$(pwd)/tools/riscv-toolchain/
           source ci/install-prereq.sh
           source verif/sim/setup-env.sh
           DV_SIMULATORS=${{matrix.simulator}},spike DV_TARGET=${{matrix.config}} bash verif/regress/${{matrix.testcase}}.sh
 
     - name: Upload Lint Report to Github
+      if: always()
       uses: actions/upload-artifact@v4
       with:
         name: ${{matrix.simulator}}.${{matrix.testcase}}.${{matrix.config}}
