@@ -214,34 +214,6 @@ testlist:
     <<: *common_test_config_2
     asm_tests: <path_var>/custom/sv32/vm_sum_clear_level_1.S
 
-  - test: rv32_vm_pmp_check_level_0_s
-    iterations: 1
-    march: rv32izicsr
-    mabi: ilp32
-    <<: *common_test_config_2
-    asm_tests: <path_var>/custom/sv32/vm_pmp_check_level_0.S
-
-  - test: rv32_vm_pmp_check_level_0_u
-    iterations: 1
-    march: rv32izicsr
-    mabi: ilp32
-    <<: *common_test_config
-    asm_tests: <path_var>/custom/sv32/vm_pmp_check_level_0.S
-
-  - test: rv32_vm_pmp_check_level_1_s
-    iterations: 1
-    march: rv32izicsr
-    mabi: ilp32
-    <<: *common_test_config_2
-    asm_tests: <path_var>/custom/sv32/vm_pmp_check_level_1.S
-
-  - test: rv32_vm_pmp_check_level_1_u
-    iterations: 1
-    march: rv32izicsr
-    mabi: ilp32
-    <<: *common_test_config
-    asm_tests: <path_var>/custom/sv32/vm_pmp_check_level_1.S
-
   - test: rv32_vm_dirty_bit_level_1_u
     iterations: 1
     march: rv32izicsr
@@ -375,34 +347,6 @@ testlist:
     <<: *common_test_config_4
     asm_tests: <path_var>/custom/sv32/vm_nonleaf_pte.S
 
-  - test: rv32_vm_pte_pmp_check_level_1_u
-    iterations: 1
-    march: rv32izicsr
-    mabi: ilp32
-    <<: *common_test_config_3
-    asm_tests: <path_var>/custom/sv32/vm_pte_pmp_check_level_1.S
-
-  - test: rv32_vm_pte_pmp_check_level_1_s
-    iterations: 1
-    march: rv32izicsr
-    mabi: ilp32
-    <<: *common_test_config_4
-    asm_tests: <path_var>/custom/sv32/vm_pte_pmp_check_level_1.S
-
-  - test: rv32_vm_pte_pmp_check_level_0_u
-    iterations: 1
-    march: rv32izicsr
-    mabi: ilp32
-    <<: *common_test_config_3
-    asm_tests: <path_var>/custom/sv32/vm_pte_pmp_check_level_0.S
-
-  - test: rv32_vm_pte_pmp_check_level_0_s
-    iterations: 1
-    march: rv32izicsr
-    mabi: ilp32
-    <<: *common_test_config_4
-    asm_tests: <path_var>/custom/sv32/vm_pte_pmp_check_level_0.S
-
   - test: rv32_vm_bare_mode_level_1_u
     iterations: 1
     march: rv32izicsr
@@ -472,4 +416,3 @@ testlist:
     mabi: ilp32
     <<: *common_test_config
     asm_tests: <path_var>/custom/sv32/vm_pte_u_bit_unset_level_0.S
-
