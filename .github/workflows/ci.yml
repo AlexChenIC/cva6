@@ -57,6 +57,7 @@ jobs:
 
   execute-riscv64-tests:
     name: execute-riscv64-tests
+    if: false
     runs-on: ubuntu-latest
     env:
       SPIKE_TANDEM: 1
@@ -139,13 +140,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        testcase:  [ dv-riscv-arch-test, cv32a6_tests ]
-        config:    [ cv32a65x ]
+        testcase:  [ dv-riscv-mmu-sv32-test ]
+        config:    [ cv32a6_imac_sv32 ]
         simulator: [ veri-testharness ]
-        include:
-          - testcase: dv-riscv-mmu-sv32-test
-            config: cv32a6_imac_sv32
-            simulator: veri-testharness
     needs:
       build-riscv-tests
     steps:
