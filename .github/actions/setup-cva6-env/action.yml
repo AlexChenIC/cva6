@@ -1,0 +1,69 @@
+# Copyright 2026 OpenHW Group
+# SPDX-License-Identifier: Apache-2.0
+
+name: Setup CVA6 Environment
+description: Cache tools and prepare the public CVA6 simulation environment
+
+inputs:
+  install-tools:
+    description: Run ci/setup.sh when at least one tool cache is missing
+    required: false
+    default: "true"
+
+outputs:
+  toolchain-cache-hit:
+    description: Whether the RISC-V toolchain cache was hit
+    value: ${{ steps.cache-toolchain.outputs.cache-hit }}
+  verilator-cache-hit:
+    description: Whether the Verilator cache was hit
+    value: ${{ steps.cache-verilator.outputs.cache-hit }}
+  spike-cache-hit:
+    description: Whether the Spike cache was hit
+    value: ${{ steps.cache-spike.outputs.cache-hit }}
+
+runs:
+  using: composite
+  steps:
+    - name: Read core-v-verif revision
+      id: core-v-verif-revision
+      shell: bash
+      run: |
+        echo "hash=$(git -C verif/core-v-verif rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+    - name: Cache RISC-V toolchain
+      id: cache-toolchain
+      uses: actions/cache@v6
+      with:
+        path: tools/riscv-toolchain/
+        key: ${{ runner.os }}-toolchain-${{ hashFiles('ci/install-toolchain.sh') }}
+
+    - name: Cache Verilator
+      id: cache-verilator
+      uses: actions/cache@v6
+      with:
+        path: tools/verilator/
+        key: ${{ runner.os }}-verilator-${{ hashFiles('verif/regress/install-verilator.sh') }}
+
+    - name: Cache Spike
+      id: cache-spike
+      uses: actions/cache@v6
+      with:
+        path: tools/spike/
+        key: ${{ runner.os }}-spike-${{ hashFiles('verif/regress/install-spike.sh') }}-${{ steps.core-v-verif-revision.outputs.hash }}
+
+    - name: Install missing tools
+      if: |
+        inputs.install-tools == 'true' && (
+          steps.cache-toolchain.outputs.cache-hit != 'true' ||
+          steps.cache-verilator.outputs.cache-hit != 'true' ||
+          steps.cache-spike.outputs.cache-hit != 'true'
+        )
+      shell: bash
+      run: ci/setup.sh
+
+    - name: Export tool paths
+      shell: bash
+      run: |
+        echo "RISCV=$(pwd)/tools/riscv-toolchain" >> "$GITHUB_ENV"
+        echo "$(pwd)/tools/verilator/bin" >> "$GITHUB_PATH"
+        echo "$(pwd)/tools/spike/bin" >> "$GITHUB_PATH"
