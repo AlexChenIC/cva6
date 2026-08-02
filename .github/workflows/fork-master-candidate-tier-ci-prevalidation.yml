@@ -1,0 +1,17 @@
+# Fork-only test harness. Remove this file after prevalidation.
+name: fork-master-candidate-tier-ci-prevalidation
+
+on:
+  push:
+    branches:
+      - jchen/master-candidate-tier-ci-rv32-mvp
+
+permissions:
+  contents: read
+
+jobs:
+  tier1:
+    uses: ./.github/workflows/openhw-cva6-ci-tier1-master-candidate.yml
+
+  tier2:
+    uses: ./.github/workflows/openhw-cva6-ci-tier2-master-candidate.yml
