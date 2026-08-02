@@ -17,7 +17,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: openhw-cva6-ci-tier2-master-candidate-${{ github.ref }}
   cancel-in-progress: true
 
 env:
