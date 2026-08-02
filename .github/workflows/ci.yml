@@ -10,7 +10,7 @@ jobs:
   build-riscv-tests:
     name: build-riscv-tests
     # Fork-only: isolate the new reusable Tier workflows from the legacy matrix.
-    if: false
+    if: ${{ github.ref == 'refs/heads/master_candidate' }}
     runs-on: ubuntu-latest
     env:
       NUM_JOBS: 8
