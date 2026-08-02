@@ -1,0 +1,133 @@
+# Copyright 2026 OpenHW Group
+# Licensed under the Apache License, Version 2.0, see LICENSE for details.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Public RV32 AXI regression aligned with the initial master_candidate test-list
+# intent in the Thales GitLab matrix. Nightly scheduling is intentionally
+# deferred to a default-branch dispatcher because GitHub schedules run only
+# from the repository default branch.
+
+name: openhw-cva6-ci-tier2-master-candidate
+
+on:
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  SPIKE_TANDEM: 1
+  NUM_JOBS: 8
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+jobs:
+  setup-tools:
+    name: Setup Tools
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+
+      - name: Setup CVA6 environment
+        uses: ./.github/actions/setup-cva6-env
+        with:
+          install-tools: "true"
+
+  execute-rv32-tier2:
+    name: RV32 Tier2 ${{ matrix.config }} / ${{ matrix.testcase }}
+    runs-on: ubuntu-latest
+    needs: setup-tools
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - config: cv32a60x_axi
+            testcase: base-rv32-p
+            simulator: veri-testharness,spike
+            install_script: install-riscv-tests
+            testlist: ../tests/base_rv32_p.yaml
+            isa_extensions: zcmt,zifencei
+            expected_hier: axi
+
+          - config: cv32a60x_axi
+            testcase: base-zcmt
+            simulator: veri-testharness,spike
+            install_script: ""
+            testlist: ../tests/base_zcmt.yaml
+            isa_extensions: zcmt,zifencei
+            expected_hier: axi
+
+          - config: cv32a65x_axi
+            testcase: base-rv32-p
+            simulator: veri-testharness,spike
+            install_script: install-riscv-tests
+            testlist: ../tests/base_rv32_p.yaml
+            isa_extensions: zcmt,zifencei
+            expected_hier: axi
+
+          - config: cv32a65x_axi
+            testcase: base-zcmt
+            simulator: veri-testharness,spike
+            install_script: ""
+            testlist: ../tests/base_zcmt.yaml
+            isa_extensions: zcmt,zifencei
+            expected_hier: axi
+
+          - config: cv32a65x_axi
+            testcase: base-pmp
+            simulator: veri-testharness,spike
+            install_script: ""
+            testlist: ../tests/base_pmp.yaml
+            isa_extensions: zcmt,zifencei
+            expected_hier: axi
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+
+      - name: Setup CVA6 environment
+        uses: ./.github/actions/setup-cva6-env
+
+      - name: Install prerequisites
+        run: source ci/install-prereq.sh
+
+      - name: Run Tier 2
+        env:
+          TIER_NAME: Tier 2 master_candidate
+          TIER_CONFIG: ${{ matrix.config }}
+          TIER_TESTCASE: ${{ matrix.testcase }}
+          TIER_SIMULATOR: ${{ matrix.simulator }}
+          TIER_INSTALL_SCRIPT: ${{ matrix.install_script }}
+          TIER_TESTLIST: ${{ matrix.testlist }}
+          TIER_ISA_EXTENSIONS: ${{ matrix.isa_extensions }}
+          TIER_EXPECTED_HIER: ${{ matrix.expected_hier }}
+        run: bash .github/scripts/run-tier-regression.sh
+
+      - name: Write job summary
+        if: always()
+        run: |
+          {
+            echo "## RV32 Tier 2"
+            echo '```text'
+            cat ci-results/metadata.txt 2>/dev/null || true
+            cat ci-results/failure_summary.log 2>/dev/null || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tier2-master-candidate-${{ matrix.config }}-${{ matrix.testcase }}
+          path: |
+            ci-results/
+            verif/sim/out*/
+          if-no-files-found: warn
+          retention-days: 14

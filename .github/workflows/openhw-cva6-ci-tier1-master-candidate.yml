@@ -1,0 +1,117 @@
+# Copyright 2026 OpenHW Group
+# Licensed under the Apache License, Version 2.0, see LICENSE for details.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Fast, public sanity coverage for the master_candidate RV32 AXI subset.
+# OBI configurations remain in the Thales VCS/UVM flow. RV64 and MMU targets
+# are intentionally deferred until their acceptance configurations are agreed.
+
+name: openhw-cva6-ci-tier1-master-candidate
+
+on:
+  push:
+    branches:
+      - master_candidate
+  pull_request:
+    branches:
+      - master_candidate
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  SPIKE_TANDEM: 1
+  NUM_JOBS: 8
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+jobs:
+  setup-tools:
+    name: Setup Tools
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+
+      - name: Setup CVA6 environment
+        uses: ./.github/actions/setup-cva6-env
+        with:
+          install-tools: "true"
+
+  execute-rv32-tier1:
+    name: RV32 Tier1 ${{ matrix.config }} / ${{ matrix.testcase }}
+    runs-on: ubuntu-latest
+    needs: setup-tools
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - config: cv32a60x_axi
+            testcase: base-rv32-p-smoke
+            simulator: veri-testharness,spike
+            install_script: install-riscv-tests
+            testlist: ../tests/base_rv32_p.yaml
+            test_name: rv32ui-p-add
+            isa_extensions: zcmt,zifencei
+            expected_hier: axi
+
+          - config: cv32a65x_axi
+            testcase: base-rv32-p-smoke
+            simulator: veri-testharness,spike
+            install_script: install-riscv-tests
+            testlist: ../tests/base_rv32_p.yaml
+            test_name: rv32ui-p-add
+            isa_extensions: zcmt,zifencei
+            expected_hier: axi
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+
+      - name: Setup CVA6 environment
+        uses: ./.github/actions/setup-cva6-env
+
+      - name: Install prerequisites
+        run: source ci/install-prereq.sh
+
+      - name: Run Tier 1
+        env:
+          TIER_NAME: Tier 1 master_candidate
+          TIER_CONFIG: ${{ matrix.config }}
+          TIER_TESTCASE: ${{ matrix.testcase }}
+          TIER_SIMULATOR: ${{ matrix.simulator }}
+          TIER_INSTALL_SCRIPT: ${{ matrix.install_script }}
+          TIER_TESTLIST: ${{ matrix.testlist }}
+          TIER_TEST_NAME: ${{ matrix.test_name }}
+          TIER_ISA_EXTENSIONS: ${{ matrix.isa_extensions }}
+          TIER_EXPECTED_HIER: ${{ matrix.expected_hier }}
+        run: bash .github/scripts/run-tier-regression.sh
+
+      - name: Write job summary
+        if: always()
+        run: |
+          {
+            echo "## RV32 Tier 1"
+            echo '```text'
+            cat ci-results/metadata.txt 2>/dev/null || true
+            cat ci-results/failure_summary.log 2>/dev/null || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tier1-master-candidate-${{ matrix.config }}-${{ matrix.testcase }}
+          path: |
+            ci-results/
+            verif/sim/out*/
+          if-no-files-found: warn
+          retention-days: 14
