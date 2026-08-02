@@ -127,6 +127,14 @@ jobs:
         path: 'verif/sim/out*'
         retention-days: 10
 
+  # Fork-only prevalidation calls. This temporary branch change is not part of
+  # the proposed master_candidate Tier CI patch.
+  prevalidate-master-candidate-tier1:
+    uses: ./.github/workflows/openhw-cva6-ci-tier1-master-candidate.yml
+
+  prevalidate-master-candidate-tier2:
+    uses: ./.github/workflows/openhw-cva6-ci-tier2-master-candidate.yml
+
 
   execute-riscv32-tests:
     name: execute-riscv32-tests
