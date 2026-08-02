@@ -5,6 +5,8 @@
 # Fast, public sanity coverage for the master_candidate RV32 AXI subset.
 # OBI configurations remain in the Thales VCS/UVM flow. RV64 and MMU targets
 # are intentionally deferred until their acceptance configurations are agreed.
+# Zcmt tests are also deferred until the public runner has a compatible
+# LLVM 20 or GCC 15 toolchain; the legacy GitHub toolchain is GCC 13.2.
 
 name: openhw-cva6-ci-tier1-master-candidate
 
@@ -58,7 +60,7 @@ jobs:
             install_script: install-riscv-tests
             testlist: ../tests/base_rv32_p.yaml
             test_name: rv32ui-p-add
-            isa_extensions: zcmt,zifencei
+            isa_extensions: ""
             expected_hier: axi
 
           - config: cv32a65x_axi
@@ -67,7 +69,7 @@ jobs:
             install_script: install-riscv-tests
             testlist: ../tests/base_rv32_p.yaml
             test_name: rv32ui-p-add
-            isa_extensions: zcmt,zifencei
+            isa_extensions: ""
             expected_hier: axi
 
     steps:
