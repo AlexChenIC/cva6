@@ -1,0 +1,27 @@
+# Copyright 2026 OpenHW Group
+# Licensed under the Apache License, Version 2.0, see LICENSE for details.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Fork-only dispatcher for validating the reusable master_candidate Tier
+# workflows on GitHub-hosted runners. This file is not part of the upstream
+# candidate change.
+
+name: fork-only-master-candidate-tier-ci-prevalidation
+
+on:
+  push:
+    branches:
+      - jchen/master-candidate-tier-ci-cook-v2-hosted-prevalidation
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  tier1:
+    name: Tier 1 reusable workflow
+    uses: ./.github/workflows/openhw-cva6-ci-tier1-master-candidate.yml
+
+  tier2:
+    name: Tier 2 reusable workflow
+    uses: ./.github/workflows/openhw-cva6-ci-tier2-master-candidate.yml
