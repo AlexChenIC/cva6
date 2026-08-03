@@ -2,11 +2,13 @@
 # Licensed under the Apache License, Version 2.0, see LICENSE for details.
 # SPDX-License-Identifier: Apache-2.0
 #
-# Public RV32 AXI regression aligned with the initial master_candidate test-list
-# intent in the Thales GitLab matrix where the public GCC 13.2 toolchain can
-# compile the tests. Zcmt coverage remains in the Thales flow until the public
-# runner gains a compatible LLVM 20 or GCC 15 toolchain. The base PMP list is
-# deferred while its granularity test fails in the candidate Spike setup.
+# Public RV32 AXI regression using the same cook.py target and testlist contract
+# as the Thales matrix. The public backend is Verilator TestHarness + Spike,
+# while Thales uses VCS/UVM. Zcmt remains deferred until the public runner gains
+# a compatible LLVM 20 or GCC 15 toolchain. The effective compiler ISA is
+# recorded in every artifact instead of being hidden in cva6.py target mapping.
+# cv32a65x_axi base_pmp is also deferred until the public Spike/PMP behavior is
+# resolved; the matrix-alignment artifact records that Thales covers it.
 # Nightly scheduling is intentionally deferred to a default-branch dispatcher
 # because GitHub schedules run only from the repository default branch.
 
@@ -52,18 +54,24 @@ jobs:
         include:
           - config: cv32a60x_axi
             testcase: base-rv32-p
+            mode: cook-testlist
             simulator: veri-testharness,spike
+            toolchain: github_actions_gcc
             install_script: install-riscv-tests
-            testlist: ../tests/base_rv32_p.yaml
-            isa_extensions: ""
+            testlist: verif/tests/base_rv32_p.yaml
+            compiler_march: rv32imc_zba_zbb_zbs_zbc_zicsr
+            compiler_march_reason: public-gcc-13.2-does-not-support-zcmt
             expected_hier: axi
 
           - config: cv32a65x_axi
             testcase: base-rv32-p
+            mode: cook-testlist
             simulator: veri-testharness,spike
+            toolchain: github_actions_gcc
             install_script: install-riscv-tests
-            testlist: ../tests/base_rv32_p.yaml
-            isa_extensions: ""
+            testlist: verif/tests/base_rv32_p.yaml
+            compiler_march: rv32imc_zba_zbb_zbs_zbc_zicsr
+            compiler_march_reason: public-gcc-13.2-does-not-support-zcmt
             expected_hier: axi
 
     steps:
@@ -73,6 +81,8 @@ jobs:
 
       - name: Setup CVA6 environment
         uses: ./.github/actions/setup-cva6-env
+        with:
+          install-cook-dependencies: "true"
 
       - name: Install prerequisites
         run: source ci/install-prereq.sh
@@ -80,13 +90,18 @@ jobs:
       - name: Run Tier 2
         env:
           TIER_NAME: Tier 2 master_candidate
+          TIER_MODE: ${{ matrix.mode }}
           TIER_CONFIG: ${{ matrix.config }}
           TIER_TESTCASE: ${{ matrix.testcase }}
           TIER_SIMULATOR: ${{ matrix.simulator }}
+          TIER_TOOLCHAIN: ${{ matrix.toolchain }}
           TIER_INSTALL_SCRIPT: ${{ matrix.install_script }}
           TIER_TESTLIST: ${{ matrix.testlist }}
-          TIER_ISA_EXTENSIONS: ${{ matrix.isa_extensions }}
+          TIER_COMPILER_MARCH: ${{ matrix.compiler_march }}
+          TIER_COMPILER_MARCH_REASON: ${{ matrix.compiler_march_reason }}
           TIER_EXPECTED_HIER: ${{ matrix.expected_hier }}
+          TIER_EVENT_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          TIER_EVENT_BASE_SHA: ${{ github.event.pull_request.base.sha || '' }}
         run: bash .github/scripts/run-tier-regression.sh
 
       - name: Write job summary
@@ -107,6 +122,8 @@ jobs:
           name: tier2-master-candidate-${{ matrix.config }}-${{ matrix.testcase }}
           path: |
             ci-results/
-            verif/sim/out*/
+            artifacts/reports/
+            build/${{ matrix.config }}/compile/
+            build/${{ matrix.config }}/simulation/sim_verilator_testharness/
           if-no-files-found: warn
           retention-days: 14

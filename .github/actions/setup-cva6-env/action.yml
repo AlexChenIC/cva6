@@ -9,6 +9,10 @@ inputs:
     description: Run ci/setup.sh when at least one tool cache is missing
     required: false
     default: "true"
+  install-cook-dependencies:
+    description: Install the Python dependencies required by cook.py
+    required: false
+    default: "false"
 
 outputs:
   toolchain-cache-hit:
@@ -24,6 +28,19 @@ outputs:
 runs:
   using: composite
   steps:
+    - name: Setup Python for cook.py
+      if: inputs.install-cook-dependencies == 'true'
+      uses: actions/setup-python@v6
+      with:
+        python-version: "3.11"
+        cache: pip
+        cache-dependency-path: flows/requirements.txt
+
+    - name: Install cook.py Python dependencies
+      if: inputs.install-cook-dependencies == 'true'
+      shell: bash
+      run: python3 -m pip install --disable-pip-version-check -r flows/requirements.txt
+
     - name: Read core-v-verif revision
       id: core-v-verif-revision
       shell: bash

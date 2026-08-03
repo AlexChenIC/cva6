@@ -20,6 +20,7 @@ import argparse
 import os
 import random
 import re
+import shlex
 import sys
 import logging
 import subprocess
@@ -115,15 +116,20 @@ def get_generator_cmd(simulator, simulator_yaml, cov, exp, debug_cmd):
   sys.exit(RET_FAIL)
 
 
-def parse_iss_yaml(iss, iss_yaml, isa, target, setting_dir, debug_cmd, priv, spike_params):
+def parse_iss_yaml(iss, iss_yaml, isa, target, setting_dir, debug_cmd, priv,
+                   spike_params, spike_yaml=""):
   """Parse ISS YAML to get the simulation command
 
   Args:
     iss         : target ISS used to look up in ISS YAML
     iss_yaml    : ISS configuration file in YAML format
     isa         : ISA variant passed to the ISS
+    target      : CVA6 target configuration name
     setting_dir : Generator setting directory
     debug_cmd   : Produce the debug cmd log without running
+    priv        : Privilege mode passed to the ISS
+    spike_params: Additional Spike command-line parameters
+    spike_yaml  : Target Spike parameter YAML passed to make
 
   Returns:
     cmd         : ISS run command
@@ -159,6 +165,11 @@ def parse_iss_yaml(iss, iss_yaml, isa, target, setting_dir, debug_cmd, priv, spi
         cmd = re.sub(r"\<variant\>", isa, cmd)
         cmd = re.sub(r"\<priv\>", priv, cmd)
         cmd = re.sub(r"\<target\>", target, cmd)
+      if spike_yaml and iss not in ("spike", "veri-testharness"):
+        logging.error("spike_yaml is not supported for ISS backend %s" % iss)
+        sys.exit(RET_FAIL)
+      if spike_yaml:
+        cmd += " spike_yaml=%s" % shlex.quote(spike_yaml)
       return cmd
   logging.error("Cannot find ISS %0s" % iss)
   sys.exit(RET_FAIL)
@@ -495,7 +506,8 @@ def generate_yaml_report(yaml_path, target, isa, test, testlist, iss, initial_cr
 
 
 def run_test(test, iss_yaml, isa, target, mabi, gcc_opts, iss_opts, output_dir,
-             setting_dir, debug_cmd, linker, priv, spike_params, test_name=None, iss_timeout=500, testlist="custom"):
+             setting_dir, debug_cmd, linker, priv, spike_params, test_name=None,
+             iss_timeout=500, testlist="custom", spike_yaml=""):
   """Run a directed test with ISS
 
   Args:
@@ -515,6 +527,7 @@ def run_test(test, iss_yaml, isa, target, mabi, gcc_opts, iss_opts, output_dir,
     test_name   : (Optional) Name of the test
     iss_timeout : Timeout for ISS simulation (default: 500)
     testlist    : Test list identifier (default: "custom")
+    spike_yaml  : Target Spike parameter YAML passed to make
   """
 
   global COMPILER
@@ -526,8 +539,8 @@ def run_test(test, iss_yaml, isa, target, mabi, gcc_opts, iss_opts, output_dir,
     test_type = "c"
   elif test.endswith(".S"):
     test_type = "S"
-  elif test.endswith(".o"):
-    test_type = "o"
+  elif test.endswith((".o", ".elf")):
+    test_type = Path(test).suffix[1:]
   else:
     sys.exit("Unknown test extension!")
 
@@ -537,7 +550,7 @@ def run_test(test, iss_yaml, isa, target, mabi, gcc_opts, iss_opts, output_dir,
   test = re.sub(r"^.*\/", "", test_path)
   test = re.sub(rf"\.{test_type}$", "", test)
   prefix = (f"{output_dir}/directed_tests/{test}")
-  if test_type == "o":
+  if test_type in ("o", "elf"):
     elf = test_path
   else:
     elf = prefix + ".o"
@@ -545,7 +558,7 @@ def run_test(test, iss_yaml, isa, target, mabi, gcc_opts, iss_opts, output_dir,
   iss_list = iss_opts.split(",")
   run_cmd("mkdir -p %s/directed_tests" % output_dir)
 
-  if test_type != "o":
+  if test_type not in ("o", "elf"):
     # gcc compilation
     compiler = get_env_var(COMPILER, debug_cmd = debug_cmd)
     # Sanitize compiler ISA
@@ -574,7 +587,9 @@ def run_test(test, iss_yaml, isa, target, mabi, gcc_opts, iss_opts, output_dir,
       log = ("%s/%s_sim/%s.%s.log" % (output_dir, iss, test_log_name, target))
     yaml = ("%s/%s_sim/%s.%s.log.yaml" % (output_dir, iss, test_log_name, target))
     log_list.append(log)
-    base_cmd = parse_iss_yaml(iss, iss_yaml, isa, target, setting_dir, debug_cmd, priv, spike_params)
+    base_cmd = parse_iss_yaml(
+      iss, iss_yaml, isa, target, setting_dir, debug_cmd, priv, spike_params,
+      spike_yaml)
     print(elf)
     cmd = get_iss_cmd(base_cmd, elf, target, log)
     logging.info("[%0s] Running ISS simulation: %s" % (iss, cmd))
@@ -593,7 +608,8 @@ def run_test(test, iss_yaml, isa, target, mabi, gcc_opts, iss_opts, output_dir,
 
 
 def iss_sim(test_list, output_dir, iss_list, iss_yaml, iss_opts,
-            isa, target, setting_dir, timeout_s, debug_cmd, priv, spike_params):
+            isa, target, setting_dir, timeout_s, debug_cmd, priv, spike_params,
+            spike_yaml=""):
   """Run ISS simulation with the generated test program
 
   Args:
@@ -603,13 +619,19 @@ def iss_sim(test_list, output_dir, iss_list, iss_yaml, iss_opts,
     iss_yaml    : ISS configuration file in YAML format
     iss_opts    : ISS command line options
     isa         : ISA variant passed to the ISS
+    target      : CVA6 target configuration name
     setting_dir : Generator setting directory
     timeout_s   : Timeout limit in seconds
     debug_cmd   : Produce the debug cmd log without running
+    priv        : Privilege mode passed to the ISS
+    spike_params: Additional Spike command-line parameters
+    spike_yaml  : Target Spike parameter YAML passed to make
   """
   for iss in iss_list.split(","):
     log_dir = ("%s/%s_sim" % (output_dir, iss))
-    base_cmd = parse_iss_yaml(iss, iss_yaml, isa, target, setting_dir, debug_cmd, priv, spike_params)
+    base_cmd = parse_iss_yaml(
+      iss, iss_yaml, isa, target, setting_dir, debug_cmd, priv, spike_params,
+      spike_yaml)
     logging.info("%s sim log dir: %s" % (iss, log_dir))
     run_cmd_output(["mkdir", "-p", log_dir])
     tandem_sim = iss != "spike" and os.environ.get('SPIKE_TANDEM') != None
@@ -834,6 +856,8 @@ def parse_args(cwd):
                       help="Choose additional z, s, x extensions")
   parser.add_argument("--spike_params", type=str, default="",
                       help="Spike command line parameters, run spike --help and spike --print-params to see more")
+  parser.add_argument("--spike_yaml", type=str, default="",
+                      help="Target Spike parameter YAML passed to simulation make targets")
   rsg = parser.add_argument_group('Random seeds',
                                   'To control random seeds, use at most one '
                                   'of the --start_seed, --seed or --seed_yaml '
@@ -1053,9 +1077,13 @@ def load_config(args, cwd):
   global isa_extension_list
   isa_extension_list = args.isa_extension.split(",")
   if not "g" in args.isa: # LLVM complains if we add zicsr and zifencei when g is set.
-    isa_extension_list.append("zicsr")
+    if "_zicsr" not in args.isa:
+      isa_extension_list.append("zicsr")
     # Exclude CV32A6{0,56}X and hwconfig from Zifencei-capable targets.
-    if "cv32a65x_axi" not in args.target and "cv32a60x_axi" not in args.target and "cv32a65x" not in args.target and "cv32a60x" not in args.target and "hwconfig" not in args.target:
+    zifencei_excluded_targets = (
+      "cv32a65x_axi", "cv32a60x_axi", "cv32a65x", "cv32a60x", "hwconfig")
+    if not any(target in args.target for target in zifencei_excluded_targets) and \
+       "_zifencei" not in args.isa:
       isa_extension_list.append("zifencei")
 
   args.spike_params = get_full_spike_param_args(args.spike_params) if args.spike_params else ""
@@ -1295,7 +1323,8 @@ def main():
           if os.path.isfile(full_path) or args.debug:
             run_test(full_path, args.iss_yaml, args.isa, args.target, args.mabi, args.gcc_opts,
                   args.iss, output_dir, args.core_setting_dir, args.debug, args.linker,
-                  args.priv, args.spike_params, iss_timeout=args.iss_timeout)
+                  args.priv, args.spike_params, iss_timeout=args.iss_timeout,
+                  spike_yaml=args.spike_yaml)
           else:
             logging.error('%s does not exist or is not a file' % full_path)
             sys.exit(RET_FAIL)
@@ -1371,7 +1400,9 @@ def main():
               if os.path.isfile(path_test):
                 run_test(path_test, args.iss_yaml, args.isa, args.target, args.mabi, gcc_opts,
                              args.iss, output_dir, args.core_setting_dir, args.debug, args.linker,
-                             args.priv, args.spike_params, test_entry['test'], iss_timeout=args.iss_timeout, testlist=args.testlist)
+                             args.priv, args.spike_params, test_entry['test'],
+                             iss_timeout=args.iss_timeout, testlist=args.testlist,
+                             spike_yaml=args.spike_yaml)
               else:
                 if not args.debug:
                   logging.error('%s does not exist' % path_test)
@@ -1390,7 +1421,7 @@ def main():
         if args.steps == "all" or re.match(".*iss_sim.*", args.steps):
           iss_sim(matched_list, output_dir, args.iss, args.iss_yaml, args.iss_opts,
                   args.isa, args.target, args.core_setting_dir, args.iss_timeout, args.debug,
-                  args.priv, args.spike_params)
+                  args.priv, args.spike_params, args.spike_yaml)
 
         # Compare ISS simulation result
         if args.steps == "all" or re.match(".*iss_cmp.*", args.steps):
