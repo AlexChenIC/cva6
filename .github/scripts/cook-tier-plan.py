@@ -17,6 +17,7 @@ from typing import Any
 import yaml
 
 DEFAULT_PLAN = Path(".github/ci/master_candidate_cook_tiers.yml")
+ACCEPTANCE_POLICIES = ("required", "diagnostic")
 
 
 def load_yaml(path: Path) -> Any:
@@ -85,12 +86,26 @@ def validate_plan(plan_path: Path) -> dict[str, Any]:
         entries = tier["entries"]
         seen: set[tuple[str, str]] = set()
         enabled_total = 0
+        enabled_by_acceptance = {policy: 0 for policy in ACCEPTANCE_POLICIES}
         report_entries = []
 
         for entry in entries:
             target = entry["target"]
             testlist_path = Path(entry["testlist"])
             testlist_name = testlist_path.stem
+            acceptance = entry.get("acceptance")
+            if acceptance not in ACCEPTANCE_POLICIES:
+                raise ValueError(
+                    f"{target}/{testlist_name} has invalid acceptance policy: "
+                    f"{acceptance}"
+                )
+            if acceptance == "diagnostic" and not entry.get("acceptance_reason"):
+                raise ValueError(
+                    f"{target}/{testlist_name} diagnostic entry needs "
+                    "acceptance_reason"
+                )
+            if tier_name == "tier1" and acceptance != "required":
+                raise ValueError("Tier 1 entries must use required acceptance")
             pair = (target, testlist_name)
             if pair in seen:
                 raise ValueError(
@@ -120,6 +135,7 @@ def validate_plan(plan_path: Path) -> dict[str, Any]:
                     f"expected {entry['expected_enabled_tests']}"
                 )
             enabled_total += len(tests)
+            enabled_by_acceptance[acceptance] += len(tests)
             report_entries.append(
                 {
                     **entry,
@@ -134,14 +150,34 @@ def validate_plan(plan_path: Path) -> dict[str, Any]:
                 f"{tier_name} has {enabled_total} enabled target/test pairs, "
                 f"expected {tier['expected_enabled_tests']}"
             )
+        for acceptance, enabled_count in enabled_by_acceptance.items():
+            expected_key = f"expected_{acceptance}_enabled_tests"
+            if enabled_count != int(tier[expected_key]):
+                raise ValueError(
+                    f"{tier_name} has {enabled_count} {acceptance} enabled "
+                    f"target/test pairs, expected {tier[expected_key]}"
+                )
         tier_pairs[tier_name] = seen
         report_tiers[tier_name] = {
             "enabled_target_test_pairs": enabled_total,
+            "required_enabled_target_test_pairs": enabled_by_acceptance["required"],
+            "diagnostic_enabled_target_test_pairs": enabled_by_acceptance["diagnostic"],
             "entries": report_entries,
         }
 
     if not tier_pairs["tier1"].issubset(tier_pairs["tier2"]):
         raise ValueError("Tier 1 must be a subset of Tier 2")
+
+    tier1_pairs = tier_pairs["tier1"]
+    tier2_required_pairs = {
+        (entry["target"], entry["testlist_name"])
+        for entry in report_tiers["tier2"]["entries"]
+        if entry["acceptance"] == "required"
+    }
+    if tier2_required_pairs != tier1_pairs:
+        raise ValueError(
+            "Tier 2 required entries must exactly match the Tier 1 acceptance set"
+        )
 
     tier2_pairs = tier_pairs["tier2"]
     for target in scope_targets:
@@ -192,6 +228,8 @@ def matrix_for_tier(plan_path: Path, tier_name: str) -> dict[str, Any]:
                 "compiler_march": entry["compiler_march"],
                 "compiler_march_reason": entry["compiler_march_reason"],
                 "expected_enabled_tests": entry["expected_enabled_tests"],
+                "acceptance": entry["acceptance"],
+                "acceptance_reason": entry.get("acceptance_reason", "none"),
             }
         )
     return {"include": matrix}
