@@ -222,15 +222,27 @@ class FailureSummaryTest(unittest.TestCase):
 
 class WorkflowContractTest(unittest.TestCase):
     def test_candidate_workflows_use_isolated_helpers(self) -> None:
-        reusable = (
+        reusable_path = (
             REPO_ROOT / ".github/workflows/openhw-cva6-ci-cook-tier-reusable.yml"
-        ).read_text(encoding="utf-8")
+        )
+        reusable = reusable_path.read_text(encoding="utf-8")
+        workflow = yaml.load(reusable, Loader=yaml.BaseLoader)
+        execute_job = workflow["jobs"]["execute"]
+        regression_step = next(
+            step
+            for step in execute_job["steps"]
+            if step.get("name") == "Run public cook.py tandem regression"
+        )
         self.assertIn("setup-cva6-cook-env", reusable)
         self.assertIn("run-cook-tier-regression.sh", reusable)
         self.assertNotIn("setup-cva6-env", reusable)
         self.assertNotIn("run-tier-regression.sh", reusable)
         self.assertIn("actions/upload-artifact@v7", reusable)
-        self.assertIn("matrix.acceptance == 'diagnostic'", reusable)
+        self.assertNotIn("continue-on-error", execute_job)
+        self.assertEqual(
+            regression_step["continue-on-error"],
+            "${{ matrix.acceptance == 'diagnostic' }}",
+        )
 
     def test_tier1_and_tier2_target_master_candidate(self) -> None:
         tier1 = (
