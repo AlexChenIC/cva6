@@ -1,0 +1,96 @@
+# Copyright 2026 OpenHW Group
+# Licensed under the Apache License, Version 2.0, see LICENSE for details.
+# SPDX-License-Identifier: Apache-2.0
+
+name: Setup CVA6 cook.py environment
+description: Restore public simulation tools and pinned cook.py dependencies
+
+inputs:
+  install-tools:
+    description: Run ci/setup.sh if a required tool cache is missing
+    required: false
+    default: "true"
+  install-cook-dependencies:
+    description: Install the pinned Python environment used by cook.py
+    required: false
+    default: "false"
+  install-llvm18:
+    description: Ensure the LLVM 18 assembler, binutils, and LLD are available
+    required: false
+    default: "false"
+
+runs:
+  using: composite
+  steps:
+    - name: Set up Python for cook.py
+      if: inputs.install-cook-dependencies == 'true'
+      uses: actions/setup-python@v6
+      with:
+        python-version: "3.11"
+        cache: pip
+        cache-dependency-path: |
+          flows/requirements.txt
+          .github/requirements/cook-tier-ci-constraints.txt
+
+    - name: Install pinned cook.py dependencies
+      if: inputs.install-cook-dependencies == 'true'
+      shell: bash
+      run: |
+        python3 -m pip install --disable-pip-version-check \
+          --constraint .github/requirements/cook-tier-ci-constraints.txt \
+          --requirement flows/requirements.txt
+
+    - name: Ensure LLVM 18 Zcmt tools are available
+      if: inputs.install-llvm18 == 'true'
+      shell: bash
+      run: |
+        if ! command -v clang-18 >/dev/null || \
+           ! command -v llvm-objdump-18 >/dev/null || \
+           ! command -v llvm-nm-18 >/dev/null || \
+           ! command -v ld.lld-18 >/dev/null; then
+          sudo apt-get update
+          sudo apt-get install --yes clang-18 llvm-18 lld-18
+        fi
+
+    - name: Read core-v-verif revision
+      id: core-v-verif-revision
+      shell: bash
+      run: echo "hash=$(git -C verif/core-v-verif rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+    - name: Cache RISC-V toolchain
+      id: cache-toolchain
+      uses: actions/cache@v6
+      with:
+        path: tools/riscv-toolchain/
+        key: ${{ runner.os }}-${{ runner.arch }}-mc-cook-toolchain-${{ hashFiles('ci/install-toolchain.sh') }}
+
+    - name: Cache Verilator
+      id: cache-verilator
+      uses: actions/cache@v6
+      with:
+        path: tools/verilator/
+        key: ${{ runner.os }}-${{ runner.arch }}-mc-cook-verilator-${{ hashFiles('verif/regress/install-verilator.sh') }}
+
+    - name: Cache Spike
+      id: cache-spike
+      uses: actions/cache@v6
+      with:
+        path: tools/spike/
+        key: ${{ runner.os }}-${{ runner.arch }}-mc-cook-spike-${{ hashFiles('verif/regress/install-spike.sh') }}-${{ steps.core-v-verif-revision.outputs.hash }}
+
+    - name: Install missing public simulation tools
+      if: |
+        inputs.install-tools == 'true' && (
+          steps.cache-toolchain.outputs.cache-hit != 'true' ||
+          steps.cache-verilator.outputs.cache-hit != 'true' ||
+          steps.cache-spike.outputs.cache-hit != 'true'
+        )
+      shell: bash
+      run: ci/setup.sh
+
+    - name: Export public tool paths
+      shell: bash
+      run: |
+        echo "RISCV=$(pwd)/tools/riscv-toolchain" >> "$GITHUB_ENV"
+        echo "$(pwd)/tools/verilator/bin" >> "$GITHUB_PATH"
+        echo "$(pwd)/tools/spike/bin" >> "$GITHUB_PATH"
