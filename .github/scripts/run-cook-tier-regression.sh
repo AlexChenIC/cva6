@@ -38,7 +38,6 @@ collect_results() {
 }
 
 scan_failures() {
-  local matches=""
   local -a files=("${RUN_LOG}")
   while IFS= read -r -d '' file_path; do
     files+=("${file_path}")
@@ -46,15 +45,9 @@ scan_failures() {
     find "build/${TIER_CONFIG}" -type f \
       \( -name '*.log' -o -name '*.iss' \) -print0 2>/dev/null || true
   )
-  matches="$(
-    grep -HnE \
-      '\[FAILED\]|SIMULATION FAILED|ERROR return code:|bad syscall|unrecognized opcode|extension .* required|\*\*\*[[:space:]]+FAILED[[:space:]]+\*\*\*' \
-      "${files[@]}" 2>/dev/null || true
-  )"
-  if [ -n "${matches}" ]; then
-    printf '%s\n' "${matches}" | tee -a "${FAILURE_SUMMARY}"
-    return 1
-  fi
+  python3 .github/scripts/summarize-cook-failures.py \
+    --output "${FAILURE_SUMMARY}" \
+    "${files[@]}"
 }
 
 write_metadata() {
@@ -67,6 +60,8 @@ write_metadata() {
     echo "compiler_march=${TIER_COMPILER_MARCH}"
     echo "compiler_march_reason=${TIER_COMPILER_MARCH_REASON:-not-specified}"
     echo "expected_enabled_tests=${TIER_EXPECTED_ENABLED_TESTS:-unknown}"
+    echo "acceptance=${TIER_ACCEPTANCE:-unknown}"
+    echo "acceptance_reason=${TIER_ACCEPTANCE_REASON:-none}"
     echo "backend=veri-testharness,spike"
     echo "spike_tandem=${SPIKE_TANDEM:-unset}"
     echo "source_revision=$(git rev-parse HEAD)"
@@ -80,7 +75,9 @@ finalize() {
   trap - EXIT
   set +e
   collect_results
-  if [ "${rc}" -eq 0 ] && ! scan_failures; then
+  scan_failures
+  local scan_rc="$?"
+  if [ "${rc}" -eq 0 ] && [ "${scan_rc}" -ne 0 ]; then
     rc=1
   fi
   echo "${rc}" > "${EXIT_CODE_FILE}"

@@ -14,10 +14,13 @@ scope:
 tiers:
   tier1:
     expected_enabled_tests: 10
+    expected_required_enabled_tests: 10
+    expected_diagnostic_enabled_tests: 0
     entries:
       - target: cv32a60x_axi
         testlist: verif/tests/base_rv32_p.yaml
         expected_enabled_tests: 5
+        acceptance: required
         toolchain: github_actions_gcc
         install_script: install-riscv-tests
         compiler_march: rv32imc_zicsr_zba_zbb_zbs_zbc
@@ -26,6 +29,7 @@ tiers:
       - target: cv32a65x_axi
         testlist: verif/tests/base_rv32_p.yaml
         expected_enabled_tests: 5
+        acceptance: required
         toolchain: github_actions_gcc
         install_script: install-riscv-tests
         compiler_march: rv32imc_zicsr_zba_zbb_zbs_zbc_zifencei
@@ -34,10 +38,13 @@ tiers:
 
   tier2:
     expected_enabled_tests: 23
+    expected_required_enabled_tests: 10
+    expected_diagnostic_enabled_tests: 13
     entries:
       - target: cv32a60x_axi
         testlist: verif/tests/base_rv32_p.yaml
         expected_enabled_tests: 5
+        acceptance: required
         toolchain: github_actions_gcc
         install_script: install-riscv-tests
         compiler_march: rv32imc_zicsr_zba_zbb_zbs_zbc
@@ -46,6 +53,8 @@ tiers:
       - target: cv32a60x_axi
         testlist: verif/tests/base_zcmt.yaml
         expected_enabled_tests: 4
+        acceptance: diagnostic
+        acceptance_reason: target-zifencei-contract-under-review
         toolchain: github_actions_llvm18
         install_script: ""
         compiler_march: rv32imc_zicsr_zba_zbb_zbs_zbc_zcmt
@@ -54,6 +63,7 @@ tiers:
       - target: cv32a65x_axi
         testlist: verif/tests/base_rv32_p.yaml
         expected_enabled_tests: 5
+        acceptance: required
         toolchain: github_actions_gcc
         install_script: install-riscv-tests
         compiler_march: rv32imc_zicsr_zba_zbb_zbs_zbc_zifencei
@@ -62,6 +72,8 @@ tiers:
       - target: cv32a65x_axi
         testlist: verif/tests/base_zcmt.yaml
         expected_enabled_tests: 4
+        acceptance: diagnostic
+        acceptance_reason: target-spike-privilege-contract-under-review
         toolchain: github_actions_llvm18
         install_script: ""
         compiler_march: rv32imc_zicsr_zba_zbb_zbs_zbc_zcmt_zifencei
@@ -70,6 +82,8 @@ tiers:
       - target: cv32a65x_axi
         testlist: verif/tests/base_pmp.yaml
         expected_enabled_tests: 5
+        acceptance: diagnostic
+        acceptance_reason: spike-pmp-granularity-contract-under-review
         toolchain: github_actions_gcc
         install_script: ""
         compiler_march: rv32imc_zicsr_zba_zbb_zbs_zbc_zifencei

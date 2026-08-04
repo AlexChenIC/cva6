@@ -46,7 +46,7 @@ jobs:
             --report ci-plan/coverage.yml
 
       - name: Upload coverage contract
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: master-candidate-${{ inputs.tier }}-coverage-contract
           path: ci-plan/coverage.yml
@@ -67,8 +67,9 @@ jobs:
           install-tools: "true"
 
   execute:
-    name: ${{ inputs.tier }} ${{ matrix.target }} / ${{ matrix.testcase }}
+    name: ${{ inputs.tier }} ${{ matrix.target }} / ${{ matrix.testcase }} [${{ matrix.acceptance }}]
     runs-on: ubuntu-24.04
+    continue-on-error: ${{ matrix.acceptance == 'diagnostic' }}
     needs:
       - plan
       - setup-tools
@@ -98,6 +99,8 @@ jobs:
           TIER_COMPILER_MARCH: ${{ matrix.compiler_march }}
           TIER_COMPILER_MARCH_REASON: ${{ matrix.compiler_march_reason }}
           TIER_EXPECTED_ENABLED_TESTS: ${{ matrix.expected_enabled_tests }}
+          TIER_ACCEPTANCE: ${{ matrix.acceptance }}
+          TIER_ACCEPTANCE_REASON: ${{ matrix.acceptance_reason }}
           TIER_EVENT_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
           TIER_EVENT_BASE_SHA: ${{ github.event.pull_request.base.sha || '' }}
         run: bash .github/scripts/run-cook-tier-regression.sh
@@ -115,7 +118,7 @@ jobs:
 
       - name: Upload test evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: master-candidate-${{ inputs.tier }}-${{ matrix.target }}-${{ matrix.testcase }}
           path: |

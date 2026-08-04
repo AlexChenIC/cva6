@@ -5,9 +5,6 @@
 name: openhw-cva6-ci-tier1-master-candidate
 
 on:
-  push:
-    branches:
-      - master_candidate
   pull_request:
     branches:
       - master_candidate

@@ -29,7 +29,7 @@ from riscv_trace_csv import *
 from lib import *
 
 RD_RE    = re.compile(r"(?P<pri>\d) 0x(?P<addr>[a-f0-9]+?) " \
-                      "\((?P<bin>.*?)\) (?P<reg>[xf]\s*\d*?) 0x(?P<val>[a-f0-9]+)")
+                      r"\((?P<bin>.*?)\) (?P<reg>[xf]\s*\d*?) 0x(?P<val>[a-f0-9]+)")
 # cook.py TestHarness logs add a cycle column before the legacy RVFI text.
 LINE_PREFIX_RE = r"[ \t]*(?:\d+[ \t]*\|[ \t]*)?"
 CORE_RE  = re.compile(LINE_PREFIX_RE +

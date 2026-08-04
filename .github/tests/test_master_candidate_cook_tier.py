@@ -51,6 +51,10 @@ def working_directory(path: Path):
 
 
 PLAN = load_module("cook_tier_plan", REPO_ROOT / ".github/scripts/cook-tier-plan.py")
+FAILURES = load_module(
+    "summarize_cook_failures",
+    REPO_ROOT / ".github/scripts/summarize-cook-failures.py",
+)
 TOOLCHAINS = load_module(
     "prepare_cook_toolchains",
     REPO_ROOT / ".github/scripts/prepare-cook-toolchains.py",
@@ -70,6 +74,13 @@ class TierPlanTest(unittest.TestCase):
             report = PLAN.validate_plan(self.plan_path)
         self.assertEqual(report["tiers"]["tier1"]["enabled_target_test_pairs"], 10)
         self.assertEqual(report["tiers"]["tier2"]["enabled_target_test_pairs"], 23)
+        self.assertEqual(
+            report["tiers"]["tier2"]["required_enabled_target_test_pairs"], 10
+        )
+        self.assertEqual(
+            report["tiers"]["tier2"]["diagnostic_enabled_target_test_pairs"],
+            13,
+        )
         self.assertFalse(report["comparison_boundary"]["full_pipeline_parity_claimed"])
 
     def test_tier2_rejects_missing_thales_testlist(self) -> None:
@@ -80,6 +91,7 @@ class TierPlanTest(unittest.TestCase):
             if Path(entry["testlist"]).stem != "base_pmp"
         ]
         data["tiers"]["tier2"]["expected_enabled_tests"] = 18
+        data["tiers"]["tier2"]["expected_diagnostic_enabled_tests"] = 8
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "plan.yml"
             path.write_text(yaml.safe_dump(data), encoding="utf-8")
@@ -97,6 +109,27 @@ class TierPlanTest(unittest.TestCase):
         self.assertEqual(len(pairs), 5)
         self.assertIn(("cv32a65x_axi", "base_pmp"), pairs)
         self.assertIn(("cv32a60x_axi", "base_zcmt"), pairs)
+
+    def test_matrix_marks_extended_testlists_as_diagnostic(self) -> None:
+        with working_directory(REPO_ROOT):
+            matrix = PLAN.matrix_for_tier(self.plan_path, "tier2")
+        acceptance = {
+            (entry["target"], Path(entry["testlist"]).stem): entry["acceptance"]
+            for entry in matrix["include"]
+        }
+        self.assertEqual(acceptance[("cv32a60x_axi", "base_rv32_p")], "required")
+        self.assertEqual(acceptance[("cv32a60x_axi", "base_zcmt")], "diagnostic")
+        self.assertEqual(acceptance[("cv32a65x_axi", "base_pmp")], "diagnostic")
+
+    def test_diagnostic_entry_requires_a_reason(self) -> None:
+        data = yaml.safe_load(self.plan_path.read_text(encoding="utf-8"))
+        del data["tiers"]["tier2"]["entries"][1]["acceptance_reason"]
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "plan.yml"
+            path.write_text(yaml.safe_dump(data), encoding="utf-8")
+            with working_directory(REPO_ROOT):
+                with self.assertRaisesRegex(ValueError, "needs acceptance_reason"):
+                    PLAN.validate_plan(path)
 
 
 class RecipeAdapterTest(unittest.TestCase):
@@ -170,6 +203,23 @@ class DependencyContractTest(unittest.TestCase):
         self.assertLessEqual(requirements, constraints)
 
 
+class FailureSummaryTest(unittest.TestCase):
+    def test_extracts_failures_without_matching_pass_counts(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            log = Path(directory) / "cook.log"
+            log.write_text(
+                "1 PASSED, 0 FAILED\n"
+                "ERROR    ERROR return code: True/2, cmd:make spike\n"
+                "granularity_test_0: FAIL (1)\n",
+                encoding="utf-8",
+            )
+            matches = FAILURES.summarize([log])
+        self.assertEqual(len(matches), 2)
+        self.assertTrue(any("ERROR return code" in match for match in matches))
+        self.assertTrue(any("FAIL (1)" in match for match in matches))
+        self.assertFalse(any("0 FAILED" in match for match in matches))
+
+
 class WorkflowContractTest(unittest.TestCase):
     def test_candidate_workflows_use_isolated_helpers(self) -> None:
         reusable = (
@@ -179,6 +229,8 @@ class WorkflowContractTest(unittest.TestCase):
         self.assertIn("run-cook-tier-regression.sh", reusable)
         self.assertNotIn("setup-cva6-env", reusable)
         self.assertNotIn("run-tier-regression.sh", reusable)
+        self.assertIn("actions/upload-artifact@v7", reusable)
+        self.assertIn("matrix.acceptance == 'diagnostic'", reusable)
 
     def test_tier1_and_tier2_target_master_candidate(self) -> None:
         tier1 = (
@@ -189,7 +241,9 @@ class WorkflowContractTest(unittest.TestCase):
         ).read_text(encoding="utf-8")
         self.assertIn("pull_request:", tier1)
         self.assertIn("master_candidate", tier1)
+        self.assertNotIn("push:", tier1)
         self.assertNotIn("pull_request:", tier2)
+        self.assertIn("push:", tier2)
         self.assertIn("master_candidate", tier2)
 
 
