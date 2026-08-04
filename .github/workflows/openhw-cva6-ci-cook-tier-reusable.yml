@@ -69,7 +69,6 @@ jobs:
   execute:
     name: ${{ inputs.tier }} ${{ matrix.target }} / ${{ matrix.testcase }} [${{ matrix.acceptance }}]
     runs-on: ubuntu-24.04
-    continue-on-error: ${{ matrix.acceptance == 'diagnostic' }}
     needs:
       - plan
       - setup-tools
@@ -90,6 +89,8 @@ jobs:
         run: source ci/install-prereq.sh
 
       - name: Run public cook.py tandem regression
+        id: regression
+        continue-on-error: ${{ matrix.acceptance == 'diagnostic' }}
         env:
           TIER_LEVEL: ${{ inputs.tier }}
           TIER_CONFIG: ${{ matrix.target }}
@@ -105,11 +106,30 @@ jobs:
           TIER_EVENT_BASE_SHA: ${{ github.event.pull_request.base.sha || '' }}
         run: bash .github/scripts/run-cook-tier-regression.sh
 
+      - name: Verify regression evidence
+        if: always()
+        env:
+          REGRESSION_OUTCOME: ${{ steps.regression.outcome }}
+        run: |
+          test -f ci-results/exit_code
+          test -f ci-results/metadata.txt
+          test -f ci-results/failure_summary.log
+          if [ "$REGRESSION_OUTCOME" = "success" ]; then
+            test "$(cat ci-results/exit_code)" = "0"
+          elif [ "$REGRESSION_OUTCOME" = "failure" ]; then
+            test "$(cat ci-results/exit_code)" != "0"
+            test -s ci-results/failure_summary.log
+          else
+            echo "Unexpected regression outcome: $REGRESSION_OUTCOME" >&2
+            exit 1
+          fi
+
       - name: Write job summary
         if: always()
         run: |
           {
             echo "## master_candidate ${{ inputs.tier }}"
+            echo "Regression outcome: ${{ steps.regression.outcome }}"
             echo '```text'
             cat ci-results/metadata.txt 2>/dev/null || true
             cat ci-results/failure_summary.log 2>/dev/null || true

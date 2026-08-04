@@ -22,9 +22,10 @@ Tier 1 is the 10-test required fast subset. Tier 2 is a strict superset and
 contains all 23 enabled target/test pairs present in `.testlist_matrix_target`
 for these two targets. Its 10 baseline pairs are required; the remaining 13
 extension/PMP pairs run as explicitly labelled diagnostics. A diagnostic job
-still runs the complete testlist, uploads its logs, and shows failed steps, but
-does not turn the initial branch workflow red while the canonical target/Spike
-contracts are being reviewed. Disabled entries (`iterations: 0`) are not
+still runs the complete testlist, records the real regression outcome in the
+job summary, and uploads its logs. A known diagnostic regression failure does
+not turn the job red, but missing or inconsistent evidence still does. Required
+entries always block on failure. Disabled entries (`iterations: 0`) are not
 counted.
 
 The versioned plan in `master_candidate_cook_tiers.yml` is the single source

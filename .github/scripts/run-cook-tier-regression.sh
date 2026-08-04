@@ -77,6 +77,10 @@ finalize() {
   collect_results
   scan_failures
   local scan_rc="$?"
+  if [ "${rc}" -ne 0 ] && [ ! -s "${FAILURE_SUMMARY}" ]; then
+    echo "Regression exited with code ${rc}; inspect run.log for details." \
+      >> "${FAILURE_SUMMARY}"
+  fi
   if [ "${rc}" -eq 0 ] && [ "${scan_rc}" -ne 0 ]; then
     rc=1
   fi
