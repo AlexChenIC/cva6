@@ -1,0 +1,28 @@
+# Fork-only dispatcher used to validate the candidate reusable workflows.
+# This file is removed before the PR package is considered final.
+
+name: fork-only-master-candidate-tier-ci-v3-prevalidation
+
+on:
+  push:
+    branches:
+      - jchen/master-candidate-tier-ci-v3-full-parity-prevalidation
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fork-only-master-candidate-tier-ci-v3-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tier1:
+    uses: ./.github/workflows/openhw-cva6-ci-cook-tier-reusable.yml
+    with:
+      tier: tier1
+
+  tier2:
+    uses: ./.github/workflows/openhw-cva6-ci-cook-tier-reusable.yml
+    with:
+      tier: tier2
