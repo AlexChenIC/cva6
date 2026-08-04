@@ -1,0 +1,128 @@
+# Copyright 2026 OpenHW Group
+# Licensed under the Apache License, Version 2.0, see LICENSE for details.
+# SPDX-License-Identifier: Apache-2.0
+
+name: Reusable master_candidate cook.py tier
+
+on:
+  workflow_call:
+    inputs:
+      tier:
+        description: Tier plan to execute
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  SPIKE_TANDEM: 1
+  NUM_JOBS: 8
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+jobs:
+  plan:
+    name: Validate ${{ inputs.tier }} plan
+    runs-on: ubuntu-24.04
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+      enabled-tests: ${{ steps.matrix.outputs.enabled_tests }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Install plan parser
+        run: python3 -m pip install --disable-pip-version-check pyyaml==6.0.3
+
+      - name: Validate plan and emit matrix
+        id: matrix
+        run: |
+          python3 .github/scripts/cook-tier-plan.py matrix \
+            --tier "${{ inputs.tier }}" \
+            --github-output "$GITHUB_OUTPUT" \
+            --report ci-plan/coverage.yml
+
+      - name: Upload coverage contract
+        uses: actions/upload-artifact@v4
+        with:
+          name: master-candidate-${{ inputs.tier }}-coverage-contract
+          path: ci-plan/coverage.yml
+          if-no-files-found: error
+          retention-days: 30
+
+  setup-tools:
+    name: Populate public tool caches
+    runs-on: ubuntu-24.04
+    needs: plan
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+
+      - uses: ./.github/actions/setup-cva6-cook-env
+        with:
+          install-tools: "true"
+
+  execute:
+    name: ${{ inputs.tier }} ${{ matrix.target }} / ${{ matrix.testcase }}
+    runs-on: ubuntu-24.04
+    needs:
+      - plan
+      - setup-tools
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+
+      - uses: ./.github/actions/setup-cva6-cook-env
+        with:
+          install-cook-dependencies: "true"
+          install-llvm18: ${{ matrix.toolchain == 'github_actions_llvm18' }}
+
+      - name: Install simulation prerequisites
+        run: source ci/install-prereq.sh
+
+      - name: Run public cook.py tandem regression
+        env:
+          TIER_LEVEL: ${{ inputs.tier }}
+          TIER_CONFIG: ${{ matrix.target }}
+          TIER_TESTLIST: ${{ matrix.testlist }}
+          TIER_TOOLCHAIN: ${{ matrix.toolchain }}
+          TIER_INSTALL_SCRIPT: ${{ matrix.install_script }}
+          TIER_COMPILER_MARCH: ${{ matrix.compiler_march }}
+          TIER_COMPILER_MARCH_REASON: ${{ matrix.compiler_march_reason }}
+          TIER_EXPECTED_ENABLED_TESTS: ${{ matrix.expected_enabled_tests }}
+          TIER_EVENT_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          TIER_EVENT_BASE_SHA: ${{ github.event.pull_request.base.sha || '' }}
+        run: bash .github/scripts/run-cook-tier-regression.sh
+
+      - name: Write job summary
+        if: always()
+        run: |
+          {
+            echo "## master_candidate ${{ inputs.tier }}"
+            echo '```text'
+            cat ci-results/metadata.txt 2>/dev/null || true
+            cat ci-results/failure_summary.log 2>/dev/null || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload test evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: master-candidate-${{ inputs.tier }}-${{ matrix.target }}-${{ matrix.testcase }}
+          path: |
+            ci-results/
+            artifacts/reports/
+            build/${{ matrix.target }}/compile/
+            build/${{ matrix.target }}/simulation/sim_verilator_testharness/
+            build/${{ matrix.target }}/config/
+          if-no-files-found: error
+          retention-days: 30

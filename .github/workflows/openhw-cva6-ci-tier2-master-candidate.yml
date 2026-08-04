@@ -1,0 +1,24 @@
+# Copyright 2026 OpenHW Group
+# Licensed under the Apache License, Version 2.0, see LICENSE for details.
+# SPDX-License-Identifier: Apache-2.0
+
+name: openhw-cva6-ci-tier2-master-candidate
+
+on:
+  push:
+    branches:
+      - master_candidate
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: openhw-cva6-ci-tier2-master-candidate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tier2:
+    uses: ./.github/workflows/openhw-cva6-ci-cook-tier-reusable.yml
+    with:
+      tier: tier2
