@@ -74,13 +74,6 @@ class TierPlanTest(unittest.TestCase):
             report = PLAN.validate_plan(self.plan_path)
         self.assertEqual(report["tiers"]["tier1"]["enabled_target_test_pairs"], 10)
         self.assertEqual(report["tiers"]["tier2"]["enabled_target_test_pairs"], 23)
-        self.assertEqual(
-            report["tiers"]["tier2"]["required_enabled_target_test_pairs"], 10
-        )
-        self.assertEqual(
-            report["tiers"]["tier2"]["diagnostic_enabled_target_test_pairs"],
-            13,
-        )
         self.assertFalse(report["comparison_boundary"]["full_pipeline_parity_claimed"])
 
     def test_tier2_rejects_missing_thales_testlist(self) -> None:
@@ -91,7 +84,6 @@ class TierPlanTest(unittest.TestCase):
             if Path(entry["testlist"]).stem != "base_pmp"
         ]
         data["tiers"]["tier2"]["expected_enabled_tests"] = 18
-        data["tiers"]["tier2"]["expected_diagnostic_enabled_tests"] = 8
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "plan.yml"
             path.write_text(yaml.safe_dump(data), encoding="utf-8")
@@ -110,26 +102,43 @@ class TierPlanTest(unittest.TestCase):
         self.assertIn(("cv32a65x_axi", "base_pmp"), pairs)
         self.assertIn(("cv32a60x_axi", "base_zcmt"), pairs)
 
-    def test_matrix_marks_extended_testlists_as_diagnostic(self) -> None:
+    def test_matrix_contains_only_execution_inputs(self) -> None:
         with working_directory(REPO_ROOT):
             matrix = PLAN.matrix_for_tier(self.plan_path, "tier2")
-        acceptance = {
-            (entry["target"], Path(entry["testlist"]).stem): entry["acceptance"]
-            for entry in matrix["include"]
+        expected_keys = {
+            "target",
+            "testlist",
+            "testcase",
+            "toolchain",
+            "install_script",
+            "compiler_march",
+            "compiler_march_reason",
+            "expected_enabled_tests",
         }
-        self.assertEqual(acceptance[("cv32a60x_axi", "base_rv32_p")], "required")
-        self.assertEqual(acceptance[("cv32a60x_axi", "base_zcmt")], "diagnostic")
-        self.assertEqual(acceptance[("cv32a65x_axi", "base_pmp")], "diagnostic")
+        self.assertTrue(matrix["include"])
+        self.assertTrue(all(set(entry) == expected_keys for entry in matrix["include"]))
 
-    def test_diagnostic_entry_requires_a_reason(self) -> None:
+    def test_plan_has_no_result_suppression_fields(self) -> None:
         data = yaml.safe_load(self.plan_path.read_text(encoding="utf-8"))
-        del data["tiers"]["tier2"]["entries"][1]["acceptance_reason"]
-        with tempfile.TemporaryDirectory() as directory:
-            path = Path(directory) / "plan.yml"
-            path.write_text(yaml.safe_dump(data), encoding="utf-8")
-            with working_directory(REPO_ROOT):
-                with self.assertRaisesRegex(ValueError, "needs acceptance_reason"):
-                    PLAN.validate_plan(path)
+        keys: set[str] = set()
+
+        def collect_keys(value: object) -> None:
+            if isinstance(value, dict):
+                keys.update(str(key) for key in value)
+                for nested in value.values():
+                    collect_keys(nested)
+            elif isinstance(value, list):
+                for nested in value:
+                    collect_keys(nested)
+
+        collect_keys(data)
+        forbidden = {
+            "acceptance",
+            "acceptance_reason",
+            "expected_required_enabled_tests",
+            "expected_diagnostic_enabled_tests",
+        }
+        self.assertFalse(forbidden & keys)
 
 
 class RecipeAdapterTest(unittest.TestCase):
@@ -239,10 +248,7 @@ class WorkflowContractTest(unittest.TestCase):
         self.assertNotIn("run-tier-regression.sh", reusable)
         self.assertIn("actions/upload-artifact@v7", reusable)
         self.assertNotIn("continue-on-error", execute_job)
-        self.assertEqual(
-            regression_step["continue-on-error"],
-            "${{ matrix.acceptance == 'diagnostic' }}",
-        )
+        self.assertNotIn("continue-on-error", regression_step)
 
     def test_tier1_and_tier2_target_master_candidate(self) -> None:
         tier1 = (

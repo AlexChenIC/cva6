@@ -60,8 +60,6 @@ write_metadata() {
     echo "compiler_march=${TIER_COMPILER_MARCH}"
     echo "compiler_march_reason=${TIER_COMPILER_MARCH_REASON:-not-specified}"
     echo "expected_enabled_tests=${TIER_EXPECTED_ENABLED_TESTS:-unknown}"
-    echo "acceptance=${TIER_ACCEPTANCE:-unknown}"
-    echo "acceptance_reason=${TIER_ACCEPTANCE_REASON:-none}"
     echo "backend=veri-testharness,spike"
     echo "spike_tandem=${SPIKE_TANDEM:-unset}"
     echo "source_revision=$(git rev-parse HEAD)"

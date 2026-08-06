@@ -67,7 +67,7 @@ jobs:
           install-tools: "true"
 
   execute:
-    name: ${{ inputs.tier }} ${{ matrix.target }} / ${{ matrix.testcase }} [${{ matrix.acceptance }}]
+    name: ${{ inputs.tier }} ${{ matrix.target }} / ${{ matrix.testcase }}
     runs-on: ubuntu-24.04
     needs:
       - plan
@@ -90,7 +90,6 @@ jobs:
 
       - name: Run public cook.py tandem regression
         id: regression
-        continue-on-error: ${{ matrix.acceptance == 'diagnostic' }}
         env:
           TIER_LEVEL: ${{ inputs.tier }}
           TIER_CONFIG: ${{ matrix.target }}
@@ -100,8 +99,6 @@ jobs:
           TIER_COMPILER_MARCH: ${{ matrix.compiler_march }}
           TIER_COMPILER_MARCH_REASON: ${{ matrix.compiler_march_reason }}
           TIER_EXPECTED_ENABLED_TESTS: ${{ matrix.expected_enabled_tests }}
-          TIER_ACCEPTANCE: ${{ matrix.acceptance }}
-          TIER_ACCEPTANCE_REASON: ${{ matrix.acceptance_reason }}
           TIER_EVENT_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
           TIER_EVENT_BASE_SHA: ${{ github.event.pull_request.base.sha || '' }}
         run: bash .github/scripts/run-cook-tier-regression.sh

@@ -2,38 +2,41 @@
 
 This CI provides public GitHub-hosted validation for an initial RV32 AXI subset
 of `master_candidate`. It reuses the target and testlist contract from the
-Thales GitLab CI while running an open-source backend. The required baseline is
-known green; extended lists remain visible diagnostics until their target and
-Spike contracts are aligned.
+Thales GitLab CI while running an open-source backend. Tier 1 is the known-green
+fast baseline. Tier 2 runs the complete scoped testlist matrix and reports every
+regression failure as a real failed check.
 
 ## Initial scope
 
-| Tier | Target | Testlists | Acceptance | Enabled target/test pairs |
-| --- | --- | --- | --- | ---: |
-| Tier 1 | `cv32a60x_axi` | `base_rv32_p` | required | 5 |
-| Tier 1 | `cv32a65x_axi` | `base_rv32_p` | required | 5 |
-| Tier 2 | `cv32a60x_axi` | `base_rv32_p` | required | 5 |
-| Tier 2 | `cv32a65x_axi` | `base_rv32_p` | required | 5 |
-| Tier 2 | `cv32a60x_axi` | `base_zcmt` | diagnostic | 4 |
-| Tier 2 | `cv32a65x_axi` | `base_zcmt` | diagnostic | 4 |
-| Tier 2 | `cv32a65x_axi` | `base_pmp` | diagnostic | 5 |
+| Tier | Target | Testlists | Enabled target/test pairs |
+| --- | --- | --- | ---: |
+| Tier 1 | `cv32a60x_axi` | `base_rv32_p` | 5 |
+| Tier 1 | `cv32a65x_axi` | `base_rv32_p` | 5 |
+| Tier 2 | `cv32a60x_axi` | `base_rv32_p` | 5 |
+| Tier 2 | `cv32a65x_axi` | `base_rv32_p` | 5 |
+| Tier 2 | `cv32a60x_axi` | `base_zcmt` | 4 |
+| Tier 2 | `cv32a65x_axi` | `base_zcmt` | 4 |
+| Tier 2 | `cv32a65x_axi` | `base_pmp` | 5 |
 
-Tier 1 is the 10-test required fast subset. Tier 2 is a strict superset and
+Tier 1 is the 10-test fast subset. Tier 2 is a strict superset and
 contains all 23 enabled target/test pairs present in `.testlist_matrix_target`
-for these two targets. Its 10 baseline pairs are required; the remaining 13
-extension/PMP pairs run as explicitly labelled diagnostics. A diagnostic job
-still runs the complete testlist, records the real regression outcome in the
-job summary, and uploads its logs. A known diagnostic regression failure does
-not turn the job red, but missing or inconsistent evidence still does. Required
-entries always block on failure. Disabled entries (`iterations: 0`) are not
-counted.
+for these two targets. Every executed regression uses the same result semantics:
+a failing testcase makes its matrix job and workflow fail. `fail-fast: false`
+keeps the other matrix jobs running, the recipe finishes the selected testlist,
+and `if: always()` preserves summaries and artifacts after failure. Disabled
+entries (`iterations: 0`) are not counted.
+
+Merge policy is intentionally separate from test truth. Tier 1 is the candidate
+for a repository required check. Tier 2 is intended as complete branch-update
+evidence and should remain outside branch protection until its current target
+and Spike contract failures are resolved. A red Tier 2 therefore reports the
+real regression state without automatically blocking a pull request.
 
 The versioned plan in `master_candidate_cook_tiers.yml` is the single source
 for both workflow matrices. `cook-tier-plan.py` rejects duplicate entries,
 unknown target/testlist pairs, incorrect AXI hierarchy, test-count drift,
 Tier 1 entries missing from Tier 2, and Tier 2 testlist coverage below the
-current Thales matrix for the scoped targets. It also rejects an unlabelled
-diagnostic entry or any difference between the Tier 1 and Tier 2 required sets.
+current Thales matrix for the scoped targets.
 
 ## Comparison boundary
 
@@ -82,7 +85,7 @@ public backends, enables Spike tandem, and writes downloadable reports.
 
 Add a target or testlist to the Thales matrix and canonical `config/target`
 inputs first. Then extend `master_candidate_cook_tiers.yml`, update expected
-counts, run the local checks, and prevalidate on a fork. A diagnostic label must
-carry a concrete reason and retain complete failure evidence. Promote it to
-required as soon as the canonical target/reference-model contract is aligned;
-never remove or silently skip a failing test merely to make the workflow green.
+counts, run the local checks, and prevalidate on a fork. Never remove, skip, or
+convert a failing regression into a successful check merely to make the
+workflow green. Track known target/reference-model failures in issues and the
+CI report while preserving their real failed status and complete artifacts.
