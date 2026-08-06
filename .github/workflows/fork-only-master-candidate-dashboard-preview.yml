@@ -29,7 +29,9 @@ jobs:
     name: Build fork dashboard preview
     if: github.repository == 'AlexChenIC/cva6'
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # Queue time counts toward this limit. Leave enough headroom for temporary
+    # GitHub-hosted runner or Pages service degradation.
+    timeout-minutes: 60
     steps:
       - name: Checkout preview branch
         uses: actions/checkout@v4
@@ -138,7 +140,7 @@ jobs:
     needs: build
     if: github.repository == 'AlexChenIC/cva6'
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 30
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}master-candidate/
