@@ -14,6 +14,7 @@ import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
+from urllib.parse import urlencode
 
 from parser import parse_job_name
 
@@ -56,11 +57,20 @@ def gh_api_list(endpoint: str, repo: str, per_page: int = 100) -> dict:
     return json.loads(result.stdout)
 
 
-def fetch_runs(repo: str, workflow_file: str, count: int) -> list:
+def build_runs_endpoint(workflow_file: str, branch: str = "") -> str:
+    """Build a workflow-runs endpoint with an optional branch filter."""
+    params = {"status": "completed"}
+    if branch:
+        params["branch"] = branch
+    return f"workflows/{workflow_file}/runs?{urlencode(params)}"
+
+
+def fetch_runs(repo: str, workflow_file: str, count: int, branch: str = "") -> list:
     """Fetch the latest `count` completed workflow runs."""
     data = gh_api_list(
-        f"workflows/{workflow_file}/runs?status=completed&per_page={count}",
+        build_runs_endpoint(workflow_file, branch),
         repo,
+        per_page=count,
     )
     runs = data.get("workflow_runs", [])
     return runs[:count]
@@ -159,6 +169,13 @@ def load_existing(path: Path) -> list:
     return []
 
 
+def filter_runs_by_branch(runs: list, branch: str) -> list:
+    """Keep only records from the requested branch when one is provided."""
+    if not branch:
+        return runs
+    return [run for run in runs if run.get("head_branch") == branch]
+
+
 def merge_runs(existing: list, new_runs: list) -> list:
     """Merge new runs into existing data, deduplicating by run_id."""
     existing_ids = {r["id"] for r in existing}
@@ -194,24 +211,39 @@ def main():
         default=10,
         help="Number of recent runs to fetch per workflow",
     )
+    parser.add_argument(
+        "--branch",
+        default="",
+        help="Only collect runs whose head branch exactly matches this value",
+    )
+    parser.add_argument(
+        "--workflows",
+        nargs="+",
+        choices=sorted(WORKFLOWS),
+        default=list(WORKFLOWS),
+        help="Workflow keys to collect (default: ci tier1 tier2)",
+    )
     args = parser.parse_args()
 
     data_dir = Path(args.data_dir)
     data_dir.mkdir(parents=True, exist_ok=True)
 
-    for wf_name, wf_file in WORKFLOWS.items():
+    for wf_name in args.workflows:
+        wf_file = WORKFLOWS[wf_name]
         print(f"\n{'='*60}")
         print(f"Processing workflow: {wf_name} ({wf_file})")
+        if args.branch:
+            print(f"Branch filter: {args.branch}")
         print(f"{'='*60}")
 
         json_path = data_dir / f"runs_{wf_name}.json"
-        existing = load_existing(json_path)
+        existing = filter_runs_by_branch(load_existing(json_path), args.branch)
         existing_ids = {r["id"] for r in existing}
 
         print(f"  Existing records: {len(existing)}")
 
         # Fetch latest runs
-        runs = fetch_runs(args.repo, wf_file, args.fetch_count)
+        runs = fetch_runs(args.repo, wf_file, args.fetch_count, args.branch)
         print(f"  Fetched {len(runs)} runs from API")
 
         # Only process new runs (incremental update)
@@ -241,7 +273,8 @@ def main():
     meta = {
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "repo": args.repo,
-        "workflows": list(WORKFLOWS.keys()),
+        "workflows": args.workflows,
+        "branch": args.branch,
     }
     with open(data_dir / "metadata.json", "w") as f:
         json.dump(meta, f, indent=2)

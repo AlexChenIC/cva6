@@ -16,17 +16,27 @@ from pathlib import Path
 
 from jinja2 import Environment, FileSystemLoader
 
-# Workflow display info (order matters for UI)
-WORKFLOW_INFO = [
-    {"key": "ci", "display_name": "ci.yml (Reference)", "file": "runs_ci.json"},
-    {"key": "tier1", "display_name": "Tier 1", "file": "runs_tier1.json"},
-    {"key": "tier2", "display_name": "Tier 2", "file": "runs_tier2.json"},
-]
+# Workflow display info (order matters for UI).
+WORKFLOW_PROFILES = {
+    "default": [
+        {"key": "ci", "display_name": "ci.yml (Reference)", "file": "runs_ci.json"},
+        {"key": "tier1", "display_name": "Tier 1", "file": "runs_tier1.json"},
+        {"key": "tier2", "display_name": "Tier 2", "file": "runs_tier2.json"},
+    ],
+    "master-candidate": [
+        {"key": "tier1", "display_name": "Tier 1 (cook.py)", "file": "runs_tier1.json"},
+        {"key": "tier2", "display_name": "Tier 2 (cook.py)", "file": "runs_tier2.json"},
+    ],
+}
+
+WORKFLOW_INFO = WORKFLOW_PROFILES["default"]
 
 # Preferred display order for configs and test suites in the matrix.
 # Any configs/suites not listed here but found in the data will be
 # appended at the end automatically.
 MATRIX_CONFIGS_ORDER = [
+    "cv32a65x_axi",
+    "cv32a60x_axi",
     "cv32a65x",
     "cv32a60x",
     "cv64a6_imafdc_sv39_hpdcache_wb",
@@ -85,10 +95,10 @@ def format_datetime(iso_str: str) -> str:
         return iso_str
 
 
-def load_workflow_data(data_dir: Path) -> dict:
+def load_workflow_data(data_dir: Path, workflow_info: list = WORKFLOW_INFO) -> dict:
     """Load all workflow JSON data files."""
     result = {}
-    for wf in WORKFLOW_INFO:
+    for wf in workflow_info:
         path = data_dir / wf["file"]
         if path.exists():
             with open(path) as f:
@@ -98,7 +108,7 @@ def load_workflow_data(data_dir: Path) -> dict:
     return result
 
 
-def build_matrix(all_data: dict) -> tuple:
+def build_matrix(all_data: dict, workflow_info: list = WORKFLOW_INFO) -> tuple:
     """Build unified config x testsuite matrix from ALL workflows.
 
     Each cell is a dict keyed by workflow name, e.g.:
@@ -114,7 +124,7 @@ def build_matrix(all_data: dict) -> tuple:
     all_configs = set()
     all_suites = set()
 
-    for wf in WORKFLOW_INFO:
+    for wf in workflow_info:
         key = wf["key"]
         runs = all_data.get(key, [])
         if not runs:
@@ -160,11 +170,11 @@ def build_matrix(all_data: dict) -> tuple:
     return matrix, configs_used, suites_used
 
 
-def build_chart_data(all_data: dict) -> dict:
+def build_chart_data(all_data: dict, workflow_info: list = WORKFLOW_INFO) -> dict:
     """Build Chart.js data for trend charts."""
     chart_data = {}
 
-    for wf in WORKFLOW_INFO:
+    for wf in workflow_info:
         key = wf["key"]
         runs = all_data.get(key, [])
 
@@ -202,11 +212,11 @@ def enrich_run(run: dict) -> dict:
     return run
 
 
-def build_workflows_context(all_data: dict) -> list:
+def build_workflows_context(all_data: dict, workflow_info: list = WORKFLOW_INFO) -> list:
     """Build the workflows list for the template context."""
     workflows = []
 
-    for wf in WORKFLOW_INFO:
+    for wf in workflow_info:
         key = wf["key"]
         runs = all_data.get(key, [])
 
@@ -262,6 +272,37 @@ def main():
         default=os.environ.get("GITHUB_REPOSITORY", "openhwgroup/cva6"),
         help="GitHub repository (owner/name)",
     )
+    parser.add_argument(
+        "--profile",
+        choices=sorted(WORKFLOW_PROFILES),
+        default="default",
+        help="Workflow labels and presentation profile",
+    )
+    parser.add_argument(
+        "--page-title",
+        default="OpenHW CVA6 Tier CI Dashboard",
+        help="HTML document title",
+    )
+    parser.add_argument(
+        "--dashboard-title",
+        default="CVA6 Tier CI Dashboard",
+        help="Visible dashboard title",
+    )
+    parser.add_argument(
+        "--branch-label",
+        default="",
+        help="Optional branch label displayed in the navbar",
+    )
+    parser.add_argument(
+        "--notice",
+        default="",
+        help="Optional scope notice displayed above the status cards",
+    )
+    parser.add_argument(
+        "--back-link",
+        default="",
+        help="Optional link back to the main dashboard",
+    )
     args = parser.parse_args()
 
     data_dir = Path(args.data_dir)
@@ -269,17 +310,18 @@ def main():
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # Load data
-    all_data = load_workflow_data(data_dir)
+    workflow_info = WORKFLOW_PROFILES[args.profile]
+    all_data = load_workflow_data(data_dir, workflow_info)
 
     # Build template context
     now = datetime.now(timezone.utc)
-    workflows = build_workflows_context(all_data)
-    matrix_data, matrix_configs, matrix_suites = build_matrix(all_data)
-    chart_data = build_chart_data(all_data)
+    workflows = build_workflows_context(all_data, workflow_info)
+    matrix_data, matrix_configs, matrix_suites = build_matrix(all_data, workflow_info)
+    chart_data = build_chart_data(all_data, workflow_info)
 
     default_matrix_wf = "tier2"
     if not all_data.get("tier2"):
-        for wf in WORKFLOW_INFO:
+        for wf in workflow_info:
             if all_data.get(wf["key"]):
                 default_matrix_wf = wf["key"]
                 break
@@ -288,6 +330,11 @@ def main():
         "generated_at": now.strftime("%Y-%m-%d %H:%M UTC"),
         "year": now.year,
         "repo": args.repo,
+        "page_title": args.page_title,
+        "dashboard_title": args.dashboard_title,
+        "branch_label": args.branch_label,
+        "notice": args.notice,
+        "back_link": args.back_link,
         "workflows": workflows,
         "matrix_data": matrix_data,
         "matrix_data_json": json.dumps(matrix_data),
@@ -296,6 +343,7 @@ def main():
         "matrix_suites": matrix_suites,
         "matrix_suites_json": json.dumps(matrix_suites),
         "default_matrix_wf": default_matrix_wf,
+        "chart_data": chart_data,
         "chart_data_json": json.dumps(chart_data),
         "trend_count": TREND_COUNT,
     }
