@@ -1,0 +1,28 @@
+# Fork-only dispatcher used to validate the candidate reusable workflows.
+# This file is not part of the production PR candidate.
+
+name: fork-only-master-candidate-tier-ci-truthful-failure-prevalidation
+
+on:
+  push:
+    branches:
+      - jchen/master-candidate-tier-ci-truthful-failure-prevalidation
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fork-only-master-candidate-tier-ci-truthful-failure-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tier1:
+    uses: ./.github/workflows/openhw-cva6-ci-cook-tier-reusable.yml
+    with:
+      tier: tier1
+
+  tier2:
+    uses: ./.github/workflows/openhw-cva6-ci-cook-tier-reusable.yml
+    with:
+      tier: tier2
