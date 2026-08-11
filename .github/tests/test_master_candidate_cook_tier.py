@@ -6,11 +6,13 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 import importlib.util
+import inspect
 import os
 from pathlib import Path
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 import yaml
 
@@ -18,6 +20,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT))
 
 TEST_CONFIG_DIRECTORY = tempfile.TemporaryDirectory()
+unittest.addModuleCleanup(TEST_CONFIG_DIRECTORY.cleanup)
 TEST_CONFIG_PATH = Path(TEST_CONFIG_DIRECTORY.name)
 (TEST_CONFIG_PATH / "compiler.yml").write_text(
     "test_toolchain:\n"
@@ -162,14 +165,69 @@ class WorkflowContractTest(unittest.TestCase):
         self.assertIn("${RESULTS_DIR}/run.log", runner)
         self.assertIn("failure_summary.log", runner)
         self.assertIn("exit_code", runner)
+        self.assertIn('TIER_ISS_TIMEOUT="${TIER_ISS_TIMEOUT:-500}"', runner)
 
 
 class RecipeAdapterTest(unittest.TestCase):
-    def test_isa_normalization_removes_only_zicsr(self) -> None:
-        self.assertEqual(
-            RECIPE.cva6_input_isa("rv32imc_zicsr_zba_zcmt"),
-            "rv32imc_zba_zcmt",
+    @staticmethod
+    def create_compiled_run_fixture(root: Path, target: str = "cv32a60x_axi"):
+        compiled_name = "example_0"
+        build_root = root / "build" / target
+        compile_dir = build_root / "compile" / compiled_name
+        compile_dir.mkdir(parents=True)
+        (compile_dir / f"{compiled_name}.elf").write_bytes(b"ELF fixture")
+        (compile_dir / "isa_string").write_text(
+            "rv32imc_zicsr_zba_zcmt_zifencei\n", encoding="utf-8"
         )
+        simulation_root = build_root / "simulation" / "sim_verilator_testharness"
+        context = RECIPE.RunContext(
+            repo_dir=root,
+            target=target,
+            target_dir=root / "config" / "target" / target,
+            build_root=build_root,
+            simulation_root=simulation_root,
+            generated_iss_file=build_root / "config" / "cva6.yaml",
+            default_mabi="ilp32",
+            privilege="msu",
+            env={"SPIKE_TANDEM": "1"},
+            iss_timeout=500,
+            sv_seed="7",
+            quiet=True,
+        )
+        return compiled_name, simulation_root, context
+
+    def test_isa_normalization_is_explicit_for_initial_targets(self) -> None:
+        cases = {
+            "cv32a60x_axi": (
+                "rv32imc_zicsr_zba_zcmt",
+                "rv32imc_zba_zcmt",
+            ),
+            "cv32a65x_axi": (
+                "rv32imc_zicsr_zba_zcmt_zifencei",
+                "rv32imc_zba_zcmt_zifencei",
+            ),
+        }
+        for target, (compiled_isa, expected) in cases.items():
+            with self.subTest(target=target):
+                self.assertEqual(RECIPE.cva6_input_isa(compiled_isa, target), expected)
+
+    def test_isa_normalization_rejects_unreviewed_target(self) -> None:
+        with self.assertRaisesRegex(ValueError, "Unsupported TestHarness target"):
+            RECIPE.cva6_input_isa("rv32imac_zicsr_zbkb_zifencei", "cv32a6_imac_sv32")
+
+    def test_isa_normalization_rejects_invalid_isa(self) -> None:
+        with self.assertRaisesRegex(ValueError, "Invalid compiled ISA"):
+            RECIPE.cva6_input_isa("not-an-isa", "cv32a60x_axi")
+
+    def test_enabled_tests_rejects_missing_testlist(self) -> None:
+        with self.assertRaisesRegex(ValueError, "list named 'testlist'"):
+            RECIPE.enabled_tests({}, None)
+
+    def test_enabled_tests_rejects_negative_iterations(self) -> None:
+        with self.assertRaisesRegex(ValueError, "Negative iterations"):
+            RECIPE.enabled_tests(
+                {"testlist": [{"test": "example", "iterations": -1}]}, None
+            )
 
     def test_iss_config_uses_target_spike_yaml(self) -> None:
         source = REPO_ROOT / "verif/sim/cva6.yaml"
@@ -195,6 +253,134 @@ class RecipeAdapterTest(unittest.TestCase):
             self.assertEqual(alias.suffix, ".o")
             self.assertEqual(alias.read_bytes(), elf.read_bytes())
             self.assertEqual(alias.stat().st_ino, elf.stat().st_ino)
+
+    def test_wrapper_log_survives_cva6_output_cleanup(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            simulation_root = root / "simulation" / "sim_verilator_testharness"
+            simulation_dir = simulation_root / "example_0"
+            transient_log = simulation_root / "example_0.cook_testharness.log"
+            command = [
+                sys.executable,
+                "-c",
+                (
+                    "import pathlib, shutil; "
+                    f"output = pathlib.Path({str(simulation_dir)!r}); "
+                    "shutil.rmtree(output, ignore_errors=True); "
+                    "output.mkdir(parents=True); "
+                    "print('simulation output')"
+                ),
+            ]
+            return_code = RECIPE.run_streaming(
+                command, root, os.environ.copy(), transient_log, quiet=True
+            )
+            preserved_log = RECIPE.preserve_run_log(transient_log, simulation_dir)
+
+            self.assertEqual(return_code, 0)
+            self.assertEqual(preserved_log.read_text(), "simulation output\n")
+            self.assertFalse(transient_log.exists())
+
+    def test_regression_report_requires_truthful_success_evidence(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            report = Path(directory) / "iss_regr.log"
+
+            report.write_text("trace [PASSED]\n", encoding="utf-8")
+            self.assertEqual(
+                RECIPE.regression_report_passed(report),
+                (True, "1 passed comparison(s)"),
+            )
+
+            report.write_text("trace [FAILED]\n", encoding="utf-8")
+            passed, detail = RECIPE.regression_report_passed(report)
+            self.assertFalse(passed)
+            self.assertEqual(detail, "1 failed comparison(s)")
+
+            report.write_text("log without comparison markers\n", encoding="utf-8")
+            passed, detail = RECIPE.regression_report_passed(report)
+            self.assertFalse(passed)
+            self.assertIn("no pass/fail comparison evidence", detail)
+
+            report.unlink()
+            passed, detail = RECIPE.regression_report_passed(report)
+            self.assertFalse(passed)
+            self.assertIn("missing regression report", detail)
+
+    def test_compiled_test_builds_legacy_bridge_command(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            target = "cv32a60x_axi"
+            compiled_name, simulation_root, context = self.create_compiled_run_fixture(
+                root, target
+            )
+            captured: dict[str, object] = {}
+
+            def fake_run(command, cwd, env, log, quiet=False):
+                captured.update(command=command, cwd=cwd, env=env, log=log, quiet=quiet)
+                log.parent.mkdir(parents=True, exist_ok=True)
+                log.write_text("bridge output\n", encoding="utf-8")
+                output = Path(command[command.index("--output") + 1])
+                output.mkdir(parents=True, exist_ok=True)
+                (output / "iss_regr.log").write_text(
+                    "trace [PASSED]\n", encoding="utf-8"
+                )
+                return 0
+
+            with patch.object(RECIPE, "run_streaming", side_effect=fake_run):
+                result = RECIPE.run_compiled_test({"test": "example"}, 0, context)
+
+            command = captured["command"]
+            self.assertTrue(result.passed)
+            self.assertEqual(result.compiler_isa, "rv32imc_zicsr_zba_zcmt_zifencei")
+            self.assertEqual(result.mabi, "ilp32")
+            self.assertEqual(
+                command[command.index("--isa") + 1], "rv32imc_zba_zcmt_zifencei"
+            )
+            self.assertEqual(command[command.index("--mabi") + 1], "ilp32")
+            self.assertEqual(command[command.index("--iss") + 1], RECIPE.BACKEND)
+            self.assertEqual(command[command.index("--iss_timeout") + 1], "500")
+            self.assertEqual(command[command.index("--sv_seed") + 1], "7")
+            self.assertEqual(captured["env"], {"SPIKE_TANDEM": "1"})
+            self.assertEqual(
+                (simulation_root / compiled_name / "cook_testharness.log").read_text(
+                    encoding="utf-8"
+                ),
+                "bridge output\n",
+            )
+
+    def test_compiled_test_rejects_false_green_child(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            _, _, context = self.create_compiled_run_fixture(root)
+
+            def fake_run(command, cwd, env, log, quiet=False):
+                del cwd, env, quiet
+                log.parent.mkdir(parents=True, exist_ok=True)
+                log.write_text("0 PASSED, 1 FAILED\n", encoding="utf-8")
+                output = Path(command[command.index("--output") + 1])
+                output.mkdir(parents=True, exist_ok=True)
+                (output / "iss_regr.log").write_text(
+                    "trace [FAILED]\n", encoding="utf-8"
+                )
+                return 0
+
+            with patch.object(RECIPE, "run_streaming", side_effect=fake_run):
+                result = RECIPE.run_compiled_test({"test": "example"}, 0, context)
+
+            self.assertFalse(result.passed)
+
+    def test_recipe_has_generic_outputs_and_safe_timeout(self) -> None:
+        source = (
+            REPO_ROOT / "flows/recipes/verilator_testharness_run_testlist.py"
+        ).read_text(encoding="utf-8")
+        self.assertNotIn("github_actions", source)
+        self.assertNotIn("linker_file", source)
+
+        signature = inspect.signature(RECIPE.verilator_testharness_run_testlist)
+        timeout_option = signature.parameters["iss_timeout"].default
+        tandem_option = signature.parameters["tandem_enabled"].default
+        self.assertEqual(timeout_option.default, 500)
+        self.assertFalse(tandem_option.default)
+        self.assertNotIn("mabi", signature.parameters)
 
 
 class ToolchainConfigTest(unittest.TestCase):
