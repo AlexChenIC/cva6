@@ -170,7 +170,11 @@ class WorkflowContractTest(unittest.TestCase):
 
 class RecipeAdapterTest(unittest.TestCase):
     @staticmethod
-    def create_compiled_run_fixture(root: Path, target: str = "cv32a60x_axi"):
+    def create_compiled_run_fixture(
+        root: Path,
+        target: str = "cv32a60x_axi",
+        tandem_enabled: bool = True,
+    ):
         compiled_name = "example_0"
         build_root = root / "build" / target
         compile_dir = build_root / "compile" / compiled_name
@@ -189,7 +193,9 @@ class RecipeAdapterTest(unittest.TestCase):
             generated_iss_file=build_root / "config" / "cva6.yaml",
             default_mabi="ilp32",
             privilege="msu",
-            env={"SPIKE_TANDEM": "1"},
+            backend=RECIPE.backend_for(tandem_enabled),
+            tandem_enabled=tandem_enabled,
+            env={"SPIKE_TANDEM": "1"} if tandem_enabled else {},
             iss_timeout=500,
             sv_seed="7",
             quiet=True,
@@ -218,6 +224,10 @@ class RecipeAdapterTest(unittest.TestCase):
     def test_isa_normalization_rejects_invalid_isa(self) -> None:
         with self.assertRaisesRegex(ValueError, "Invalid compiled ISA"):
             RECIPE.cva6_input_isa("not-an-isa", "cv32a60x_axi")
+
+    def test_backend_selection_avoids_redundant_standalone_spike(self) -> None:
+        self.assertEqual(RECIPE.backend_for(True), "veri-testharness")
+        self.assertEqual(RECIPE.backend_for(False), "veri-testharness,spike")
 
     def test_enabled_tests_rejects_missing_testlist(self) -> None:
         with self.assertRaisesRegex(ValueError, "list named 'testlist'"):
@@ -305,6 +315,44 @@ class RecipeAdapterTest(unittest.TestCase):
             self.assertFalse(passed)
             self.assertIn("missing regression report", detail)
 
+    def test_tandem_log_requires_tandem_and_explicit_success(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            simulation_dir = Path(directory)
+            log_dir = simulation_dir / "veri-testharness_sim"
+            log_dir.mkdir()
+            log = log_dir / "test.log.iss"
+
+            passed, detail = RECIPE.tandem_log_passed(simulation_dir)
+            self.assertFalse(passed)
+            self.assertIn("found 0", detail)
+
+            log.write_text("*** SUCCESS *** (tohost = 0)\n", encoding="utf-8")
+            passed, detail = RECIPE.tandem_log_passed(simulation_dir)
+            self.assertFalse(passed)
+            self.assertIn("missing live Spike tandem evidence", detail)
+
+            log.write_text(
+                "Running binary in tandem mode\n"
+                "spike_tandem Setting up Spike with binary test.elf\n"
+                "*** SUCCESS *** (tohost = 0)\n",
+                encoding="utf-8",
+            )
+            self.assertEqual(
+                RECIPE.tandem_log_passed(simulation_dir),
+                (True, "TestHarness passed with live Spike tandem"),
+            )
+
+            log.write_text(
+                "Running binary in tandem mode\n"
+                "spike_tandem Setting up Spike with binary test.elf\n"
+                "*** SUCCESS *** (tohost = 0)\n"
+                "*** FAILED *** (tohost = 1)\n",
+                encoding="utf-8",
+            )
+            passed, detail = RECIPE.tandem_log_passed(simulation_dir)
+            self.assertFalse(passed)
+            self.assertIn("failure evidence", detail)
+
     def test_compiled_test_builds_legacy_bridge_command(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -319,9 +367,13 @@ class RecipeAdapterTest(unittest.TestCase):
                 log.parent.mkdir(parents=True, exist_ok=True)
                 log.write_text("bridge output\n", encoding="utf-8")
                 output = Path(command[command.index("--output") + 1])
-                output.mkdir(parents=True, exist_ok=True)
-                (output / "iss_regr.log").write_text(
-                    "trace [PASSED]\n", encoding="utf-8"
+                testharness_dir = output / "veri-testharness_sim"
+                testharness_dir.mkdir(parents=True, exist_ok=True)
+                (testharness_dir / "test.log.iss").write_text(
+                    "Running binary in tandem mode\n"
+                    "spike_tandem Setting up Spike with binary test.elf\n"
+                    "*** SUCCESS *** (tohost = 0)\n",
+                    encoding="utf-8",
                 )
                 return 0
 
@@ -336,7 +388,7 @@ class RecipeAdapterTest(unittest.TestCase):
                 command[command.index("--isa") + 1], "rv32imc_zba_zcmt_zifencei"
             )
             self.assertEqual(command[command.index("--mabi") + 1], "ilp32")
-            self.assertEqual(command[command.index("--iss") + 1], RECIPE.BACKEND)
+            self.assertEqual(command[command.index("--iss") + 1], RECIPE.TANDEM_BACKEND)
             self.assertEqual(command[command.index("--iss_timeout") + 1], "500")
             self.assertEqual(command[command.index("--sv_seed") + 1], "7")
             self.assertEqual(captured["env"], {"SPIKE_TANDEM": "1"})
@@ -357,9 +409,13 @@ class RecipeAdapterTest(unittest.TestCase):
                 log.parent.mkdir(parents=True, exist_ok=True)
                 log.write_text("0 PASSED, 1 FAILED\n", encoding="utf-8")
                 output = Path(command[command.index("--output") + 1])
-                output.mkdir(parents=True, exist_ok=True)
-                (output / "iss_regr.log").write_text(
-                    "trace [FAILED]\n", encoding="utf-8"
+                testharness_dir = output / "veri-testharness_sim"
+                testharness_dir.mkdir(parents=True, exist_ok=True)
+                (testharness_dir / "test.log.iss").write_text(
+                    "Running binary in tandem mode\n"
+                    "spike_tandem Setting up Spike with binary test.elf\n"
+                    "*** FAILED *** (tohost = 1)\n",
+                    encoding="utf-8",
                 )
                 return 0
 

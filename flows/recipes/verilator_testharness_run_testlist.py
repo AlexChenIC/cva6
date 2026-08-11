@@ -35,7 +35,8 @@ from flows.utils.utils import (
 
 app = typer.Typer()
 
-BACKEND = "veri-testharness,spike"
+COMPARE_BACKEND = "veri-testharness,spike"
+TANDEM_BACKEND = "veri-testharness"
 
 # The first public TestHarness adapter intentionally supports only the two
 # master_candidate targets selected for the initial Tier CI scope. Extending
@@ -55,6 +56,8 @@ class RunContext(NamedTuple):
     generated_iss_file: Path
     default_mabi: str
     privilege: str
+    backend: str
+    tandem_enabled: bool
     env: dict[str, str]
     iss_timeout: int
     sv_seed: str
@@ -121,6 +124,13 @@ def cva6_input_isa(compiled_isa: str, target: str) -> str:
     return "_".join(filtered)
 
 
+def backend_for(tandem_enabled: bool) -> str:
+    """Choose either live tandem or an offline two-backend comparison."""
+    if tandem_enabled:
+        return TANDEM_BACKEND
+    return COMPARE_BACKEND
+
+
 def write_iss_config(source: Path, output: Path, spike_yaml: Path) -> None:
     """Add the canonical target Spike YAML without changing shared cva6.py."""
     data = yaml.safe_load(source.read_text(encoding="utf-8"))
@@ -184,6 +194,52 @@ def regression_report_passed(report: Path) -> tuple[bool, str]:
     if passed_markers:
         return True, f"{passed_markers} passed comparison(s)"
     return False, "regression report contains no pass/fail comparison evidence"
+
+
+def tandem_log_passed(simulation_dir: Path) -> tuple[bool, str]:
+    """Require explicit TestHarness success and proof that live tandem ran."""
+    log_directory = simulation_dir / "veri-testharness_sim"
+    logs = sorted(log_directory.glob("*.iss"))
+    if len(logs) != 1:
+        return False, f"expected one TestHarness ISS log, found {len(logs)}"
+
+    try:
+        log_text = logs[0].read_text(encoding="utf-8")
+    except OSError as error:
+        return False, f"cannot read TestHarness ISS log: {error}"
+
+    failure_markers = (
+        "*** FAILED ***",
+        "SIMULATION FAILED",
+        "[FAILED]",
+        "UVM_ERROR",
+        "UVM_FATAL",
+        "MISMATCH",
+    )
+    found_failures = [marker for marker in failure_markers if marker in log_text]
+    if found_failures:
+        return False, "TestHarness failure evidence: " + ", ".join(found_failures)
+
+    tandem_markers = (
+        "Running binary in tandem mode",
+        "spike_tandem Setting up Spike",
+    )
+    missing_tandem = [marker for marker in tandem_markers if marker not in log_text]
+    if missing_tandem:
+        return False, "missing live Spike tandem evidence"
+
+    if "*** SUCCESS *** (tohost = 0)" not in log_text:
+        return False, "TestHarness log contains no explicit successful tohost result"
+    return True, "TestHarness passed with live Spike tandem"
+
+
+def simulation_result_passed(
+    simulation_dir: Path, tandem_enabled: bool
+) -> tuple[bool, str]:
+    """Read the authoritative result for the selected execution mode."""
+    if tandem_enabled:
+        return tandem_log_passed(simulation_dir)
+    return regression_report_passed(simulation_dir / "iss_regr.log")
 
 
 def run_streaming(
@@ -270,7 +326,7 @@ def run_compiled_test(
         "--iss_yaml",
         str(context.generated_iss_file),
         "--iss",
-        BACKEND,
+        context.backend,
         "--iss_timeout",
         str(context.iss_timeout),
         "--issrun_opts=+tb_performance_mode+debug_disable=1+UVM_VERBOSITY=UVM_NONE",
@@ -297,8 +353,8 @@ def run_compiled_test(
         preserve_run_log(transient_log, simulation_dir)
 
     if return_code == 0:
-        passed, status_detail = regression_report_passed(
-            simulation_dir / "iss_regr.log"
+        passed, status_detail = simulation_result_passed(
+            simulation_dir, context.tandem_enabled
         )
     else:
         passed = False
@@ -446,6 +502,8 @@ def verilator_testharness_run_testlist(
         generated_iss_file=generated_iss_file,
         default_mabi=default_mabi,
         privilege=privilege,
+        backend=backend_for(tandem_enabled),
+        tandem_enabled=tandem_enabled,
         env=env,
         iss_timeout=iss_timeout,
         sv_seed=sv_seed,
@@ -461,7 +519,7 @@ def verilator_testharness_run_testlist(
                 result.name,
                 result.compiler_isa,
                 result.mabi,
-                BACKEND,
+                context.backend,
             )
             if result.passed:
                 result_metric.add_pass(*result_row)
