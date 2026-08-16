@@ -198,7 +198,7 @@ def tandem_log_passed(simulation_dir: Path) -> tuple[bool, str]:
         return False, f"cannot read TestHarness ISS log: {error}"
 
     if any(
-        "UVM_WARNING" in line and "[spike_tandem]" in line
+        "UVM_WARNING" in line and "spike_tandem" in line
         for line in log_text.splitlines()
     ):
         return False, "TestHarness failure evidence: spike_tandem UVM_WARNING"

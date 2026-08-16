@@ -118,13 +118,12 @@ class VerilatorTestHarnessSafetyTest(unittest.TestCase):
             )
             success = "*** SUCCESS *** (tohost = 0)\n"
 
-            log.write_text(
-                prefix
-                + "UVM_WARNING @ 10: reporter [spike_tandem] mismatch\n"
-                + success,
-                encoding="utf-8",
-            )
-            self.assertFalse(RECIPE.tandem_log_passed(simulation_dir)[0])
+            for warning in (
+                "UVM_WARNING @ 10: reporter [spike_tandem] mismatch\n",
+                "UVM_WARNING @ 10 ns : spike_tandem mismatch\n",
+            ):
+                log.write_text(prefix + warning + success, encoding="utf-8")
+                self.assertFalse(RECIPE.tandem_log_passed(simulation_dir)[0])
 
             log.write_text(
                 prefix
