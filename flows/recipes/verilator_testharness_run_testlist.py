@@ -39,16 +39,11 @@ app = typer.Typer()
 COMPARE_BACKEND = "veri-testharness,spike"
 TANDEM_BACKEND = "veri-testharness"
 
-# The first public TestHarness adapter intentionally supports only the two
-# master_candidate targets selected for the initial Tier CI scope. Extending
-# this set requires checking what legacy cva6.py appends to --isa for the new
-# target and adding focused regression coverage here.
+# Validate cva6.py ISA handling before adding another target.
 SUPPORTED_TARGETS = frozenset({"cv32a60x_axi", "cv32a65x_axi"})
 
 
 class RunContext(NamedTuple):
-    """Shared paths and options for one TestHarness testlist run."""
-
     repo_dir: Path
     target: str
     target_dir: Path
@@ -66,8 +61,6 @@ class RunContext(NamedTuple):
 
 
 class CompiledTestResult(NamedTuple):
-    """Normalized result returned for one compiled test iteration."""
-
     name: str
     compiler_isa: str
     mabi: str
@@ -77,7 +70,6 @@ class CompiledTestResult(NamedTuple):
 def enabled_tests(
     testlist_data: dict[str, Any], selected: list[str] | None
 ) -> list[dict[str, Any]]:
-    """Validate and select enabled testlist entries in source order."""
     raw_tests = testlist_data.get("testlist")
     if not isinstance(raw_tests, list):
         raise ValueError("testlist must contain a list named 'testlist'")
@@ -106,7 +98,6 @@ def enabled_tests(
 
 
 def validate_target(target: str) -> None:
-    """Reject targets outside the reviewed first-version scope."""
     if target not in SUPPORTED_TARGETS:
         supported = ", ".join(sorted(SUPPORTED_TARGETS))
         raise ValueError(
@@ -115,7 +106,6 @@ def validate_target(target: str) -> None:
 
 
 def cva6_input_isa(compiled_isa: str, target: str) -> str:
-    """Remove extensions that legacy cva6.py adds for a supported target."""
     validate_target(target)
     parts = compiled_isa.strip().split("_")
     if not parts or not parts[0].startswith("rv32"):
@@ -125,15 +115,7 @@ def cva6_input_isa(compiled_isa: str, target: str) -> str:
     return "_".join(filtered)
 
 
-def backend_for(tandem_enabled: bool) -> str:
-    """Choose either live tandem or an offline two-backend comparison."""
-    if tandem_enabled:
-        return TANDEM_BACKEND
-    return COMPARE_BACKEND
-
-
 def write_iss_config(source: Path, output: Path, spike_yaml: Path) -> None:
-    """Add the canonical target Spike YAML without changing shared cva6.py."""
     data = yaml.safe_load(source.read_text(encoding="utf-8"))
     if not isinstance(data, list):
         raise ValueError(f"Expected an ISS list in {source}")
@@ -158,7 +140,6 @@ def write_iss_config(source: Path, output: Path, spike_yaml: Path) -> None:
 
 
 def precompiled_object_alias(elf_file: Path) -> Path:
-    """Expose a cook ELF through cva6.py's existing precompiled .o path."""
     alias = elf_file.with_suffix(".precompiled.o")
     if alias.exists() or alias.is_symlink():
         alias.unlink()
@@ -167,7 +148,6 @@ def precompiled_object_alias(elf_file: Path) -> Path:
 
 
 def preserve_run_log(log: Path, simulation_dir: Path) -> Path:
-    """Move a wrapper log into the output after cva6.py finishes cleaning it."""
     destination = simulation_dir / "cook_testharness.log"
     simulation_dir.mkdir(parents=True, exist_ok=True)
     if destination.exists() or destination.is_symlink():
@@ -178,7 +158,6 @@ def preserve_run_log(log: Path, simulation_dir: Path) -> Path:
 
 
 def regression_report_passed(report: Path) -> tuple[bool, str]:
-    """Return truthful status from a direct-test ISS comparison report."""
     if not report.is_file():
         return False, f"missing regression report: {report}"
 
@@ -208,7 +187,6 @@ def regression_report_passed(report: Path) -> tuple[bool, str]:
 
 
 def tandem_log_passed(simulation_dir: Path) -> tuple[bool, str]:
-    """Require explicit TestHarness success and proof that live tandem ran."""
     log_directory = simulation_dir / "veri-testharness_sim"
     logs = sorted(log_directory.glob("*.iss"))
     if len(logs) != 1:
@@ -218,6 +196,12 @@ def tandem_log_passed(simulation_dir: Path) -> tuple[bool, str]:
         log_text = logs[0].read_text(encoding="utf-8")
     except OSError as error:
         return False, f"cannot read TestHarness ISS log: {error}"
+
+    if any(
+        "UVM_WARNING" in line and "[spike_tandem]" in line
+        for line in log_text.splitlines()
+    ):
+        return False, "TestHarness failure evidence: spike_tandem UVM_WARNING"
 
     failure_markers = (
         "*** FAILED ***",
@@ -244,15 +228,6 @@ def tandem_log_passed(simulation_dir: Path) -> tuple[bool, str]:
     return True, "TestHarness passed with live Spike tandem"
 
 
-def simulation_result_passed(
-    simulation_dir: Path, tandem_enabled: bool
-) -> tuple[bool, str]:
-    """Read the authoritative result for the selected execution mode."""
-    if tandem_enabled:
-        return tandem_log_passed(simulation_dir)
-    return regression_report_passed(simulation_dir / "iss_regr.log")
-
-
 def run_streaming(
     command: list[str],
     cwd: Path,
@@ -260,7 +235,6 @@ def run_streaming(
     log: Path,
     quiet: bool = False,
 ) -> int:
-    """Stream every cva6.py line, retain its log, and return the exact status."""
     log.parent.mkdir(parents=True, exist_ok=True)
     with log.open("w", encoding="utf-8") as log_file:
         with subprocess.Popen(
@@ -295,7 +269,6 @@ def run_streaming(
 def run_compiled_test(
     test: dict[str, Any], iteration: int, context: RunContext
 ) -> CompiledTestResult:
-    """Run one Cook-compiled test iteration through the legacy cva6.py bridge."""
     compiled_name = f"{test['test']}_{iteration}"
     compile_dir = context.build_root / "compile" / compiled_name
     elf_file = compile_dir / f"{compiled_name}.elf"
@@ -364,9 +337,12 @@ def run_compiled_test(
         preserve_run_log(transient_log, simulation_dir)
 
     if return_code == 0:
-        passed, status_detail = simulation_result_passed(
-            simulation_dir, context.tandem_enabled
-        )
+        if context.tandem_enabled:
+            passed, status_detail = tandem_log_passed(simulation_dir)
+        else:
+            passed, status_detail = regression_report_passed(
+                simulation_dir / "iss_regr.log"
+            )
     else:
         passed = False
         status_detail = f"cva6.py returned {return_code}"
@@ -416,7 +392,7 @@ def verilator_testharness_run_testlist(
         False, "--quiet", "-q", help="Suppress command output and summaries"
     ),
 ) -> None:
-    """Run precompiled Cook ELF tests with Verilator TestHarness and Spike."""
+    """Run Cook ELF testlists with Verilator TestHarness and Spike."""
     print_recipe_title("VERILATOR TESTHARNESS TESTLIST", quiet=quiet)
 
     try:
@@ -513,7 +489,7 @@ def verilator_testharness_run_testlist(
         generated_iss_file=generated_iss_file,
         default_mabi=default_mabi,
         privilege=privilege,
-        backend=backend_for(tandem_enabled),
+        backend=TANDEM_BACKEND if tandem_enabled else COMPARE_BACKEND,
         tandem_enabled=tandem_enabled,
         env=env,
         iss_timeout=iss_timeout,

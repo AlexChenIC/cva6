@@ -16,10 +16,6 @@ inputs:
     description: 'Install the pinned Python environment required by cook.py'
     required: false
     default: 'false'
-  install-llvm18:
-    description: 'Install LLVM 18 tools required by Zcmt testlists'
-    required: false
-    default: 'false'
 
 outputs:
   toolchain-cache-hit:
@@ -52,18 +48,6 @@ runs:
         python3 -m pip install --disable-pip-version-check \
           --constraint .github/requirements/cook-tier-ci-constraints.txt \
           --requirement flows/requirements.txt
-
-    - name: Install LLVM 18 for Zcmt testlists
-      if: inputs.install-llvm18 == 'true'
-      shell: bash
-      run: |
-        if ! command -v clang-18 >/dev/null || \
-           ! command -v llvm-objdump-18 >/dev/null || \
-           ! command -v llvm-nm-18 >/dev/null || \
-           ! command -v ld.lld-18 >/dev/null; then
-          sudo apt-get update
-          sudo apt-get install --yes clang-18 llvm-18 lld-18
-        fi
 
     # Step 1: Get submodule hash for Spike cache key
     - name: Get core-v-verif submodule hash
