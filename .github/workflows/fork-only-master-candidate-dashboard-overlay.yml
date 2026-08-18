@@ -24,7 +24,7 @@ permissions:
   id-token: write
 
 env:
-  DASHBOARD_SOURCE_SHA: 6b450eb243116cf965e7264a7fdbbdb852f215ab
+  DASHBOARD_SOURCE_SHA: 0441d0e88c583d79c3f4e24530ec022e334f42c9
   TIER_BRANCH: jchen/master-candidate-openhw-tier-ci
   TARGET_BRANCH: master_candidate
   THALES_DASHBOARD_URL: https://riscv-ci.pages.thales-invia.fr/dashboard/dashboard_cva6.html
@@ -47,6 +47,17 @@ jobs:
         with:
           ref: ${{ env.DASHBOARD_SOURCE_SHA }}
           path: candidate-dashboard-source
+
+      - name: Checkout upstream master_candidate matrix source
+        uses: actions/checkout@v7
+        with:
+          repository: openhwgroup/cva6
+          ref: ${{ env.TARGET_BRANCH }}
+          fetch-depth: 1
+          path: upstream-master-candidate
+
+      - name: Install dashboard dependencies
+        run: python3 -m pip install --disable-pip-version-check jinja2==3.1.6 PyYAML==6.0.3
 
       - name: Restore published dashboard data
         run: |
@@ -78,10 +89,14 @@ jobs:
           python3 candidate-dashboard-source/.github/scripts/dashboard_tiers/collect_data.py --repo "${{ github.repository }}" --data-dir /tmp/master-candidate-data --fetch-count 20 --branch "$TIER_BRANCH" --base-branch "$TARGET_BRANCH"
 
       - name: Collect Thales GitLab reference
-        run: python3 candidate-dashboard-source/.github/scripts/dashboard_tiers/collect_thales_reference.py --url "$THALES_DASHBOARD_URL" --output /tmp/master-candidate-data/thales_reference.json
-
-      - name: Install dashboard dependency
-        run: python3 -m pip install --disable-pip-version-check jinja2==3.1.6
+        run: |
+          MATRIX_SHA="$(git -C upstream-master-candidate rev-parse HEAD)"
+          python3 candidate-dashboard-source/.github/scripts/dashboard_tiers/collect_thales_reference.py \
+            --url "$THALES_DASHBOARD_URL" \
+            --matrix-file upstream-master-candidate/.gitlab-ci.yml \
+            --matrix-branch "$TARGET_BRANCH" \
+            --matrix-sha "$MATRIX_SHA" \
+            --output /tmp/master-candidate-data/thales_reference.json
 
       - name: Test dashboard data handling
         run: python3 -m unittest discover --start-directory candidate-dashboard-source/.github/tests --pattern 'test_tier_dashboard.py'
