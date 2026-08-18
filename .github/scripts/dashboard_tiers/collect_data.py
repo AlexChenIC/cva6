@@ -1,155 +1,119 @@
 #!/usr/bin/env python3
 # Copyright 2026 OpenHW Group
 # SPDX-License-Identifier: Apache-2.0
-"""Collect CI run/job data from GitHub API for the CVA6 tier dashboard.
-
-Uses `gh api` (pre-installed on GHA runners, auto-authenticated).
-Produces per-workflow JSON files with incremental updates.
-"""
+"""Collect completed Tier 1 and Tier 2 runs from the GitHub API."""
 
 import argparse
+from datetime import datetime, timezone
 import json
 import os
+from pathlib import Path
 import subprocess
 import sys
-from datetime import datetime, timezone
-from pathlib import Path
 from urllib.parse import urlencode
 
 from parser import parse_job_name
 
-# Workflows to track
+
 WORKFLOWS = {
-    "ci": "ci.yml",
     "tier1": "openhw-cva6-ci-tier1.yml",
     "tier2": "openhw-cva6-ci-tier2.yml",
 }
-
 MAX_HISTORY = 50
 
 
 def gh_api(endpoint: str, repo: str) -> dict:
-    """Call GitHub API via `gh api` and return parsed JSON."""
     url = f"/repos/{repo}/actions/{endpoint}"
     result = subprocess.run(
-        ["gh", "api", url, "--paginate"],
+        ["gh", "api", url],
         capture_output=True,
         text=True,
+        check=False,
     )
     if result.returncode != 0:
-        print(f"ERROR: gh api {url} failed: {result.stderr}", file=sys.stderr)
-        sys.exit(1)
+        raise RuntimeError(f"gh api {url} failed: {result.stderr.strip()}")
     return json.loads(result.stdout)
 
 
-def gh_api_list(endpoint: str, repo: str, per_page: int = 100) -> dict:
-    """Call GitHub API with per_page parameter."""
-    url = f"/repos/{repo}/actions/{endpoint}"
-    sep = "&" if "?" in url else "?"
-    result = subprocess.run(
-        ["gh", "api", f"{url}{sep}per_page={per_page}"],
-        capture_output=True,
-        text=True,
-    )
-    if result.returncode != 0:
-        print(f"ERROR: gh api {url} failed: {result.stderr}", file=sys.stderr)
-        sys.exit(1)
-    return json.loads(result.stdout)
-
-
-def build_runs_endpoint(workflow_file: str, branch: str = "") -> str:
-    """Build a workflow-runs endpoint with an optional branch filter."""
-    params = {"status": "completed"}
+def build_runs_endpoint(workflow_file: str, count: int, branch: str = "") -> str:
+    params: dict[str, str | int] = {
+        "status": "completed",
+        "per_page": count,
+    }
     if branch:
         params["branch"] = branch
     return f"workflows/{workflow_file}/runs?{urlencode(params)}"
 
 
-def fetch_runs(repo: str, workflow_file: str, count: int, branch: str = "") -> list:
-    """Fetch the latest `count` completed workflow runs."""
-    data = gh_api_list(
-        build_runs_endpoint(workflow_file, branch),
-        repo,
-        per_page=count,
-    )
-    runs = data.get("workflow_runs", [])
-    return runs[:count]
+def fetch_runs(repo: str, workflow_file: str, count: int, branch: str = "") -> list[dict]:
+    data = gh_api(build_runs_endpoint(workflow_file, count, branch), repo)
+    return data.get("workflow_runs", [])[:count]
 
 
-def fetch_jobs(repo: str, run_id: int) -> list:
-    """Fetch all jobs for a given workflow run."""
-    data = gh_api(f"runs/{run_id}/jobs", repo)
+def fetch_jobs(repo: str, run_id: int) -> list[dict]:
+    data = gh_api(f"runs/{run_id}/jobs?per_page=100", repo)
     return data.get("jobs", [])
 
 
 def duration_seconds(started_at: str, completed_at: str) -> int:
-    """Calculate duration in seconds between two ISO timestamps."""
     if not started_at or not completed_at:
         return 0
     try:
         start = datetime.fromisoformat(started_at.replace("Z", "+00:00"))
         end = datetime.fromisoformat(completed_at.replace("Z", "+00:00"))
-        return max(0, int((end - start).total_seconds()))
-    except (ValueError, TypeError):
+    except (TypeError, ValueError):
         return 0
+    return max(0, int((end - start).total_seconds()))
 
 
 def process_run(repo: str, run: dict, workflow_name: str) -> dict:
-    """Process a single workflow run into our data format."""
-    run_id = run["id"]
-    jobs_raw = fetch_jobs(repo, run_id)
-
     jobs = []
-    total_jobs = 0
-    passed_jobs = 0
-    failed_jobs = 0
-
-    for job in jobs_raw:
+    for job in fetch_jobs(repo, run["id"]):
         parsed = parse_job_name(job["name"], workflow_name)
         if parsed is None:
-            continue  # Skip utility jobs
+            continue
+        conclusion = job.get("conclusion") or "unknown"
+        jobs.append(
+            {
+                **parsed,
+                "name": job["name"],
+                "conclusion": conclusion,
+                "started_at": job.get("started_at", ""),
+                "completed_at": job.get("completed_at", ""),
+                "duration_seconds": duration_seconds(
+                    job.get("started_at", ""), job.get("completed_at", "")
+                ),
+                "html_url": job.get("html_url", ""),
+            }
+        )
 
-        total_jobs += 1
-        conclusion = job.get("conclusion", "unknown")
-        if conclusion == "success":
-            passed_jobs += 1
-        elif conclusion in ("failure", "timed_out"):
-            failed_jobs += 1
-
-        job_data = {
-            "name": job["name"],
-            "conclusion": conclusion,
-            "started_at": job.get("started_at", ""),
-            "completed_at": job.get("completed_at", ""),
-            "duration_seconds": duration_seconds(
-                job.get("started_at", ""), job.get("completed_at", "")
-            ),
-            "html_url": job.get("html_url", ""),
-        }
-        job_data.update(parsed)
-        jobs.append(job_data)
-
-    # Calculate run-level duration
-    run_duration = duration_seconds(
-        run.get("run_started_at", run.get("created_at", "")),
-        run.get("updated_at", ""),
+    passed_jobs = sum(job["conclusion"] == "success" for job in jobs)
+    failed_jobs = sum(
+        job["conclusion"] in {"failure", "timed_out", "action_required"}
+        for job in jobs
     )
+    total_jobs = len(jobs)
 
     return {
-        "id": run_id,
-        "source": "github-actions",  # Extensibility: "questa-aws", "gitlab-ci", etc.
-        "simulator": "verilator",    # Extensibility: "questa", "vcs", etc.
+        "id": run["id"],
+        "source": "github-actions",
+        "simulator": "verilator-testharness",
         "run_number": run.get("run_number", 0),
         "status": run.get("status", ""),
-        "conclusion": run.get("conclusion", "unknown"),
+        "conclusion": run.get("conclusion") or "unknown",
         "html_url": run.get("html_url", ""),
         "head_branch": run.get("head_branch", ""),
+        "base_branches": base_branches(run),
         "head_sha": run.get("head_sha", "")[:8],
+        "head_sha_full": run.get("head_sha", ""),
         "event": run.get("event", ""),
         "created_at": run.get("created_at", ""),
         "updated_at": run.get("updated_at", ""),
         "run_started_at": run.get("run_started_at", run.get("created_at", "")),
-        "duration_seconds": run_duration,
+        "duration_seconds": duration_seconds(
+            run.get("run_started_at", run.get("created_at", "")),
+            run.get("updated_at", ""),
+        ),
         "total_jobs": total_jobs,
         "passed_jobs": passed_jobs,
         "failed_jobs": failed_jobs,
@@ -158,128 +122,104 @@ def process_run(repo: str, run: dict, workflow_name: str) -> dict:
     }
 
 
-def load_existing(path: Path) -> list:
-    """Load existing run data from JSON file."""
-    if path.exists():
-        try:
-            with open(path) as f:
-                return json.load(f)
-        except (json.JSONDecodeError, IOError):
-            print(f"WARNING: Could not read {path}, starting fresh", file=sys.stderr)
-    return []
+def load_existing(path: Path) -> list[dict]:
+    if not path.is_file():
+        return []
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return []
+    return data if isinstance(data, list) else []
 
 
-def filter_runs_by_branch(runs: list, branch: str) -> list:
-    """Keep only records from the requested branch when one is provided."""
-    if not branch:
+def base_branches(run: dict) -> list[str]:
+    stored = run.get("base_branches", [])
+    if isinstance(stored, list) and stored:
+        return sorted({branch for branch in stored if isinstance(branch, str)})
+
+    branches = set()
+    for pull_request in run.get("pull_requests", []):
+        branch = pull_request.get("base", {}).get("ref", "")
+        if branch:
+            branches.add(branch)
+    return sorted(branches)
+
+
+def filter_runs(
+    runs: list[dict], branch: str = "", base_branch: str = ""
+) -> list[dict]:
+    if branch:
+        return [run for run in runs if run.get("head_branch") == branch]
+    if not base_branch:
         return runs
-    return [run for run in runs if run.get("head_branch") == branch]
+    return [
+        run
+        for run in runs
+        if run.get("head_branch") == base_branch
+        or base_branch in base_branches(run)
+    ]
 
 
-def merge_runs(existing: list, new_runs: list) -> list:
-    """Merge new runs into existing data, deduplicating by run_id."""
-    existing_ids = {r["id"] for r in existing}
-    merged = list(existing)
-
-    for run in new_runs:
-        if run["id"] not in existing_ids:
-            merged.append(run)
-            existing_ids.add(run["id"])
-
-    # Sort by created_at descending (newest first)
-    merged.sort(key=lambda r: r.get("created_at", ""), reverse=True)
-
-    # Trim to MAX_HISTORY
-    return merged[:MAX_HISTORY]
+def merge_runs(existing: list[dict], new_runs: list[dict]) -> list[dict]:
+    merged = {run["id"]: run for run in existing}
+    merged.update({run["id"]: run for run in new_runs})
+    return sorted(
+        merged.values(), key=lambda run: run.get("created_at", ""), reverse=True
+    )[:MAX_HISTORY]
 
 
-def main():
-    parser = argparse.ArgumentParser(description="Collect CVA6 tier CI data from GitHub API")
+def main() -> None:
+    parser = argparse.ArgumentParser()
     parser.add_argument(
         "--repo",
         default=os.environ.get("GITHUB_REPOSITORY", "openhwgroup/cva6"),
-        help="GitHub repository (owner/name)",
     )
-    parser.add_argument(
-        "--data-dir",
-        default="data",
-        help="Directory to store JSON data files",
-    )
-    parser.add_argument(
-        "--fetch-count",
-        type=int,
-        default=10,
-        help="Number of recent runs to fetch per workflow",
-    )
-    parser.add_argument(
-        "--branch",
-        default="",
-        help="Only collect runs whose head branch exactly matches this value",
-    )
-    parser.add_argument(
-        "--workflows",
-        nargs="+",
-        choices=sorted(WORKFLOWS),
-        default=list(WORKFLOWS),
-        help="Workflow keys to collect (default: ci tier1 tier2)",
-    )
+    parser.add_argument("--data-dir", default="data")
+    parser.add_argument("--fetch-count", type=int, default=10)
+    parser.add_argument("--branch", default="")
+    parser.add_argument("--base-branch", default="master_candidate")
     args = parser.parse_args()
 
     data_dir = Path(args.data_dir)
     data_dir.mkdir(parents=True, exist_ok=True)
 
-    for wf_name in args.workflows:
-        wf_file = WORKFLOWS[wf_name]
-        print(f"\n{'='*60}")
-        print(f"Processing workflow: {wf_name} ({wf_file})")
-        if args.branch:
-            print(f"Branch filter: {args.branch}")
-        print(f"{'='*60}")
-
-        json_path = data_dir / f"runs_{wf_name}.json"
-        existing = filter_runs_by_branch(load_existing(json_path), args.branch)
-        existing_ids = {r["id"] for r in existing}
-
-        print(f"  Existing records: {len(existing)}")
-
-        # Fetch latest runs
-        runs = fetch_runs(args.repo, wf_file, args.fetch_count, args.branch)
-        print(f"  Fetched {len(runs)} runs from API")
-
-        # Only process new runs (incremental update)
-        new_runs = []
-        for run in runs:
-            if run["id"] in existing_ids:
-                print(f"  Skipping run #{run['run_number']} (id={run['id']}) - already exists")
-                continue
-
-            print(f"  Processing run #{run['run_number']} (id={run['id']})...")
-            processed = process_run(args.repo, run, wf_name)
-            new_runs.append(processed)
-            print(
-                f"    -> {processed['total_jobs']} jobs: "
-                f"{processed['passed_jobs']} passed, "
-                f"{processed['failed_jobs']} failed"
+    try:
+        for name, workflow_file in WORKFLOWS.items():
+            json_path = data_dir / f"runs_{name}.json"
+            existing = filter_runs(
+                load_existing(json_path), args.branch, args.base_branch
             )
+            existing_ids = {run["id"] for run in existing}
+            api_count = (
+                args.fetch_count
+                if args.branch or not args.base_branch
+                else min(100, max(args.fetch_count * 5, args.fetch_count))
+            )
+            fetched = fetch_runs(args.repo, workflow_file, api_count, args.branch)
+            fetched = filter_runs(
+                fetched, args.branch, args.base_branch
+            )[: args.fetch_count]
+            new_runs = [
+                process_run(args.repo, run, name)
+                for run in fetched
+                if run["id"] not in existing_ids
+            ]
+            merged = merge_runs(existing, new_runs)
+            json_path.write_text(json.dumps(merged, indent=2), encoding="utf-8")
+            print(f"{name}: {len(new_runs)} new, {len(merged)} stored")
+    except (json.JSONDecodeError, KeyError, OSError, RuntimeError) as error:
+        raise SystemExit(f"ERROR: {error}") from error
 
-        # Merge and save
-        merged = merge_runs(existing, new_runs)
-        with open(json_path, "w") as f:
-            json.dump(merged, f, indent=2)
-
-        print(f"  Saved {len(merged)} records to {json_path}")
-
-    # Write metadata
-    meta = {
+    metadata = {
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "repo": args.repo,
-        "workflows": args.workflows,
         "branch": args.branch,
+        "base_branch": args.base_branch,
+        "workflows": list(WORKFLOWS),
     }
-    with open(data_dir / "metadata.json", "w") as f:
-        json.dump(meta, f, indent=2)
-
-    print(f"\nDone! Data saved to {data_dir}/")
+    (data_dir / "metadata.json").write_text(
+        json.dumps(metadata, indent=2), encoding="utf-8"
+    )
 
 
 if __name__ == "__main__":

@@ -1,139 +1,111 @@
 #!/usr/bin/env python3
 # Copyright 2026 OpenHW Group
 # SPDX-License-Identifier: Apache-2.0
-"""Generate CVA6 tier dashboard HTML from collected JSON data.
-
-Reads per-workflow JSON files and renders a Jinja2 template into
-a self-contained static HTML file.
-"""
+"""Generate the CVA6 master_candidate Tier CI dashboard."""
 
 import argparse
+from datetime import datetime, timezone
 import json
 import os
-import shutil
-from datetime import datetime, timezone
 from pathlib import Path
+import shutil
 
 from jinja2 import Environment, FileSystemLoader
 
-# Workflow display info (order matters for UI).
-WORKFLOW_PROFILES = {
-    "default": [
-        {"key": "ci", "display_name": "ci.yml (Reference)", "file": "runs_ci.json"},
-        {"key": "tier1", "display_name": "Tier 1", "file": "runs_tier1.json"},
-        {"key": "tier2", "display_name": "Tier 2", "file": "runs_tier2.json"},
-    ],
-    "master-candidate": [
-        {"key": "tier1", "display_name": "Tier 1 (cook.py)", "file": "runs_tier1.json"},
-        {"key": "tier2", "display_name": "Tier 2 (cook.py)", "file": "runs_tier2.json"},
-    ],
-}
 
-WORKFLOW_INFO = WORKFLOW_PROFILES["default"]
-
-# Preferred display order for configs and test suites in the matrix.
-# Any configs/suites not listed here but found in the data will be
-# appended at the end automatically.
-MATRIX_CONFIGS_ORDER = [
-    "cv32a65x_axi",
-    "cv32a60x_axi",
-    "cv32a65x",
-    "cv32a60x",
-    "cv64a6_imafdc_sv39_hpdcache_wb",
-    "cv64a6_imafdc_sv39_hpdcache",
-    "cv64a6_imafdc_sv39_wb",
-    "cv64a6_imafdc_sv39",
+WORKFLOW_INFO = [
+    {
+        "key": "tier1",
+        "display_name": "Tier 1 (Verilator)",
+        "matrix_label": "Tier 1",
+        "file": "runs_tier1.json",
+        "backend": "Verilator/TestHarness",
+        "scope": "Pull request sanity",
+    },
+    {
+        "key": "tier2",
+        "display_name": "Tier 2 (Verilator)",
+        "matrix_label": "Tier 2",
+        "file": "runs_tier2.json",
+        "backend": "Verilator/TestHarness",
+        "scope": "master_candidate regression",
+    },
 ]
 
-MATRIX_SUITES_ORDER = [
-    "smoke-tests-cv32a65x",
-    "cv32a6_tests",
-    "cv64a6_imafdc_tests",
-    "dv-riscv-arch-test",
-    "dv-riscv-tests-p",
-    "dv-riscv-tests-v",
-    "dv-riscv-compliance",
-    "dv-riscv-csr-access-test",
-    "benchmark",
-]
-
+MATRIX_CONFIGS_ORDER = ["cv32a60x_axi", "cv32a65x_axi"]
+MATRIX_SUITES_ORDER = ["base-rv32-p", "base-pmp"]
 TREND_COUNT = 20
+THALES_FILE = "thales_reference.json"
 
 
 def is_valid_matrix_job(job: dict) -> bool:
-    """Return True if a job has usable config/testcase for matrix rendering."""
     config = job.get("config", "")
     testcase = job.get("testcase", "")
-    if not config or not testcase:
-        return False
-    if "${{" in config or "${{" in testcase:
-        return False
-    return True
+    return bool(
+        config
+        and testcase
+        and "${{" not in config
+        and "${{" not in testcase
+    )
 
 
 def format_duration(seconds: int) -> str:
-    """Format seconds into human-readable duration."""
     if seconds <= 0:
         return "N/A"
-    minutes = seconds // 60
-    secs = seconds % 60
+    minutes, secs = divmod(seconds, 60)
     if minutes >= 60:
-        hours = minutes // 60
-        mins = minutes % 60
-        return f"{hours}h {mins}m"
+        hours, minutes = divmod(minutes, 60)
+        return f"{hours}h {minutes}m"
     return f"{minutes}m {secs}s"
 
 
-def format_datetime(iso_str: str) -> str:
-    """Format ISO datetime to readable string."""
-    if not iso_str:
+def format_datetime(value: str) -> str:
+    if not value:
         return "N/A"
     try:
-        dt = datetime.fromisoformat(iso_str.replace("Z", "+00:00"))
-        return dt.strftime("%Y-%m-%d %H:%M UTC")
-    except (ValueError, TypeError):
-        return iso_str
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return value
+    return parsed.strftime("%Y-%m-%d %H:%M UTC")
 
 
-def load_workflow_data(data_dir: Path, workflow_info: list = WORKFLOW_INFO) -> dict:
-    """Load all workflow JSON data files."""
-    result = {}
-    for wf in workflow_info:
-        path = data_dir / wf["file"]
-        if path.exists():
-            with open(path) as f:
-                result[wf["key"]] = json.load(f)
-        else:
-            result[wf["key"]] = []
-    return result
+def load_json(path: Path, default):
+    if not path.is_file():
+        return default
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return default
 
 
-def build_matrix(all_data: dict, workflow_info: list = WORKFLOW_INFO) -> tuple:
-    """Build unified config x testsuite matrix from ALL workflows.
+def load_workflow_data(data_dir: Path) -> dict[str, list[dict]]:
+    return {
+        workflow["key"]: load_json(data_dir / workflow["file"], [])
+        for workflow in WORKFLOW_INFO
+    }
 
-    Each cell is a dict keyed by workflow name, e.g.:
-        matrix["cv64a6_imafdc_sv39_hpdcache_wb"]["dv-riscv-arch-test"] = {
-            "ci": {"conclusion": "success", "html_url": "..."},
-            "tier2": {"conclusion": "success", "html_url": "..."},
-        }
 
-    Returns: (matrix_data, configs_used, suites_used)
-    """
-    # matrix[config][testcase][workflow_key] = {conclusion, html_url}
-    matrix = {}
-    all_configs = set()
-    all_suites = set()
+def ordered(items: set[str], preferred: list[str]) -> list[str]:
+    return [item for item in preferred if item in items] + sorted(
+        items - set(preferred)
+    )
 
-    for wf in workflow_info:
-        key = wf["key"]
-        runs = all_data.get(key, [])
-        if not runs:
-            continue
 
-        # Use the latest run that actually has usable matrix jobs.
-        # This avoids rendering placeholder jobs from early setup failures.
+def build_matrix(
+    all_data: dict[str, list[dict]], thales: dict
+) -> tuple[dict, list, list]:
+    matrix: dict[str, dict] = {}
+    configs: set[str] = set()
+    suites: set[str] = set()
+
+    for workflow in WORKFLOW_INFO:
+        key = workflow["key"]
         latest = next(
-            (run for run in runs if any(is_valid_matrix_job(job) for job in run.get("jobs", []))),
+            (
+                run
+                for run in all_data.get(key, [])
+                if any(is_valid_matrix_job(job) for job in run.get("jobs", []))
+            ),
             None,
         )
         if latest is None:
@@ -142,69 +114,63 @@ def build_matrix(all_data: dict, workflow_info: list = WORKFLOW_INFO) -> tuple:
         for job in latest.get("jobs", []):
             if not is_valid_matrix_job(job):
                 continue
-            config = job.get("config", "")
-            testcase = job.get("testcase", "")
-
-            all_configs.add(config)
-            all_suites.add(testcase)
-
-            if config not in matrix:
-                matrix[config] = {}
-            if testcase not in matrix[config]:
-                matrix[config][testcase] = {}
-
-            matrix[config][testcase][key] = {
+            config = job["config"]
+            testcase = job["testcase"]
+            configs.add(config)
+            suites.add(testcase)
+            matrix.setdefault(config, {}).setdefault(testcase, {})[key] = {
                 "conclusion": job.get("conclusion", "unknown"),
                 "html_url": job.get("html_url", ""),
             }
 
-    # Order: preferred order first, then any extras alphabetically
-    def ordered(items, preferred):
-        result = [c for c in preferred if c in items]
-        extras = sorted(items - set(preferred))
-        return result + extras
-
-    configs_used = ordered(all_configs, MATRIX_CONFIGS_ORDER)
-    suites_used = ordered(all_suites, MATRIX_SUITES_ORDER)
-
-    return matrix, configs_used, suites_used
-
-
-def build_chart_data(all_data: dict, workflow_info: list = WORKFLOW_INFO) -> dict:
-    """Build Chart.js data for trend charts."""
-    chart_data = {}
-
-    for wf in workflow_info:
-        key = wf["key"]
-        runs = all_data.get(key, [])
-
-        # Take last TREND_COUNT runs, reversed for chronological order
-        trend_runs = list(reversed(runs[:TREND_COUNT]))
-
-        labels = []
-        pass_rates = []
-        durations = []
-
-        for run in trend_runs:
-            labels.append(str(run.get("run_number", "")))
-            total = run.get("total_jobs", 0)
-            passed = run.get("passed_jobs", 0)
-            rate = round(passed / total * 100, 1) if total > 0 else 0
-            pass_rates.append(rate)
-            dur_min = round(run.get("duration_seconds", 0) / 60, 1)
-            durations.append(dur_min)
-
-        chart_data[key] = {
-            "labels": labels,
-            "pass_rates": pass_rates,
-            "durations": durations,
+    for job in thales.get("matrix_snapshot", {}).get("jobs", []):
+        if not is_valid_matrix_job(job):
+            continue
+        config = job["config"]
+        testcase = job["testcase"]
+        configs.add(config)
+        suites.add(testcase)
+        matrix.setdefault(config, {}).setdefault(testcase, {})["thales"] = {
+            "conclusion": job.get("conclusion", "unknown"),
+            "html_url": "",
         }
 
+    return (
+        matrix,
+        ordered(configs, MATRIX_CONFIGS_ORDER),
+        ordered(suites, MATRIX_SUITES_ORDER),
+    )
+
+
+def build_chart_data(all_data: dict[str, list[dict]]) -> dict:
+    chart_data = {}
+    for workflow in WORKFLOW_INFO:
+        runs = list(reversed(all_data.get(workflow["key"], [])[:TREND_COUNT]))
+        chart_data[workflow["key"]] = {
+            "labels": [str(run.get("run_number", "")) for run in runs],
+            "pass_rates": [
+                round(run.get("passed_jobs", 0) / run.get("total_jobs", 1) * 100, 1)
+                if run.get("total_jobs", 0)
+                else 0
+                for run in runs
+            ],
+            "durations": [
+                round(run.get("duration_seconds", 0) / 60, 1) for run in runs
+            ],
+        }
     return chart_data
 
 
+def build_thales_chart_data(thales: dict) -> dict:
+    pipelines = list(reversed(thales.get("history", [])[:TREND_COUNT]))
+    return {
+        "labels": [str(item.get("pipeline_id", "")) for item in pipelines],
+        "pass_rates": [item.get("pass_rate", 0) for item in pipelines],
+        "job_counts": [item.get("total_jobs", 0) for item in pipelines],
+    }
+
+
 def enrich_run(run: dict) -> dict:
-    """Add display-friendly fields to a run dict."""
     run["duration_display"] = format_duration(run.get("duration_seconds", 0))
     run["created_at_display"] = format_datetime(run.get("created_at", ""))
     for job in run.get("jobs", []):
@@ -212,96 +178,109 @@ def enrich_run(run: dict) -> dict:
     return run
 
 
-def build_workflows_context(all_data: dict, workflow_info: list = WORKFLOW_INFO) -> list:
-    """Build the workflows list for the template context."""
+def build_workflows_context(all_data: dict[str, list[dict]]) -> list[dict]:
     workflows = []
-
-    for wf in workflow_info:
-        key = wf["key"]
-        runs = all_data.get(key, [])
-
-        # Enrich all runs
-        for run in runs:
-            enrich_run(run)
-
-        # Build latest run summary (or placeholder)
-        if runs:
-            latest = runs[0]
-        else:
-            latest = {
-                "conclusion": "unknown",
-                "head_branch": "N/A",
-                "head_sha": "N/A",
-                "passed_jobs": 0,
-                "failed_jobs": 0,
-                "skipped_jobs": 0,
-                "total_jobs": 0,
-                "duration_display": "N/A",
-                "run_number": 0,
-                "html_url": "#",
-            }
-
-        workflows.append(
-            {
-                "key": key,
-                "display_name": wf["display_name"],
-                "latest": latest,
-                "runs": runs,
-            }
-        )
-
+    for definition in WORKFLOW_INFO:
+        runs = [enrich_run(run) for run in all_data.get(definition["key"], [])]
+        latest = runs[0] if runs else {
+            "conclusion": "unknown",
+            "head_branch": "N/A",
+            "head_sha": "N/A",
+            "head_sha_full": "",
+            "passed_jobs": 0,
+            "failed_jobs": 0,
+            "skipped_jobs": 0,
+            "total_jobs": 0,
+            "duration_display": "N/A",
+            "run_number": 0,
+            "html_url": "",
+        }
+        workflows.append({**definition, "latest": latest, "runs": runs})
     return workflows
 
 
-def main():
-    parser = argparse.ArgumentParser(
-        description="Generate CVA6 CI Dashboard HTML"
+def load_thales_reference(data_dir: Path) -> dict:
+    reference = load_json(data_dir / THALES_FILE, {})
+    if not isinstance(reference, dict) or not reference.get("available"):
+        return {
+            "available": False,
+            "status": "unknown",
+            "status_label": "UNAVAILABLE",
+            "backend": "VCS/UVM",
+            "scope": "latest public pipeline",
+            "branch": "N/A",
+            "head_sha": "N/A",
+            "head_sha_full": "",
+            "pipeline_id": "N/A",
+            "dashboard_url": reference.get(
+                "dashboard_url",
+                "https://riscv-ci.pages.thales-invia.fr/dashboard/dashboard_cva6.html",
+            ),
+            "created_at_display": "N/A",
+            "duration_display": "N/A",
+            "matrix_snapshot": {},
+            "history": [],
+        }
+
+    reference["created_at_display"] = format_datetime(reference.get("created_at", ""))
+    reference["duration_display"] = format_duration(
+        reference.get("duration_seconds", 0)
     )
-    parser.add_argument(
-        "--data-dir",
-        default="data",
-        help="Directory containing JSON data files",
-    )
-    parser.add_argument(
-        "--output-dir",
-        default="site",
-        help="Output directory for generated HTML",
-    )
+    reference.setdefault("matrix_snapshot", {})
+    reference.setdefault("history", [])
+    snapshot = reference["matrix_snapshot"]
+    if snapshot:
+        snapshot["created_at_display"] = format_datetime(
+            snapshot.get("created_at", "")
+        )
+        snapshot["duration_display"] = format_duration(
+            snapshot.get("duration_seconds", 0)
+        )
+    return reference
+
+
+def source_relation(workflows: list[dict], thales: dict) -> dict[str, str]:
+    thales_sha = thales.get("head_sha_full", "")
+    github_shas = {
+        workflow["latest"].get("head_sha_full", "") for workflow in workflows
+    }
+    github_shas.discard("")
+    if not thales_sha or not github_shas:
+        return {"kind": "unknown", "label": "Source comparison unavailable"}
+    if github_shas == {thales_sha}:
+        return {"kind": "match", "label": "Matching source revision"}
+    return {"kind": "different", "label": "Different source revisions"}
+
+
+def build_matrix_metadata(workflows: list[dict], thales: dict) -> dict:
+    metadata = {
+        workflow["key"]: {
+            "label": f"GitHub Actions · {workflow['backend']}",
+            "branch": workflow["latest"].get("head_branch", "N/A"),
+            "head_sha": workflow["latest"].get("head_sha", "N/A"),
+            "relation": "",
+        }
+        for workflow in workflows
+    }
+    snapshot = thales.get("matrix_snapshot", {})
+    if snapshot:
+        relation = source_relation(workflows, snapshot)
+        metadata["thales"] = {
+            "label": f"Thales GitLab · VCS/UVM · pipeline #{snapshot['pipeline_id']}",
+            "branch": snapshot.get("branch", "N/A"),
+            "head_sha": snapshot.get("head_sha", "N/A"),
+            "relation": relation["label"],
+        }
+    return metadata
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--data-dir", default="data")
+    parser.add_argument("--output-dir", default="site")
     parser.add_argument(
         "--repo",
         default=os.environ.get("GITHUB_REPOSITORY", "openhwgroup/cva6"),
-        help="GitHub repository (owner/name)",
-    )
-    parser.add_argument(
-        "--profile",
-        choices=sorted(WORKFLOW_PROFILES),
-        default="default",
-        help="Workflow labels and presentation profile",
-    )
-    parser.add_argument(
-        "--page-title",
-        default="OpenHW CVA6 Tier CI Dashboard",
-        help="HTML document title",
-    )
-    parser.add_argument(
-        "--dashboard-title",
-        default="CVA6 Tier CI Dashboard",
-        help="Visible dashboard title",
-    )
-    parser.add_argument(
-        "--branch-label",
-        default="",
-        help="Optional branch label displayed in the navbar",
-    )
-    parser.add_argument(
-        "--notice",
-        default="",
-        help="Optional scope notice displayed above the status cards",
-    )
-    parser.add_argument(
-        "--back-link",
-        default="",
-        help="Optional link back to the main dashboard",
     )
     args = parser.parse_args()
 
@@ -309,69 +288,46 @@ def main():
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    # Load data
-    workflow_info = WORKFLOW_PROFILES[args.profile]
-    all_data = load_workflow_data(data_dir, workflow_info)
-
-    # Build template context
+    all_data = load_workflow_data(data_dir)
+    workflows = build_workflows_context(all_data)
+    thales = load_thales_reference(data_dir)
+    matrix, matrix_configs, matrix_suites = build_matrix(all_data, thales)
     now = datetime.now(timezone.utc)
-    workflows = build_workflows_context(all_data, workflow_info)
-    matrix_data, matrix_configs, matrix_suites = build_matrix(all_data, workflow_info)
-    chart_data = build_chart_data(all_data, workflow_info)
-
-    default_matrix_wf = "tier2"
-    if not all_data.get("tier2"):
-        for wf in workflow_info:
-            if all_data.get(wf["key"]):
-                default_matrix_wf = wf["key"]
-                break
 
     context = {
         "generated_at": now.strftime("%Y-%m-%d %H:%M UTC"),
         "year": now.year,
         "repo": args.repo,
-        "page_title": args.page_title,
-        "dashboard_title": args.dashboard_title,
-        "branch_label": args.branch_label,
-        "notice": args.notice,
-        "back_link": args.back_link,
         "workflows": workflows,
-        "matrix_data": matrix_data,
-        "matrix_data_json": json.dumps(matrix_data),
+        "thales": thales,
+        "source_relation": source_relation(workflows, thales),
+        "matrix_data": matrix,
+        "matrix_metadata": build_matrix_metadata(workflows, thales),
         "matrix_configs": matrix_configs,
-        "matrix_configs_json": json.dumps(matrix_configs),
         "matrix_suites": matrix_suites,
-        "matrix_suites_json": json.dumps(matrix_suites),
-        "default_matrix_wf": default_matrix_wf,
-        "chart_data": chart_data,
-        "chart_data_json": json.dumps(chart_data),
+        "default_matrix_wf": "tier2" if all_data.get("tier2") else "tier1",
+        "chart_data": build_chart_data(all_data),
+        "thales_chart_data": build_thales_chart_data(thales),
         "trend_count": TREND_COUNT,
     }
 
-    # Render template
     template_dir = Path(__file__).parent / "templates"
-    env = Environment(loader=FileSystemLoader(str(template_dir)), autoescape=True)
-    template = env.get_template("index.html")
-    html = template.render(**context)
+    environment = Environment(
+        loader=FileSystemLoader(str(template_dir)), autoescape=True
+    )
+    html_page = environment.get_template("index.html").render(**context)
+    (output_dir / "index.html").write_text(html_page, encoding="utf-8")
 
-    # Write output
-    output_file = output_dir / "index.html"
-    with open(output_file, "w") as f:
-        f.write(html)
-
-    # Copy static dashboard assets, such as the local OpenHW logo.
     static_dir = Path(__file__).parent / "static"
-    if static_dir.exists():
+    if static_dir.is_dir():
         assets_dir = output_dir / "assets"
         if assets_dir.exists():
             shutil.rmtree(assets_dir)
         shutil.copytree(static_dir, assets_dir)
 
-    print(f"Dashboard generated: {output_file}")
-    print(f"  Workflows: {len(workflows)}")
-    for wf in workflows:
-        print(f"    - {wf['display_name']}: {len(wf['runs'])} runs")
-    print(f"  Matrix: {len(matrix_configs)} configs x {len(matrix_suites)} suites")
+    print(f"Dashboard generated: {output_dir / 'index.html'}")
+    print(f"GitHub runs: {sum(len(item['runs']) for item in workflows)}")
+    print(f"Thales reference: {thales['status_label']}")
 
 
 if __name__ == "__main__":

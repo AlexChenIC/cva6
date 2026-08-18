@@ -4,11 +4,6 @@ on:
   push:
     branches:
       - jchen/master-candidate-dashboard-preview-v1
-    paths:
-      - .github/scripts/dashboard/**
-      - .github/scripts/dashboard_tiers/**
-      - .github/tests/test_master_candidate_dashboard.py
-      - .github/workflows/fork-only-master-candidate-dashboard-preview.yml
   workflow_dispatch:
 
 concurrency:
@@ -22,128 +17,108 @@ permissions:
   id-token: write
 
 env:
-  MASTER_CANDIDATE_CI_BRANCH: jchen/master-candidate-tier-ci-master-adapter-v1
+  PAGES_ROOT: https://alexchenic.github.io/cva6
+  TIER_BRANCH: jchen/master-candidate-openhw-tier-ci
+  TARGET_BRANCH: master_candidate
+  THALES_DASHBOARD_URL: https://riscv-ci.pages.thales-invia.fr/dashboard/dashboard_cva6.html
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
 jobs:
   build:
-    name: Build fork dashboard preview
     if: github.repository == 'AlexChenIC/cva6'
-    runs-on: ubuntu-latest
-    # Queue time counts toward this limit. Leave enough headroom for temporary
-    # GitHub-hosted runner or Pages service degradation.
-    timeout-minutes: 60
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
     steps:
-      - name: Checkout preview branch
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - name: Restore existing dashboard history
+      - name: Preserve the existing fork Pages site
         run: |
-          mkdir -p /tmp/legacy-data /tmp/tier-data /tmp/master-candidate-data
+          set -euo pipefail
+          mkdir -p /tmp/dash-site/tier/assets
+          curl --fail --silent --show-error --location --retry 3 \
+            "$PAGES_ROOT/" --output /tmp/dash-site/index.html
+          curl --fail --silent --show-error --location --retry 3 \
+            "$PAGES_ROOT/tier/" --output /tmp/dash-site/tier/index.html
+          curl --fail --silent --show-error --location --retry 3 \
+            "$PAGES_ROOT/tier/assets/openhw-landscape.svg" \
+            --output /tmp/dash-site/tier/assets/openhw-landscape.svg
+          curl --fail --silent --show-error --location --retry 3 \
+            "$PAGES_ROOT/tier.html" --output /tmp/dash-site/tier.html
+          touch /tmp/dash-site/.nojekyll
 
+      - name: Preserve published dashboard data
+        run: |
+          set -euo pipefail
           if git ls-remote --exit-code --heads origin gh-pages >/dev/null 2>&1; then
-            git fetch origin gh-pages --depth=1
-            git checkout origin/gh-pages -- data/ 2>/dev/null || true
-            cp -r data/. /tmp/legacy-data/ 2>/dev/null || true
-            rm -rf data
+            git fetch origin gh-pages:refs/remotes/origin/gh-pages --depth=1
+            git archive origin/gh-pages data | tar -x -C /tmp/dash-site
           fi
-
           if git ls-remote --exit-code --heads origin gh-pages-cva6-tier-dashboard-data >/dev/null 2>&1; then
-            git fetch origin gh-pages-cva6-tier-dashboard-data --depth=1
-            git checkout origin/gh-pages-cva6-tier-dashboard-data -- data/ 2>/dev/null || true
-            cp -r data/. /tmp/tier-data/ 2>/dev/null || true
-            rm -rf data
+            mkdir -p /tmp/tier-persisted
+            git fetch origin \
+              gh-pages-cva6-tier-dashboard-data:refs/remotes/origin/gh-pages-cva6-tier-dashboard-data \
+              --depth=1
+            git archive origin/gh-pages-cva6-tier-dashboard-data data | \
+              tar -x -C /tmp/tier-persisted
+            cp -r /tmp/tier-persisted/data /tmp/dash-site/tier/
           fi
 
-      - name: Collect current root dashboard data
+      - name: Collect master_candidate Tier data
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          python3 .github/scripts/dashboard/collect_data.py \
-            --repo "${{ github.repository }}" \
-            --data-dir /tmp/legacy-data \
-            --fetch-count 10
-
-          python3 .github/scripts/dashboard_tiers/collect_data.py \
-            --repo "${{ github.repository }}" \
-            --data-dir /tmp/tier-data \
-            --fetch-count 20
-
-      - name: Collect master candidate data
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
+          mkdir -p /tmp/master-candidate-data
           python3 .github/scripts/dashboard_tiers/collect_data.py \
             --repo "${{ github.repository }}" \
             --data-dir /tmp/master-candidate-data \
             --fetch-count 20 \
-            --branch "$MASTER_CANDIDATE_CI_BRANCH" \
-            --workflows tier1 tier2
+            --branch "$TIER_BRANCH" \
+            --base-branch "$TARGET_BRANCH"
+
+      - name: Collect Thales GitLab reference
+        run: |
+          python3 .github/scripts/dashboard_tiers/collect_thales_reference.py \
+            --url "$THALES_DASHBOARD_URL" \
+            --output /tmp/master-candidate-data/thales_reference.json
 
       - name: Install dashboard dependency
         run: python3 -m pip install --disable-pip-version-check jinja2==3.1.6
 
-      - name: Run dashboard tests
+      - name: Test dashboard data handling
         run: |
           python3 -m unittest discover \
             --start-directory .github/tests \
-            --pattern 'test_master_candidate_dashboard.py'
+            --pattern 'test_tier_dashboard.py'
 
-      - name: Generate complete Pages preview
+      - name: Generate master_candidate dashboard
         run: |
-          python3 .github/scripts/dashboard/generate_dashboard.py \
-            --data-dir /tmp/legacy-data \
-            --output-dir /tmp/dash-site \
-            --repo "${{ github.repository }}"
-
-          python3 .github/scripts/dashboard_tiers/generate_dashboard.py \
-            --data-dir /tmp/tier-data \
-            --output-dir /tmp/dash-site/tier \
-            --repo "${{ github.repository }}"
-
           python3 .github/scripts/dashboard_tiers/generate_dashboard.py \
             --data-dir /tmp/master-candidate-data \
-            --output-dir /tmp/dash-site/master-candidate \
-            --repo "${{ github.repository }}" \
-            --profile master-candidate \
-            --page-title "CVA6 master_candidate Tier CI Dashboard" \
-            --dashboard-title "CVA6 master_candidate Tier CI" \
-            --branch-label "$MASTER_CANDIDATE_CI_BRANCH" \
-            --back-link "../" \
-            --notice "Fork-only preview. Results are filtered to the branch shown above and do not represent upstream acceptance."
-
-          cp -r /tmp/legacy-data /tmp/dash-site/data
-          cp -r /tmp/tier-data /tmp/dash-site/tier/data
-          cp -r /tmp/master-candidate-data /tmp/dash-site/master-candidate/data
-
-          printf '%s\n' \
-            '<!doctype html>' \
-            '<html lang="en"><head><meta charset="utf-8">' \
-            '<meta http-equiv="refresh" content="0; url=./master-candidate/">' \
-            '<title>Master candidate dashboard</title></head>' \
-            '<body><a href="./master-candidate/">Open master candidate dashboard</a></body></html>' \
-            > /tmp/dash-site/master-candidate.html
-
-      - name: Upload inspectable preview artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: fork-master-candidate-dashboard-preview
-          path: /tmp/dash-site
-          retention-days: 14
+            --output-dir /tmp/dash-site/master_candidate \
+            --repo "${{ github.repository }}"
+          cp -r /tmp/master-candidate-data \
+            /tmp/dash-site/master_candidate/data
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
           path: /tmp/dash-site
 
+      - name: Upload dashboard preview
+        uses: actions/upload-artifact@v4
+        with:
+          name: cva6-master-candidate-dashboard-preview
+          path: /tmp/dash-site/master_candidate
+          retention-days: 14
+
   deploy:
-    name: Deploy fork Pages preview
-    needs: build
     if: github.repository == 'AlexChenIC/cva6'
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
     environment:
       name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}master-candidate/
+      url: ${{ steps.deployment.outputs.page_url }}master_candidate/
     steps:
       - name: Deploy to GitHub Pages
         id: deployment
