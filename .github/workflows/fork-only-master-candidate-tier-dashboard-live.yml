@@ -1,0 +1,125 @@
+name: fork-only-master-candidate-tier-dashboard-live
+
+on:
+  push:
+    branches:
+      - jchen/master-candidate-tier-dashboard-live-preview
+  workflow_dispatch:
+
+concurrency:
+  group: fork-only-master-candidate-tier-dashboard-live
+  cancel-in-progress: true
+
+permissions:
+  actions: read
+  contents: read
+  pages: write
+  id-token: write
+
+env:
+  PAGES_ROOT: https://alexchenic.github.io/cva6
+  TIER_BRANCH: jchen/master-candidate-openhw-tier-ci
+  TARGET_BRANCH: master_candidate
+  THALES_DASHBOARD_URL: https://riscv-ci.pages.thales-invia.fr/dashboard/dashboard_cva6.html
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+jobs:
+  build:
+    if: github.repository == 'AlexChenIC/cva6'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Preserve the existing fork Pages site
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/dash-site/tier/assets
+          curl --fail --silent --show-error --location --retry 3 \
+            "$PAGES_ROOT/" --output /tmp/dash-site/index.html
+          curl --fail --silent --show-error --location --retry 3 \
+            "$PAGES_ROOT/tier/" --output /tmp/dash-site/tier/index.html
+          curl --fail --silent --show-error --location --retry 3 \
+            "$PAGES_ROOT/tier/assets/openhw-landscape.svg" \
+            --output /tmp/dash-site/tier/assets/openhw-landscape.svg
+          curl --fail --silent --show-error --location --retry 3 \
+            "$PAGES_ROOT/tier.html" --output /tmp/dash-site/tier.html
+          touch /tmp/dash-site/.nojekyll
+
+      - name: Preserve published dashboard data
+        run: |
+          set -euo pipefail
+          if git ls-remote --exit-code --heads origin gh-pages >/dev/null 2>&1; then
+            git fetch origin gh-pages:refs/remotes/origin/gh-pages --depth=1
+            git archive origin/gh-pages data | tar -x -C /tmp/dash-site
+          fi
+          if git ls-remote --exit-code --heads origin gh-pages-cva6-tier-dashboard-data >/dev/null 2>&1; then
+            mkdir -p /tmp/tier-persisted
+            git fetch origin \
+              gh-pages-cva6-tier-dashboard-data:refs/remotes/origin/gh-pages-cva6-tier-dashboard-data \
+              --depth=1
+            git archive origin/gh-pages-cva6-tier-dashboard-data data | \
+              tar -x -C /tmp/tier-persisted
+            cp -r /tmp/tier-persisted/data /tmp/dash-site/tier/
+          fi
+
+      - name: Collect master_candidate Tier data
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p /tmp/master-candidate-data
+          python3 .github/scripts/dashboard_tiers/collect_data.py \
+            --repo "${{ github.repository }}" \
+            --data-dir /tmp/master-candidate-data \
+            --fetch-count 20 \
+            --branch "$TIER_BRANCH" \
+            --base-branch "$TARGET_BRANCH"
+
+      - name: Collect Thales GitLab reference
+        run: |
+          python3 .github/scripts/dashboard_tiers/collect_thales_reference.py \
+            --url "$THALES_DASHBOARD_URL" \
+            --output /tmp/master-candidate-data/thales_reference.json
+
+      - name: Install dashboard dependency
+        run: python3 -m pip install --disable-pip-version-check jinja2==3.1.6
+
+      - name: Test dashboard data handling
+        run: |
+          python3 -m unittest discover \
+            --start-directory .github/tests \
+            --pattern 'test_tier_dashboard.py'
+
+      - name: Generate master_candidate dashboard
+        run: |
+          python3 .github/scripts/dashboard_tiers/generate_dashboard.py \
+            --data-dir /tmp/master-candidate-data \
+            --output-dir /tmp/dash-site/master_candidate \
+            --repo "${{ github.repository }}"
+          cp -r /tmp/master-candidate-data \
+            /tmp/dash-site/master_candidate/data
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: /tmp/dash-site
+
+      - name: Upload dashboard preview
+        uses: actions/upload-artifact@v4
+        with:
+          name: cva6-master-candidate-dashboard-live-preview
+          path: /tmp/dash-site/master_candidate
+          retention-days: 14
+
+  deploy:
+    if: github.repository == 'AlexChenIC/cva6'
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}master_candidate/
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
