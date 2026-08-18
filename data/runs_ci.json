@@ -1,5 +1,26 @@
 [
   {
+    "id": 32122903986,
+    "source": "github-actions",
+    "simulator": "verilator",
+    "run_number": 192,
+    "status": "completed",
+    "conclusion": "failure",
+    "html_url": "https://github.com/AlexChenIC/cva6/actions/runs/32122903986",
+    "head_branch": "jchen/master-candidate-dashboard-preview-v1",
+    "head_sha": "4ee60429",
+    "event": "push",
+    "created_at": "2026-08-18T09:41:23Z",
+    "updated_at": "2026-08-18T09:42:20Z",
+    "run_started_at": "2026-08-18T09:41:23Z",
+    "duration_seconds": 57,
+    "total_jobs": 0,
+    "passed_jobs": 0,
+    "failed_jobs": 0,
+    "skipped_jobs": 0,
+    "jobs": []
+  },
+  {
     "id": 32122099242,
     "source": "github-actions",
     "simulator": "verilator",
@@ -4858,26 +4879,5 @@
         "simulator": "veri-testharness"
       }
     ]
-  },
-  {
-    "id": 29295782438,
-    "source": "github-actions",
-    "simulator": "verilator",
-    "run_number": 142,
-    "status": "completed",
-    "conclusion": "cancelled",
-    "html_url": "https://github.com/AlexChenIC/cva6/actions/runs/29295782438",
-    "head_branch": "alex/pr3265-act4-tier2-ci-prevalidation-20260713",
-    "head_sha": "14a4e7b1",
-    "event": "push",
-    "created_at": "2026-07-14T00:23:24Z",
-    "updated_at": "2026-07-14T00:23:45Z",
-    "run_started_at": "2026-07-14T00:23:24Z",
-    "duration_seconds": 21,
-    "total_jobs": 0,
-    "passed_jobs": 0,
-    "failed_jobs": 0,
-    "skipped_jobs": 0,
-    "jobs": []
   }
 ]
