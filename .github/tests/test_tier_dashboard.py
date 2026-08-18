@@ -26,7 +26,9 @@ def load_module(name: str, path: Path):
 
 
 collector = load_module("tier_dashboard_collector", DASHBOARD_DIR / "collect_data.py")
-generator = load_module("tier_dashboard_generator", DASHBOARD_DIR / "generate_dashboard.py")
+generator = load_module(
+    "tier_dashboard_generator", DASHBOARD_DIR / "generate_dashboard.py"
+)
 thales_collector = load_module(
     "thales_dashboard_collector", DASHBOARD_DIR / "collect_thales_reference.py"
 )
@@ -149,6 +151,11 @@ class ThalesCollectorTest(unittest.TestCase):
         <a href=https://gitlab.thales-invia.fr/riscv-ci/cva6/-/jobs/296335>job</a>
         <script>timeDifference_absolute(29)</script>
       </div>
+      <div class="col-12 border-top p-1">
+        <button class="btn btn-danger m-1"><small>FAIL</small></button>
+        <strong>Testlist RTL run - cv32a60x - base_zcmt</strong>
+        <script>timeDifference_absolute(31)</script>
+      </div>
     </div>
     """
 
@@ -161,26 +168,44 @@ class ThalesCollectorTest(unittest.TestCase):
         self.assertEqual(result["backend"], "VCS/UVM")
         self.assertNotIn("pipeline_url", result)
 
-    def test_relevant_jobs_feed_matrix_and_history(self) -> None:
+    def test_all_testlist_jobs_feed_public_history(self) -> None:
         result = thales_collector.parse_public_dashboard(self.RELEVANT_PAGE)
-        snapshot = result["matrix_snapshot"]
+        snapshot = result["latest_matrix_snapshot"]
 
         self.assertEqual(result["pipeline_id"], 58367)
         self.assertEqual(snapshot["pipeline_id"], 58298)
-        self.assertEqual(snapshot["total_jobs"], 3)
+        self.assertEqual(snapshot["total_jobs"], 4)
         self.assertEqual(snapshot["passed_jobs"], 3)
-        self.assertEqual(snapshot["pass_rate"], 100.0)
+        self.assertEqual(snapshot["failed_jobs"], 1)
+        self.assertEqual(snapshot["pass_rate"], 75.0)
         self.assertEqual(
             {(job["config"], job["testcase"]) for job in snapshot["jobs"]},
             {
-                ("cv32a60x_axi", "base-rv32-p"),
-                ("cv32a65x_axi", "base-rv32-p"),
-                ("cv32a65x_axi", "base-pmp"),
+                ("cv32a60x_axi", "base_rv32_p"),
+                ("cv32a65x_axi", "base_rv32_p"),
+                ("cv32a65x_axi", "base_pmp"),
+                ("cv32a60x", "base_zcmt"),
             },
         )
         self.assertEqual(len(result["history"]), 1)
+        self.assertEqual(result["matrix_snapshot"], {})
         self.assertNotIn("pipeline_url", json.dumps(result))
         self.assertNotIn("/-/jobs/", json.dumps(result))
+
+    def test_master_candidate_matrix_is_read_from_gitlab_ci(self) -> None:
+        definition = thales_collector.parse_matrix_definition(
+            (REPO_ROOT / ".gitlab-ci.yml").read_text(encoding="utf-8"),
+            "master_candidate",
+            "67625b2a344772ad7776cb7f5df5670623781185",
+        )
+
+        self.assertEqual(definition["backend"], "VCS/UVM")
+        self.assertEqual(definition["total_configs"], 20)
+        self.assertEqual(definition["total_testlists"], 10)
+        self.assertEqual(definition["total_jobs"], 59)
+        self.assertIn("cv32a60x", definition["configs"])
+        self.assertIn("cv64a6_imafdc_sv39_hpdcache_pmp_mmu_axi", definition["configs"])
+        self.assertIn("base_rv64_amo_v", definition["testlists"])
 
     def test_previous_reference_survives_fetch_failure(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -239,8 +264,14 @@ class GeneratorTest(unittest.TestCase):
                 ],
             }
 
+        matrix_definition = thales_collector.parse_matrix_definition(
+            (REPO_ROOT / ".gitlab-ci.yml").read_text(encoding="utf-8"),
+            "master_candidate",
+            "67625b2a344772ad7776cb7f5df5670623781185",
+        )
         thales = thales_collector.parse_public_dashboard(
-            ThalesCollectorTest.RELEVANT_PAGE
+            ThalesCollectorTest.RELEVANT_PAGE,
+            matrix_definition=matrix_definition,
         )
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -273,18 +304,26 @@ class GeneratorTest(unittest.TestCase):
             )
             page = (output_dir / "index.html").read_text(encoding="utf-8")
 
-        self.assertIn("Tier 1 (Verilator)", page)
-        self.assertIn("Tier 2 (Verilator)", page)
+        self.assertIn(">Tier 1<", page)
+        self.assertIn(">Tier 2<", page)
+        self.assertNotIn("Tier 1 (Verilator)", page)
+        self.assertNotIn("Tier 2 (Verilator)", page)
+        self.assertIn("GitHub Actions · Verilator/TestHarness", page)
         self.assertIn("Verilator/TestHarness", page)
-        self.assertIn("Thales GitLab (Reference, VCS/UVM)", page)
+        self.assertIn("Thales GitLab Reference", page)
+        self.assertNotIn("Thales GitLab (Reference, VCS/UVM)", page)
+        self.assertIn("GitLab CI · VCS/UVM", page)
         self.assertIn("VCS/UVM", page)
-        self.assertIn("Thales VCS/UVM", page)
-        self.assertIn("Thales GitLab Reference Trend", page)
+        self.assertIn("Thales GitLab", page)
+        self.assertIn("Thales GitLab Testlist Trend", page)
+        self.assertIn("59 configured jobs", page)
+        self.assertIn("No public pipeline matched this exact revision", page)
         self.assertNotIn("Independent evidence lanes", page)
         self.assertNotIn("GitLab pipeline", page)
         self.assertNotIn("gitlab.thales-invia.fr/riscv-ci/cva6/-/pipelines", page)
         self.assertIn(thales_collector.DEFAULT_URL, page)
-        self.assertNotIn("ci.yml", page)
+        self.assertNotIn("runs_ci.json", page)
+        self.assertNotIn("openhw-cva6-ci.yml", page)
         self.assertNotIn("</script><script>", page)
         self.assertIn(r"\u003c/script\u003e", page)
 
@@ -322,9 +361,14 @@ class WorkflowTest(unittest.TestCase):
         self.assertIn("openhw-cva6-ci-tier1", workflow)
         self.assertIn("openhw-cva6-ci-tier2", workflow)
         self.assertIn("collect_thales_reference.py", workflow)
+        self.assertIn("repository: openhwgroup/cva6", workflow)
+        self.assertIn(
+            "--matrix-file upstream-master-candidate/.gitlab-ci.yml", workflow
+        )
+        self.assertIn("PyYAML==6.0.3", workflow)
         self.assertIn("DASHBOARD_TARGET_BRANCH: master_candidate", workflow)
         self.assertIn('--base-branch "$DASHBOARD_TARGET_BRANCH"', workflow)
-        self.assertNotIn("ci.yml", workflow)
+        self.assertNotIn("openhw-cva6-ci.yml", workflow)
         self.assertNotIn("\n      - ci\n", workflow)
 
 

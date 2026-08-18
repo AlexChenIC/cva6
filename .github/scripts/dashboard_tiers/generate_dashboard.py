@@ -16,7 +16,7 @@ from jinja2 import Environment, FileSystemLoader
 WORKFLOW_INFO = [
     {
         "key": "tier1",
-        "display_name": "Tier 1 (Verilator)",
+        "display_name": "Tier 1",
         "matrix_label": "Tier 1",
         "file": "runs_tier1.json",
         "backend": "Verilator/TestHarness",
@@ -24,7 +24,7 @@ WORKFLOW_INFO = [
     },
     {
         "key": "tier2",
-        "display_name": "Tier 2 (Verilator)",
+        "display_name": "Tier 2",
         "matrix_label": "Tier 2",
         "file": "runs_tier2.json",
         "backend": "Verilator/TestHarness",
@@ -93,10 +93,9 @@ def ordered(items: set[str], preferred: list[str]) -> list[str]:
 
 def build_matrix(
     all_data: dict[str, list[dict]], thales: dict
-) -> tuple[dict, list, list]:
+) -> tuple[dict, dict]:
     matrix: dict[str, dict] = {}
-    configs: set[str] = set()
-    suites: set[str] = set()
+    orders: dict[str, dict[str, list[str]]] = {}
 
     for workflow in WORKFLOW_INFO:
         key = workflow["key"]
@@ -109,8 +108,11 @@ def build_matrix(
             None,
         )
         if latest is None:
+            orders[key] = {"configs": [], "suites": []}
             continue
 
+        configs: set[str] = set()
+        suites: set[str] = set()
         for job in latest.get("jobs", []):
             if not is_valid_matrix_job(job):
                 continue
@@ -122,24 +124,33 @@ def build_matrix(
                 "conclusion": job.get("conclusion", "unknown"),
                 "html_url": job.get("html_url", ""),
             }
+        orders[key] = {
+            "configs": ordered(configs, MATRIX_CONFIGS_ORDER),
+            "suites": ordered(suites, MATRIX_SUITES_ORDER),
+        }
 
-    for job in thales.get("matrix_snapshot", {}).get("jobs", []):
+    definition = thales.get("matrix_definition", {})
+    observed = {
+        (job.get("config"), job.get("testcase")): job
+        for job in thales.get("matrix_snapshot", {}).get("jobs", [])
+        if is_valid_matrix_job(job)
+    }
+    for job in definition.get("jobs", []):
         if not is_valid_matrix_job(job):
             continue
         config = job["config"]
         testcase = job["testcase"]
-        configs.add(config)
-        suites.add(testcase)
+        result = observed.get((config, testcase), job)
         matrix.setdefault(config, {}).setdefault(testcase, {})["thales"] = {
-            "conclusion": job.get("conclusion", "unknown"),
+            "conclusion": result.get("conclusion", "configured"),
             "html_url": "",
         }
+    orders["thales"] = {
+        "configs": definition.get("configs", []),
+        "suites": definition.get("testlists", []),
+    }
 
-    return (
-        matrix,
-        ordered(configs, MATRIX_CONFIGS_ORDER),
-        ordered(suites, MATRIX_SUITES_ORDER),
-    )
+    return matrix, orders
 
 
 def build_chart_data(all_data: dict[str, list[dict]]) -> dict:
@@ -218,7 +229,10 @@ def load_thales_reference(data_dir: Path) -> dict:
             ),
             "created_at_display": "N/A",
             "duration_display": "N/A",
+            "matrix_definition": {},
             "matrix_snapshot": {},
+            "latest_matrix_snapshot": {},
+            "evidence": {},
             "history": [],
         }
 
@@ -226,16 +240,20 @@ def load_thales_reference(data_dir: Path) -> dict:
     reference["duration_display"] = format_duration(
         reference.get("duration_seconds", 0)
     )
+    reference.setdefault("matrix_definition", {})
     reference.setdefault("matrix_snapshot", {})
+    reference.setdefault("latest_matrix_snapshot", {})
     reference.setdefault("history", [])
-    snapshot = reference["matrix_snapshot"]
-    if snapshot:
-        snapshot["created_at_display"] = format_datetime(
-            snapshot.get("created_at", "")
-        )
-        snapshot["duration_display"] = format_duration(
-            snapshot.get("duration_seconds", 0)
-        )
+    for key in ("matrix_snapshot", "latest_matrix_snapshot"):
+        snapshot = reference[key]
+        if snapshot:
+            snapshot["created_at_display"] = format_datetime(
+                snapshot.get("created_at", "")
+            )
+            snapshot["duration_display"] = format_duration(
+                snapshot.get("duration_seconds", 0)
+            )
+    reference["evidence"] = reference["latest_matrix_snapshot"]
     return reference
 
 
@@ -262,13 +280,13 @@ def build_matrix_metadata(workflows: list[dict], thales: dict) -> dict:
         }
         for workflow in workflows
     }
-    snapshot = thales.get("matrix_snapshot", {})
-    if snapshot:
-        relation = source_relation(workflows, snapshot)
+    definition = thales.get("matrix_definition", {})
+    if definition:
+        relation = source_relation(workflows, definition)
         metadata["thales"] = {
-            "label": f"Thales GitLab · VCS/UVM · pipeline #{snapshot['pipeline_id']}",
-            "branch": snapshot.get("branch", "N/A"),
-            "head_sha": snapshot.get("head_sha", "N/A"),
+            "label": "Thales GitLab CI definition · VCS/UVM",
+            "branch": definition.get("branch", "N/A"),
+            "head_sha": definition.get("head_sha", "N/A"),
             "relation": relation["label"],
         }
     return metadata
@@ -291,7 +309,7 @@ def main() -> None:
     all_data = load_workflow_data(data_dir)
     workflows = build_workflows_context(all_data)
     thales = load_thales_reference(data_dir)
-    matrix, matrix_configs, matrix_suites = build_matrix(all_data, thales)
+    matrix, matrix_orders = build_matrix(all_data, thales)
     now = datetime.now(timezone.utc)
 
     context = {
@@ -300,11 +318,10 @@ def main() -> None:
         "repo": args.repo,
         "workflows": workflows,
         "thales": thales,
-        "source_relation": source_relation(workflows, thales),
+        "source_relation": source_relation(workflows, thales.get("evidence", {})),
         "matrix_data": matrix,
         "matrix_metadata": build_matrix_metadata(workflows, thales),
-        "matrix_configs": matrix_configs,
-        "matrix_suites": matrix_suites,
+        "matrix_orders": matrix_orders,
         "default_matrix_wf": "tier2" if all_data.get("tier2") else "tier1",
         "chart_data": build_chart_data(all_data),
         "thales_chart_data": build_thales_chart_data(thales),

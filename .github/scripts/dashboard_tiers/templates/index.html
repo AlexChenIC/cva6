@@ -71,6 +71,7 @@
     }
     .matrix-icon.pass { background: #d1e7dd; color: #0a3622; }
     .matrix-icon.fail { background: #f8d7da; color: #58151c; }
+    .matrix-icon.configured { background: #cfe2ff; color: #084298; }
     .matrix-icon.na   { background: var(--na-color); color: #adb5bd; }
     .matrix-icon:hover { opacity: 0.8; }
     a.matrix-icon:hover { text-decoration: none; }
@@ -151,7 +152,7 @@
           <div class="d-flex justify-content-between align-items-start mb-2">
             <div>
               <h6 class="card-title mb-1">{{ wf.display_name }}</h6>
-              <span class="badge source-chip">GitHub · {{ wf.backend }}</span>
+              <span class="badge source-chip">GitHub Actions · {{ wf.backend }}</span>
             </div>
             {% if wf.latest.conclusion == 'success' %}
               <span class="badge badge-pass">PASS</span>
@@ -194,26 +195,32 @@
     </div>
     {% endfor %}
 
+    {% set thales_evidence = thales.evidence %}
     <div class="col-md-6 col-xl-4">
-      <div class="card status-card shadow-sm {{ 'pass' if thales.status == 'success' else ('fail' if thales.status == 'failure' else 'unknown') }}">
+      <div class="card status-card shadow-sm {{ 'pass' if thales_evidence.status == 'success' else ('fail' if thales_evidence.status == 'failure' else 'unknown') }}">
         <div class="card-body">
           <div class="d-flex justify-content-between align-items-start mb-2">
             <div>
-              <h6 class="card-title mb-1">Thales GitLab (Reference, VCS/UVM)</h6>
-              <span class="badge source-chip">GitLab · {{ thales.backend }}</span>
+              <h6 class="card-title mb-1">Thales GitLab Reference</h6>
+              <span class="badge source-chip">GitLab CI · {{ thales.backend }}</span>
             </div>
-            {% if thales.status == 'success' %}
+            {% if thales_evidence.status == 'success' %}
               <span class="badge badge-pass">PASS</span>
-            {% elif thales.status == 'failure' %}
+            {% elif thales_evidence.status == 'failure' %}
               <span class="badge badge-fail">FAIL</span>
             {% else %}
-              <span class="badge badge-skip">{{ thales.status_label }}</span>
+              <span class="badge badge-skip">NO EVIDENCE</span>
             {% endif %}
           </div>
           <div class="text-muted" style="font-size:0.8rem">
-            <div><strong>Branch:</strong> {{ thales.branch }} &middot; <code>{{ thales.head_sha }}</code></div>
-            <div><strong>Pipeline:</strong> {{ thales.pipeline_id }} &middot; {{ thales.duration_display }}</div>
-            <div><strong>Started:</strong> {{ thales.created_at_display }}</div>
+            {% if thales_evidence %}
+            <div><strong>Branch:</strong> {{ thales_evidence.branch }} &middot; <code>{{ thales_evidence.head_sha }}</code></div>
+            <div><strong>Pipeline:</strong> {{ thales_evidence.pipeline_id }} &middot; {{ thales_evidence.duration_display }}</div>
+            <div><strong>Observed jobs:</strong> {{ thales_evidence.passed_jobs }} passed / {{ thales_evidence.failed_jobs }} failed ({{ thales_evidence.total_jobs }} total)</div>
+            <div><strong>Started:</strong> {{ thales_evidence.created_at_display }}</div>
+            {% else %}
+            <div>No public pipeline containing Testlist RTL run evidence was found.</div>
+            {% endif %}
             <div class="mt-1 relation-{{ source_relation.kind }}">
               <strong>{{ source_relation.label }}</strong>
             </div>
@@ -245,10 +252,10 @@
              onchange="renderMatrix(this.value)">
       <label class="btn btn-outline-primary" for="wf-{{ wf.key }}">{{ wf.matrix_label }}</label>
       {% endfor %}
-      {% if thales.matrix_snapshot.jobs %}
+      {% if thales.matrix_definition.jobs %}
       <input type="radio" class="btn-check" name="matrixWf" id="wf-thales"
              value="thales" autocomplete="off" onchange="renderMatrix(this.value)">
-      <label class="btn btn-outline-primary" for="wf-thales">Thales VCS/UVM</label>
+      <label class="btn btn-outline-primary" for="wf-thales">Thales GitLab</label>
       {% endif %}
     </div>
     <span id="matrixStats" class="text-muted" style="font-size:0.8rem"></span>
@@ -261,8 +268,20 @@
         <span class="text-muted">Legend:</span>
         <span><span class="matrix-icon pass" style="width:16px;height:16px;font-size:0.65rem">&#10003;</span> Pass</span>
         <span><span class="matrix-icon fail" style="width:16px;height:16px;font-size:0.65rem">&#10007;</span> Fail</span>
+        <span><span class="matrix-icon configured" style="width:16px;height:16px;font-size:0.65rem">&#9679;</span> Configured</span>
         <span><span class="matrix-icon na" style="width:16px;height:16px;font-size:0.65rem">&ndash;</span> Not in matrix</span>
       </div>
+      {% if thales.matrix_definition and not thales.matrix_snapshot %}
+      <div class="alert alert-primary py-2 mx-2 mb-2" style="font-size:0.8rem">
+        Thales scope is read from
+        <a href="{{ thales.matrix_definition.source_url }}" target="_blank" rel="noopener">master_candidate/.gitlab-ci.yml</a>
+        at <code>{{ thales.matrix_definition.head_sha }}</code>:
+        {{ thales.matrix_definition.total_configs }} targets,
+        {{ thales.matrix_definition.total_testlists }} testlists and
+        {{ thales.matrix_definition.total_jobs }} configured jobs.
+        No public pipeline matched this exact revision, so blue cells indicate configuration rather than execution results.
+      </div>
+      {% endif %}
       <div class="table-responsive">
         <table class="table table-sm matrix-table mb-0" id="matrixTable">
           <thead id="matrixHead"></thead>
@@ -296,13 +315,13 @@
 
 {% if thales_chart_data.labels %}
 <section class="mb-4">
-  <h5 class="text-muted mb-2">Thales GitLab Reference Trend (Last {{ trend_count }} Relevant Pipelines)</h5>
+  <h5 class="text-muted mb-2">Thales GitLab Testlist Trend (Last {{ trend_count }} Public Pipelines)</h5>
   <p class="text-muted mb-3" style="font-size:0.8rem">
-    Public VCS/UVM pipelines containing the selected overlapping RTL jobs. Compare with GitHub only when source revisions match.
+    Historical public VCS/UVM pipelines containing Testlist RTL run reports. Branches and revisions may differ; compare with GitHub only when source revisions match.
   </p>
   <div class="card shadow-sm">
     <div class="card-header py-2" style="font-size:0.85rem">
-      Selected RTL job pass rate and job count
+      Observed VCS/UVM testlist pass rate and published job count
     </div>
     <div class="card-body p-2">
       <div class="chart-container">
@@ -439,8 +458,7 @@
 // ============================================================
 const matrixData = {{ matrix_data|tojson }};
 const matrixMetadata = {{ matrix_metadata|tojson }};
-const matrixConfigs = {{ matrix_configs|tojson }};
-const matrixSuites = {{ matrix_suites|tojson }};
+const matrixOrders = {{ matrix_orders|tojson }};
 
 function escapeHtml(value) {
   return String(value).replace(/[&<>"']/g, character => ({
@@ -454,22 +472,24 @@ function renderMatrix(wfKey) {
   const stats = document.getElementById('matrixStats');
   if (!thead || !tbody) return;
 
+  const order = matrixOrders[wfKey] || {configs: [], suites: []};
+
   // Determine which suites this workflow covers
-  const activeSuites = matrixSuites.filter(suite =>
-    matrixConfigs.some(cfg =>
+  const activeSuites = order.suites.filter(suite =>
+    order.configs.some(cfg =>
       matrixData[cfg] && matrixData[cfg][suite] && matrixData[cfg][suite][wfKey]
     )
   );
 
   // Determine which configs this workflow covers
-  const activeConfigs = matrixConfigs.filter(cfg =>
+  const activeConfigs = order.configs.filter(cfg =>
     activeSuites.some(suite =>
       matrixData[cfg] && matrixData[cfg][suite] && matrixData[cfg][suite][wfKey]
     )
   );
 
   // Count pass/fail
-  let pass = 0, fail = 0, total = 0;
+  let pass = 0, fail = 0, configured = 0, total = 0;
 
   // Build header
   let headHtml = '<tr><th style="writing-mode:horizontal-tb; min-width:200px; font-size:0.8rem">Config</th>';
@@ -505,6 +525,10 @@ function renderMatrix(wfKey) {
           } else {
             bodyHtml += '<td class="matrix-td"><span class="matrix-icon fail" title="' + title + '">&#10007;</span></td>';
           }
+        } else if (c === 'configured') {
+          configured++;
+          const title = escapeHtml(cfg + ' / ' + suite + ': configured in master_candidate');
+          bodyHtml += '<td class="matrix-td"><span class="matrix-icon configured" title="' + title + '">&#9679;</span></td>';
         } else {
           bodyHtml += '<td class="matrix-td"><span class="matrix-icon na" title="' + escapeHtml(cfg + ' / ' + suite + ': ' + c) + '">?</span></td>';
         }
@@ -519,8 +543,10 @@ function renderMatrix(wfKey) {
   // Update stats
   if (stats) {
     const metadata = matrixMetadata[wfKey] || {};
-    const result = activeConfigs.length + ' configs \u00d7 ' + activeSuites.length + ' suites \u2014 '
-      + pass + ' passed' + (fail > 0 ? ', ' + fail + ' failed' : '') + ' (' + total + ' jobs)';
+    let outcomes = configured > 0 ? configured + ' configured' : pass + ' passed';
+    if (fail > 0) outcomes += ', ' + fail + ' failed';
+    const result = activeConfigs.length + ' configs \u00b7 ' + activeSuites.length + ' testlists \u00b7 '
+      + total + ' jobs \u2014 ' + outcomes;
     const source = metadata.label
       ? ' \u00b7 ' + metadata.label + ' \u00b7 ' + metadata.branch + ' @ ' + metadata.head_sha
       : '';
@@ -615,7 +641,7 @@ renderTrendChart(
   'chart-thales',
   thalesChartData,
   'job_counts',
-  'Selected RTL jobs',
+  'Published testlist jobs',
   'Pipeline #'
 );
 </script>

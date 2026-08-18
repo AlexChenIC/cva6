@@ -12,13 +12,13 @@ import re
 import urllib.error
 import urllib.request
 
+import yaml
+
 
 DEFAULT_URL = "https://riscv-ci.pages.thales-invia.fr/dashboard/dashboard_cva6.html"
 MAX_RESPONSE_BYTES = 32 * 1024 * 1024
 PIPELINE_MARKER = '<div class="list-group-item list-group-item-action py-3">'
 JOB_MARKER = '<div class="col-12 border-top p-1">'
-SELECTED_CONFIGS = {"cv32a60x_axi", "cv32a65x_axi"}
-SELECTED_TESTCASES = {"base-rv32-p", "base-pmp"}
 HISTORY_LIMIT = 20
 
 
@@ -89,11 +89,7 @@ def parse_pipeline_summary(card: str, dashboard_url: str) -> dict:
     }
 
 
-def normalize_testcase(value: str) -> str:
-    return value.strip().replace("_", "-")
-
-
-def parse_selected_jobs(card: str) -> list[dict]:
+def parse_testlist_jobs(card: str) -> list[dict]:
     jobs = []
     for block in card.split(JOB_MARKER)[1:]:
         name_match = re.search(
@@ -103,9 +99,7 @@ def parse_selected_jobs(card: str) -> list[dict]:
             continue
 
         config = clean_text(name_match.group(1))
-        testcase = normalize_testcase(clean_text(name_match.group(2)))
-        if config not in SELECTED_CONFIGS or testcase not in SELECTED_TESTCASES:
-            continue
+        testcase = clean_text(name_match.group(2))
 
         status_match = re.search(
             r'<button class="btn btn-(?:success|danger|warning)[^"]*"[^>]*>'
@@ -134,8 +128,8 @@ def parse_selected_jobs(card: str) -> list[dict]:
     return jobs
 
 
-def add_selected_job_summary(summary: dict, card: str) -> dict:
-    jobs = parse_selected_jobs(card)
+def add_testlist_job_summary(summary: dict, card: str) -> dict:
+    jobs = parse_testlist_jobs(card)
     passed = sum(job["conclusion"] == "success" for job in jobs)
     failed = sum(job["conclusion"] == "failure" for job in jobs)
     summary["jobs"] = jobs
@@ -150,13 +144,93 @@ def parse_latest_pipeline(page: str, dashboard_url: str = DEFAULT_URL) -> dict:
     return parse_pipeline_summary(split_pipeline_cards(page)[0], dashboard_url)
 
 
-def parse_public_dashboard(page: str, dashboard_url: str = DEFAULT_URL) -> dict:
+def parse_matrix_definition(
+    source: str,
+    branch: str,
+    head_sha: str,
+) -> dict:
+    data = yaml.safe_load(source)
+    if not isinstance(data, dict):
+        raise ValueError("GitLab CI configuration is not a mapping")
+
+    variables = data.get("variables", {})
+    simulator = variables.get("MY_SIMULATOR", "") if isinstance(variables, dict) else ""
+    if not isinstance(simulator, str) or not simulator:
+        raise ValueError("MY_SIMULATOR is missing from GitLab CI configuration")
+
+    target = data.get(".testlist_matrix_target", {})
+    if not isinstance(target, dict):
+        raise ValueError("testlist matrix definition is missing")
+    parallel = target.get("parallel", {})
+    matrix = parallel.get("matrix", {}) if isinstance(parallel, dict) else {}
+    if not isinstance(matrix, list):
+        raise ValueError("testlist matrix is not a list")
+
+    configs = []
+    testlists = []
+    jobs = []
+    seen = set()
+    for entry in matrix:
+        if not isinstance(entry, dict):
+            raise ValueError("testlist matrix entry is not a mapping")
+        config = entry.get("MY_TARGET")
+        suites = entry.get("MY_TESTLIST")
+        if not isinstance(config, str) or not isinstance(suites, list):
+            raise ValueError("testlist matrix entry is incomplete")
+        if config not in configs:
+            configs.append(config)
+        for testcase in suites:
+            if not isinstance(testcase, str):
+                raise ValueError("testlist matrix contains a non-string testlist")
+            pair = (config, testcase)
+            if pair in seen:
+                raise ValueError(
+                    f"duplicate testlist matrix entry: {config} / {testcase}"
+                )
+            seen.add(pair)
+            if testcase not in testlists:
+                testlists.append(testcase)
+            jobs.append(
+                {
+                    "config": config,
+                    "testcase": testcase,
+                    "conclusion": "configured",
+                    "status_label": "CONFIGURED",
+                }
+            )
+
+    if not jobs:
+        raise ValueError("testlist matrix contains no jobs")
+
+    return {
+        "branch": branch,
+        "head_sha": head_sha[:8],
+        "head_sha_full": head_sha,
+        "source_url": (
+            "https://github.com/openhwgroup/cva6/blob/"
+            f"{head_sha}/.gitlab-ci.yml"
+        ),
+        "backend": f"{simulator.upper()}/UVM",
+        "configs": configs,
+        "testlists": testlists,
+        "jobs": jobs,
+        "total_configs": len(configs),
+        "total_testlists": len(testlists),
+        "total_jobs": len(jobs),
+    }
+
+
+def parse_public_dashboard(
+    page: str,
+    dashboard_url: str = DEFAULT_URL,
+    matrix_definition: dict | None = None,
+) -> dict:
     cards = split_pipeline_cards(page)
     latest = parse_pipeline_summary(cards[0], dashboard_url)
     relevant = []
     for card in cards:
         try:
-            summary = add_selected_job_summary(
+            summary = add_testlist_job_summary(
                 parse_pipeline_summary(card, dashboard_url), card
             )
         except ValueError:
@@ -166,7 +240,18 @@ def parse_public_dashboard(page: str, dashboard_url: str = DEFAULT_URL) -> dict:
         if len(relevant) >= HISTORY_LIMIT:
             break
 
-    latest["matrix_snapshot"] = relevant[0] if relevant else {}
+    definition = matrix_definition or {}
+    expected_sha = definition.get("head_sha_full", "")
+    latest["matrix_definition"] = definition
+    latest["latest_matrix_snapshot"] = relevant[0] if relevant else {}
+    latest["matrix_snapshot"] = next(
+        (
+            item
+            for item in relevant
+            if expected_sha and item.get("head_sha_full") == expected_sha
+        ),
+        {},
+    )
     latest["history"] = relevant
     return latest
 
@@ -193,7 +278,9 @@ def unavailable_reference(url: str, error: Exception) -> dict:
         "status_label": "UNAVAILABLE",
         "stale": False,
         "dashboard_url": url,
+        "matrix_definition": {},
         "matrix_snapshot": {},
+        "latest_matrix_snapshot": {},
         "history": [],
         "error": str(error),
     }
@@ -204,6 +291,9 @@ def main() -> None:
     parser.add_argument("--url", default=DEFAULT_URL)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--input-html", type=Path)
+    parser.add_argument("--matrix-file", type=Path)
+    parser.add_argument("--matrix-branch", default="master_candidate")
+    parser.add_argument("--matrix-sha", default="")
     parser.add_argument("--timeout", type=int, default=30)
     args = parser.parse_args()
 
@@ -213,7 +303,20 @@ def main() -> None:
             if args.input_html
             else fetch_page(args.url, args.timeout)
         )
-        reference = parse_public_dashboard(page, args.url)
+        matrix_definition = {}
+        if args.matrix_file:
+            if not args.matrix_sha:
+                raise ValueError("--matrix-sha is required with --matrix-file")
+            matrix_definition = parse_matrix_definition(
+                args.matrix_file.read_text(encoding="utf-8"),
+                args.matrix_branch,
+                args.matrix_sha,
+            )
+        reference = parse_public_dashboard(
+            page,
+            args.url,
+            matrix_definition=matrix_definition,
+        )
         reference["stale"] = False
         reference["collected_at"] = datetime.now(timezone.utc).isoformat()
     except (
