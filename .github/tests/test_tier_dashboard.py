@@ -168,9 +168,9 @@ class ThalesCollectorTest(unittest.TestCase):
         self.assertEqual(result["backend"], "VCS/UVM")
         self.assertNotIn("pipeline_url", result)
 
-    def test_all_testlist_jobs_feed_public_history(self) -> None:
+    def test_latest_testlist_pipeline_is_selected(self) -> None:
         result = thales_collector.parse_public_dashboard(self.RELEVANT_PAGE)
-        snapshot = result["latest_matrix_snapshot"]
+        snapshot = result["testlist_evidence"]
 
         self.assertEqual(result["pipeline_id"], 58367)
         self.assertEqual(snapshot["pipeline_id"], 58298)
@@ -187,25 +187,8 @@ class ThalesCollectorTest(unittest.TestCase):
                 ("cv32a60x", "base_zcmt"),
             },
         )
-        self.assertEqual(len(result["history"]), 1)
-        self.assertEqual(result["matrix_snapshot"], {})
         self.assertNotIn("pipeline_url", json.dumps(result))
         self.assertNotIn("/-/jobs/", json.dumps(result))
-
-    def test_master_candidate_matrix_is_read_from_gitlab_ci(self) -> None:
-        definition = thales_collector.parse_matrix_definition(
-            (REPO_ROOT / ".gitlab-ci.yml").read_text(encoding="utf-8"),
-            "master_candidate",
-            "67625b2a344772ad7776cb7f5df5670623781185",
-        )
-
-        self.assertEqual(definition["backend"], "VCS/UVM")
-        self.assertEqual(definition["total_configs"], 20)
-        self.assertEqual(definition["total_testlists"], 10)
-        self.assertEqual(definition["total_jobs"], 59)
-        self.assertIn("cv32a60x", definition["configs"])
-        self.assertIn("cv64a6_imafdc_sv39_hpdcache_pmp_mmu_axi", definition["configs"])
-        self.assertIn("base_rv64_amo_v", definition["testlists"])
 
     def test_previous_reference_survives_fetch_failure(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -264,14 +247,8 @@ class GeneratorTest(unittest.TestCase):
                 ],
             }
 
-        matrix_definition = thales_collector.parse_matrix_definition(
-            (REPO_ROOT / ".gitlab-ci.yml").read_text(encoding="utf-8"),
-            "master_candidate",
-            "67625b2a344772ad7776cb7f5df5670623781185",
-        )
         thales = thales_collector.parse_public_dashboard(
-            ThalesCollectorTest.RELEVANT_PAGE,
-            matrix_definition=matrix_definition,
+            ThalesCollectorTest.RELEVANT_PAGE
         )
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -315,9 +292,11 @@ class GeneratorTest(unittest.TestCase):
         self.assertIn("GitLab CI · VCS/UVM", page)
         self.assertIn("VCS/UVM", page)
         self.assertIn("Thales GitLab", page)
-        self.assertIn("Thales GitLab Testlist Trend", page)
-        self.assertIn("59 configured jobs", page)
-        self.assertIn("No public pipeline matched this exact revision", page)
+        self.assertIn("GitHub Tier Coverage Matrix", page)
+        self.assertNotIn('for="wf-thales"', page)
+        self.assertNotIn("Thales GitLab Testlist Trend", page)
+        self.assertNotIn("chart-thales", page)
+        self.assertNotIn("59 configured jobs", page)
         self.assertNotIn("Independent evidence lanes", page)
         self.assertNotIn("GitLab pipeline", page)
         self.assertNotIn("gitlab.thales-invia.fr/riscv-ci/cva6/-/pipelines", page)
@@ -361,11 +340,9 @@ class WorkflowTest(unittest.TestCase):
         self.assertIn("openhw-cva6-ci-tier1", workflow)
         self.assertIn("openhw-cva6-ci-tier2", workflow)
         self.assertIn("collect_thales_reference.py", workflow)
-        self.assertIn("repository: openhwgroup/cva6", workflow)
-        self.assertIn(
-            "--matrix-file upstream-master-candidate/.gitlab-ci.yml", workflow
-        )
-        self.assertIn("PyYAML==6.0.3", workflow)
+        self.assertNotIn("repository: openhwgroup/cva6", workflow)
+        self.assertNotIn("--matrix-file", workflow)
+        self.assertNotIn("PyYAML", workflow)
         self.assertIn("DASHBOARD_TARGET_BRANCH: master_candidate", workflow)
         self.assertIn('--base-branch "$DASHBOARD_TARGET_BRANCH"', workflow)
         self.assertNotIn("openhw-cva6-ci.yml", workflow)

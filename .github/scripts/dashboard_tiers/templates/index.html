@@ -56,8 +56,8 @@
 
     /* Test Matrix */
     .matrix-table th.suite-header {
-      font-size: 0.72rem; writing-mode: vertical-lr; text-align: left;
-      padding: 8px 4px; white-space: nowrap;
+      font-size: 0.72rem; text-align: center;
+      min-width: 90px; padding: 8px 6px; white-space: nowrap;
     }
     .matrix-table td.matrix-td {
       text-align: center; vertical-align: middle;
@@ -71,7 +71,6 @@
     }
     .matrix-icon.pass { background: #d1e7dd; color: #0a3622; }
     .matrix-icon.fail { background: #f8d7da; color: #58151c; }
-    .matrix-icon.configured { background: #cfe2ff; color: #084298; }
     .matrix-icon.na   { background: var(--na-color); color: #adb5bd; }
     .matrix-icon:hover { opacity: 0.8; }
     a.matrix-icon:hover { text-decoration: none; }
@@ -243,7 +242,7 @@
 
 <section class="mb-4">
   <div class="d-flex flex-wrap align-items-center gap-3 mb-3">
-    <h5 class="text-muted mb-0">Tier Coverage Matrix</h5>
+    <h5 class="text-muted mb-0">GitHub Tier Coverage Matrix</h5>
     <div class="wf-selector btn-group" role="group" aria-label="Select workflow">
       {% for wf in workflows %}
       <input type="radio" class="btn-check" name="matrixWf" id="wf-{{ wf.key }}"
@@ -252,11 +251,6 @@
              onchange="renderMatrix(this.value)">
       <label class="btn btn-outline-primary" for="wf-{{ wf.key }}">{{ wf.matrix_label }}</label>
       {% endfor %}
-      {% if thales.matrix_definition.jobs %}
-      <input type="radio" class="btn-check" name="matrixWf" id="wf-thales"
-             value="thales" autocomplete="off" onchange="renderMatrix(this.value)">
-      <label class="btn btn-outline-primary" for="wf-thales">Thales GitLab</label>
-      {% endif %}
     </div>
     <span id="matrixStats" class="text-muted" style="font-size:0.8rem"></span>
   </div>
@@ -268,20 +262,8 @@
         <span class="text-muted">Legend:</span>
         <span><span class="matrix-icon pass" style="width:16px;height:16px;font-size:0.65rem">&#10003;</span> Pass</span>
         <span><span class="matrix-icon fail" style="width:16px;height:16px;font-size:0.65rem">&#10007;</span> Fail</span>
-        <span><span class="matrix-icon configured" style="width:16px;height:16px;font-size:0.65rem">&#9679;</span> Configured</span>
         <span><span class="matrix-icon na" style="width:16px;height:16px;font-size:0.65rem">&ndash;</span> Not in matrix</span>
       </div>
-      {% if thales.matrix_definition and not thales.matrix_snapshot %}
-      <div class="alert alert-primary py-2 mx-2 mb-2" style="font-size:0.8rem">
-        Thales scope is read from
-        <a href="{{ thales.matrix_definition.source_url }}" target="_blank" rel="noopener">master_candidate/.gitlab-ci.yml</a>
-        at <code>{{ thales.matrix_definition.head_sha }}</code>:
-        {{ thales.matrix_definition.total_configs }} targets,
-        {{ thales.matrix_definition.total_testlists }} testlists and
-        {{ thales.matrix_definition.total_jobs }} configured jobs.
-        No public pipeline matched this exact revision, so blue cells indicate configuration rather than execution results.
-      </div>
-      {% endif %}
       <div class="table-responsive">
         <table class="table table-sm matrix-table mb-0" id="matrixTable">
           <thead id="matrixHead"></thead>
@@ -312,25 +294,6 @@
     {% endfor %}
   </div>
 </section>
-
-{% if thales_chart_data.labels %}
-<section class="mb-4">
-  <h5 class="text-muted mb-2">Thales GitLab Testlist Trend (Last {{ trend_count }} Public Pipelines)</h5>
-  <p class="text-muted mb-3" style="font-size:0.8rem">
-    Historical public VCS/UVM pipelines containing Testlist RTL run reports. Branches and revisions may differ; compare with GitHub only when source revisions match.
-  </p>
-  <div class="card shadow-sm">
-    <div class="card-header py-2" style="font-size:0.85rem">
-      Observed VCS/UVM testlist pass rate and published job count
-    </div>
-    <div class="card-body p-2">
-      <div class="chart-container">
-        <canvas id="chart-thales"></canvas>
-      </div>
-    </div>
-  </div>
-</section>
-{% endif %}
 
 <section class="mb-4">
   <h5 class="text-muted mb-3">GitHub Run History</h5>
@@ -489,10 +452,10 @@ function renderMatrix(wfKey) {
   );
 
   // Count pass/fail
-  let pass = 0, fail = 0, configured = 0, total = 0;
+  let pass = 0, fail = 0, total = 0;
 
   // Build header
-  let headHtml = '<tr><th style="writing-mode:horizontal-tb; min-width:200px; font-size:0.8rem">Config</th>';
+  let headHtml = '<tr><th style="min-width:150px; font-size:0.8rem">Config</th>';
   activeSuites.forEach(s => {
     headHtml += '<th class="suite-header">' + escapeHtml(s) + '</th>';
   });
@@ -525,10 +488,6 @@ function renderMatrix(wfKey) {
           } else {
             bodyHtml += '<td class="matrix-td"><span class="matrix-icon fail" title="' + title + '">&#10007;</span></td>';
           }
-        } else if (c === 'configured') {
-          configured++;
-          const title = escapeHtml(cfg + ' / ' + suite + ': configured in master_candidate');
-          bodyHtml += '<td class="matrix-td"><span class="matrix-icon configured" title="' + title + '">&#9679;</span></td>';
         } else {
           bodyHtml += '<td class="matrix-td"><span class="matrix-icon na" title="' + escapeHtml(cfg + ' / ' + suite + ': ' + c) + '">?</span></td>';
         }
@@ -543,7 +502,7 @@ function renderMatrix(wfKey) {
   // Update stats
   if (stats) {
     const metadata = matrixMetadata[wfKey] || {};
-    let outcomes = configured > 0 ? configured + ' configured' : pass + ' passed';
+    let outcomes = pass + ' passed';
     if (fail > 0) outcomes += ', ' + fail + ' failed';
     const result = activeConfigs.length + ' configs \u00b7 ' + activeSuites.length + ' testlists \u00b7 '
       + total + ' jobs \u2014 ' + outcomes;
@@ -559,7 +518,6 @@ function renderMatrix(wfKey) {
 renderMatrix('{{ default_matrix_wf }}');
 
 const chartData = {{ chart_data|tojson }};
-const thalesChartData = {{ thales_chart_data|tojson }};
 
 function renderTrendChart(canvasId, data, secondaryKey, secondaryLabel, titlePrefix) {
   const ctx = document.getElementById(canvasId);
@@ -596,6 +554,7 @@ function renderTrendChart(canvasId, data, secondaryKey, secondaryLabel, titlePre
     options: {
       responsive: true,
       maintainAspectRatio: false,
+      animation: false,
       interaction: { mode: 'index', intersect: false },
       plugins: {
         legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } },
@@ -637,13 +596,6 @@ Object.keys(chartData).forEach(key => {
   );
 });
 
-renderTrendChart(
-  'chart-thales',
-  thalesChartData,
-  'job_counts',
-  'Published testlist jobs',
-  'Pipeline #'
-);
 </script>
 </body>
 </html>

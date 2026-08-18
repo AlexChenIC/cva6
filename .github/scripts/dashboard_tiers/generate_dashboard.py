@@ -91,9 +91,7 @@ def ordered(items: set[str], preferred: list[str]) -> list[str]:
     )
 
 
-def build_matrix(
-    all_data: dict[str, list[dict]], thales: dict
-) -> tuple[dict, dict]:
+def build_matrix(all_data: dict[str, list[dict]]) -> tuple[dict, dict]:
     matrix: dict[str, dict] = {}
     orders: dict[str, dict[str, list[str]]] = {}
 
@@ -129,27 +127,6 @@ def build_matrix(
             "suites": ordered(suites, MATRIX_SUITES_ORDER),
         }
 
-    definition = thales.get("matrix_definition", {})
-    observed = {
-        (job.get("config"), job.get("testcase")): job
-        for job in thales.get("matrix_snapshot", {}).get("jobs", [])
-        if is_valid_matrix_job(job)
-    }
-    for job in definition.get("jobs", []):
-        if not is_valid_matrix_job(job):
-            continue
-        config = job["config"]
-        testcase = job["testcase"]
-        result = observed.get((config, testcase), job)
-        matrix.setdefault(config, {}).setdefault(testcase, {})["thales"] = {
-            "conclusion": result.get("conclusion", "configured"),
-            "html_url": "",
-        }
-    orders["thales"] = {
-        "configs": definition.get("configs", []),
-        "suites": definition.get("testlists", []),
-    }
-
     return matrix, orders
 
 
@@ -170,15 +147,6 @@ def build_chart_data(all_data: dict[str, list[dict]]) -> dict:
             ],
         }
     return chart_data
-
-
-def build_thales_chart_data(thales: dict) -> dict:
-    pipelines = list(reversed(thales.get("history", [])[:TREND_COUNT]))
-    return {
-        "labels": [str(item.get("pipeline_id", "")) for item in pipelines],
-        "pass_rates": [item.get("pass_rate", 0) for item in pipelines],
-        "job_counts": [item.get("total_jobs", 0) for item in pipelines],
-    }
 
 
 def enrich_run(run: dict) -> dict:
@@ -229,31 +197,26 @@ def load_thales_reference(data_dir: Path) -> dict:
             ),
             "created_at_display": "N/A",
             "duration_display": "N/A",
-            "matrix_definition": {},
-            "matrix_snapshot": {},
-            "latest_matrix_snapshot": {},
             "evidence": {},
-            "history": [],
         }
 
     reference["created_at_display"] = format_datetime(reference.get("created_at", ""))
     reference["duration_display"] = format_duration(
         reference.get("duration_seconds", 0)
     )
-    reference.setdefault("matrix_definition", {})
-    reference.setdefault("matrix_snapshot", {})
-    reference.setdefault("latest_matrix_snapshot", {})
-    reference.setdefault("history", [])
-    for key in ("matrix_snapshot", "latest_matrix_snapshot"):
-        snapshot = reference[key]
-        if snapshot:
-            snapshot["created_at_display"] = format_datetime(
-                snapshot.get("created_at", "")
-            )
-            snapshot["duration_display"] = format_duration(
-                snapshot.get("duration_seconds", 0)
-            )
-    reference["evidence"] = reference["latest_matrix_snapshot"]
+    evidence = reference.get("testlist_evidence", {})
+    if not evidence:
+        evidence = reference.get("latest_matrix_snapshot", {})
+    if not isinstance(evidence, dict):
+        evidence = {}
+    if evidence:
+        evidence["created_at_display"] = format_datetime(
+            evidence.get("created_at", "")
+        )
+        evidence["duration_display"] = format_duration(
+            evidence.get("duration_seconds", 0)
+        )
+    reference["evidence"] = evidence
     return reference
 
 
@@ -270,8 +233,8 @@ def source_relation(workflows: list[dict], thales: dict) -> dict[str, str]:
     return {"kind": "different", "label": "Different source revisions"}
 
 
-def build_matrix_metadata(workflows: list[dict], thales: dict) -> dict:
-    metadata = {
+def build_matrix_metadata(workflows: list[dict]) -> dict:
+    return {
         workflow["key"]: {
             "label": f"GitHub Actions · {workflow['backend']}",
             "branch": workflow["latest"].get("head_branch", "N/A"),
@@ -280,16 +243,6 @@ def build_matrix_metadata(workflows: list[dict], thales: dict) -> dict:
         }
         for workflow in workflows
     }
-    definition = thales.get("matrix_definition", {})
-    if definition:
-        relation = source_relation(workflows, definition)
-        metadata["thales"] = {
-            "label": "Thales GitLab CI definition · VCS/UVM",
-            "branch": definition.get("branch", "N/A"),
-            "head_sha": definition.get("head_sha", "N/A"),
-            "relation": relation["label"],
-        }
-    return metadata
 
 
 def main() -> None:
@@ -309,7 +262,7 @@ def main() -> None:
     all_data = load_workflow_data(data_dir)
     workflows = build_workflows_context(all_data)
     thales = load_thales_reference(data_dir)
-    matrix, matrix_orders = build_matrix(all_data, thales)
+    matrix, matrix_orders = build_matrix(all_data)
     now = datetime.now(timezone.utc)
 
     context = {
@@ -320,11 +273,10 @@ def main() -> None:
         "thales": thales,
         "source_relation": source_relation(workflows, thales.get("evidence", {})),
         "matrix_data": matrix,
-        "matrix_metadata": build_matrix_metadata(workflows, thales),
+        "matrix_metadata": build_matrix_metadata(workflows),
         "matrix_orders": matrix_orders,
         "default_matrix_wf": "tier2" if all_data.get("tier2") else "tier1",
         "chart_data": build_chart_data(all_data),
-        "thales_chart_data": build_thales_chart_data(thales),
         "trend_count": TREND_COUNT,
     }
 

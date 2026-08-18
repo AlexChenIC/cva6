@@ -39,16 +39,8 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v7
 
-      - name: Checkout upstream master_candidate matrix source
-        uses: actions/checkout@v7
-        with:
-          repository: openhwgroup/cva6
-          ref: master_candidate
-          fetch-depth: 1
-          path: upstream-master-candidate
-
-      - name: Install dashboard dependencies
-        run: python3 -m pip install --disable-pip-version-check jinja2==3.1.6 PyYAML==6.0.3
+      - name: Install dashboard dependency
+        run: python3 -m pip install --disable-pip-version-check jinja2==3.1.6
 
       - name: Restore dashboard history
         run: |
@@ -74,12 +66,8 @@ jobs:
 
       - name: Collect Thales GitLab reference
         run: |
-          MATRIX_SHA="$(git -C upstream-master-candidate rev-parse HEAD)"
           python3 .github/scripts/dashboard_tiers/collect_thales_reference.py \
             --url "$THALES_DASHBOARD_URL" \
-            --matrix-file upstream-master-candidate/.gitlab-ci.yml \
-            --matrix-branch "$DASHBOARD_TARGET_BRANCH" \
-            --matrix-sha "$MATRIX_SHA" \
             --output /tmp/tier-data/thales_reference.json
 
       - name: Test dashboard data handling
