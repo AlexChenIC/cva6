@@ -1,0 +1,160 @@
+name: openhw-cva6-tier-dashboard
+
+on:
+  workflow_run:
+    workflows:
+      - openhw-cva6-ci-tier1
+      - openhw-cva6-ci-tier2
+    types:
+      - completed
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: Optional branch filter for previewing a candidate
+        required: false
+        type: string
+
+concurrency:
+  group: openhw-cva6-tier-dashboard
+  cancel-in-progress: false
+
+permissions:
+  actions: read
+  contents: write
+  pages: write
+  id-token: write
+
+env:
+  DASHBOARD_BRANCH: ${{ github.event.inputs.branch || '' }}
+  DASHBOARD_TARGET_BRANCH: master_candidate
+  THALES_DASHBOARD_URL: https://riscv-ci.pages.thales-invia.fr/dashboard/dashboard_cva6.html
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+jobs:
+  build:
+    name: Build Tier Dashboard
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Restore dashboard history
+        run: |
+          mkdir -p /tmp/tier-data
+          if git ls-remote --exit-code --heads origin gh-pages-cva6-tier-dashboard-data >/dev/null 2>&1; then
+            git fetch origin gh-pages-cva6-tier-dashboard-data --depth=1
+            git checkout origin/gh-pages-cva6-tier-dashboard-data -- data/ 2>/dev/null || true
+            cp -r data/. /tmp/tier-data/ 2>/dev/null || true
+            rm -rf data
+          fi
+          rm -f /tmp/tier-data/runs_ci.json
+
+      - name: Collect GitHub Tier data
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 .github/scripts/dashboard_tiers/collect_data.py \
+            --repo "${{ github.repository }}" \
+            --data-dir /tmp/tier-data \
+            --fetch-count 20 \
+            --branch "$DASHBOARD_BRANCH" \
+            --base-branch "$DASHBOARD_TARGET_BRANCH"
+
+      - name: Collect Thales GitLab reference
+        run: |
+          python3 .github/scripts/dashboard_tiers/collect_thales_reference.py \
+            --url "$THALES_DASHBOARD_URL" \
+            --output /tmp/tier-data/thales_reference.json
+
+      - name: Install dashboard dependency
+        run: python3 -m pip install --disable-pip-version-check jinja2==3.1.6
+
+      - name: Test dashboard data handling
+        run: |
+          python3 -m unittest discover \
+            --start-directory .github/tests \
+            --pattern 'test_tier_dashboard.py'
+
+      - name: Generate dashboard
+        run: |
+          python3 .github/scripts/dashboard_tiers/generate_dashboard.py \
+            --data-dir /tmp/tier-data \
+            --output-dir /tmp/dash-site \
+            --repo "${{ github.repository }}"
+          cp -r /tmp/tier-data /tmp/dash-site/data
+
+      - name: Upload dashboard preview
+        uses: actions/upload-artifact@v4
+        with:
+          name: cva6-master-candidate-tier-dashboard
+          path: /tmp/dash-site
+          retention-days: 14
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: /tmp/dash-site
+
+      - name: Upload data for persistence
+        uses: actions/upload-artifact@v4
+        with:
+          name: cva6-master-candidate-tier-dashboard-data
+          path: /tmp/tier-data/
+          retention-days: 7
+
+  deploy:
+    name: Deploy to Pages
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+
+  persist-tier-data:
+    name: Persist Tier Dashboard Data
+    needs: build
+    if: github.event_name != 'workflow_dispatch' || github.event.inputs.branch == ''
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Prepare data branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          if git ls-remote --exit-code --heads origin gh-pages-cva6-tier-dashboard-data >/dev/null 2>&1; then
+            git fetch origin gh-pages-cva6-tier-dashboard-data --depth=1
+            git checkout -B gh-pages-cva6-tier-dashboard-data origin/gh-pages-cva6-tier-dashboard-data
+          else
+            git checkout --orphan gh-pages-cva6-tier-dashboard-data
+            git rm -rf . >/dev/null 2>&1 || true
+            find . -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
+            printf '%s\n' '# CVA6 Tier Dashboard Data' > README.md
+            git add README.md
+            git commit -m "Initialize CVA6 tier dashboard data"
+          fi
+
+      - name: Download updated data
+        uses: actions/download-artifact@v4
+        with:
+          name: cva6-master-candidate-tier-dashboard-data
+          path: data/
+
+      - name: Commit data update
+        run: |
+          rm -f data/runs_ci.json
+          git add -A data/
+          if git diff --cached --quiet; then
+            echo "No dashboard data changes"
+          else
+            git commit -m "Update CVA6 tier dashboard data [skip ci]"
+            git push origin HEAD:gh-pages-cva6-tier-dashboard-data
+          fi
