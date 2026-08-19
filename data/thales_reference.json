@@ -1,0 +1,394 @@
+{
+  "available": true,
+  "source": "thales-gitlab",
+  "backend": "VCS/UVM",
+  "scope": "latest public pipeline",
+  "status": "failure",
+  "status_label": "FAIL",
+  "title": "test unused for spyglass",
+  "branch": "dev/pipeline_mc",
+  "head_sha": "47a6af60",
+  "head_sha_full": "47a6af60310fa4503994d27e6bf7794ae7334659",
+  "commit_url": "https://github.com/openhwgroup/cva6/commit/47a6af60310fa4503994d27e6bf7794ae7334659",
+  "pipeline_id": 58385,
+  "dashboard_url": "https://riscv-ci.pages.thales-invia.fr/dashboard/dashboard_cva6.html",
+  "author": "Valentin THOMAZIC",
+  "created_at": "2026-08-18T08:54:35+00:00",
+  "duration_seconds": 5499,
+  "testlist_evidence": {
+    "available": true,
+    "source": "thales-gitlab",
+    "backend": "VCS/UVM",
+    "scope": "latest public pipeline",
+    "status": "failure",
+    "status_label": "FAIL",
+    "title": "python: format code",
+    "branch": "dev/mc_fixes2_PR_ThalesSiliconSecurity",
+    "head_sha": "e9a610ab",
+    "head_sha_full": "e9a610ab6b797d497e1d45a6c79c73bc69cfd717",
+    "commit_url": "https://github.com/openhwgroup/cva6/commit/e9a610ab6b797d497e1d45a6c79c73bc69cfd717",
+    "pipeline_id": 58298,
+    "dashboard_url": "https://riscv-ci.pages.thales-invia.fr/dashboard/dashboard_cva6.html",
+    "author": "Valentin Thomazic",
+    "created_at": "2026-08-13T14:37:21+00:00",
+    "duration_seconds": 5916,
+    "jobs": [
+      {
+        "config": "cv64a6_imafdc_sv39_hpdcache_nopmp_nommu_obi",
+        "testcase": "base_rv64_p",
+        "conclusion": "failure",
+        "status_label": "FAIL",
+        "duration_seconds": 5
+      },
+      {
+        "config": "cv32a65x_noPMP",
+        "testcase": "base_rv32_p",
+        "conclusion": "success",
+        "status_label": "PASS",
+        "duration_seconds": 25
+      },
+      {
+        "config": "cv32a60x",
+        "testcase": "base_zcmt",
+        "conclusion": "failure",
+        "status_label": "FAIL",
+        "duration_seconds": 5
+      },
+      {
+        "config": "cv32a65x_noPMP",
+        "testcase": "base_zcmt",
+        "conclusion": "failure",
+        "status_label": "FAIL",
+        "duration_seconds": 4
+      },
+      {
+        "config": "cv32a60x_no_zcmt",
+        "testcase": "base_rv32_p",
+        "conclusion": "success",
+        "status_label": "PASS",
+        "duration_seconds": 24
+      },
+      {
+        "config": "cv32a60x_axi",
+        "testcase": "base_zcmt",
+        "conclusion": "failure",
+        "status_label": "FAIL",
+        "duration_seconds": 5
+      },
+      {
+        "config": "cv32a60x_axi",
+        "testcase": "base_rv32_p",
+        "conclusion": "success",
+        "status_label": "PASS",
+        "duration_seconds": 25
+      },
+      {
+        "config": "cv32a60x_zcmt_pmp",
+        "testcase": "base_rv32_p",
+        "conclusion": "success",
+        "status_label": "PASS",
+        "duration_seconds": 24
+      },
+      {
+        "config": "cv32a60x_zcmt_pmp",
+        "testcase": "base_pmp",
+        "conclusion": "success",
+        "status_label": "PASS",
+        "duration_seconds": 26
+      },
+      {
+        "config": "cv32a65x",
+        "testcase": "base_pmp",
+        "conclusion": "success",
+        "status_label": "PASS",
+        "duration_seconds": 29
+      },
+      {
+        "config": "cv64a6_imafdc_sv39_hpdcache_pmp_nommu_obi",
+        "testcase": "base_pmp",
+        "conclusion": "failure",
+        "status_label": "FAIL",
+        "duration_seconds": 5
+      },
+      {
+        "config": "cv32a65x",
+        "testcase": "base_zcmt",
+        "conclusion": "failure",
+        "status_label": "FAIL",
+        "duration_seconds": 5
+      },
+      {
+        "config": "cv32a65x",
+        "testcase": "base_rv32_p",
+        "conclusion": "success",
+        "status_label": "PASS",
+        "duration_seconds": 25
+      },
+      {
+        "config": "cv64a6_imafdc_sv39_hpdcache_pmp_nommu_obi",
+        "testcase": "base_rv64_amo_p",
+        "conclusion": "failure",
+        "status_label": "FAIL",
+        "duration_seconds": 4
+      },
+      {
+        "config": "cv32a65x_axi",
+        "testcase": "base_zcmt",
+        "conclusion": "failure",
+        "status_label": "FAIL",
+        "duration_seconds": 5
+      },
+      {
+        "config": "cv32a60x_zcmt_pmp_axi",
+        "testcase": "base_rv32_p",
+        "conclusion": "success",
+        "status_label": "PASS",
+        "duration_seconds": 24
+      },
+      {
+        "config": "cv32a60x_zcmt_pmp_axi",
+        "testcase": "base_zcmt",
+        "conclusion": "failure",
+        "status_label": "FAIL",
+        "duration_seconds": 5
+      },
+      {
+        "config": "cv32a65x_axi",
+        "testcase": "base_pmp",
+        "conclusion": "success",
+        "status_label": "PASS",
+        "duration_seconds": 29
+      },
+      {
+        "config": "cv32a65x_axi",
+        "testcase": "base_rv32_p",
+        "conclusion": "success",
+        "status_label": "PASS",
+        "duration_seconds": 26
+      },
+      {
+        "config": "cv64a6_imafdc_sv39_hpdcache_pmp_mmu_obi",
+        "testcase": "base_rv64_v",
+        "conclusion": "failure",
+        "status_label": "FAIL",
+        "duration_seconds": 4
+      },
+      {
+        "config": "cv32a6_imac_sv32",
+        "testcase": "base_pmp",
+        "conclusion": "success",
+        "status_label": "PASS",
+        "duration_seconds": 27
+      },
+      {
+        "config": "cv32a65x_noPMP_axi",
+        "testcase": "base_rv32_p",
+        "conclusion": "success",
+        "status_label": "PASS",
+        "duration_seconds": 26
+      },
+      {
+        "config": "cv32a6_imac_sv32",
+        "testcase": "base_rv32_p",
+        "conclusion": "success",
+        "status_label": "PASS",
+        "duration_seconds": 23
+      },
+      {
+        "config": "cv64a6_imafdc_sv39_hpdcache_pmp_nommu_axi",
+        "testcase": "base_rv64_p",
+        "conclusion": "success",
+        "status_label": "PASS",
+        "duration_seconds": 23
+      },
+      {
+        "config": "cv32a6_imac_sv32_obi",
+        "testcase": "base_rv32_amo_p",
+        "conclusion": "failure",
+        "status_label": "FAIL",
+        "duration_seconds": 4
+      },
+      {
+        "config": "cv32a6_imac_sv32_obi",
+        "testcase": "base_rv32_p",
+        "conclusion": "success",
+        "status_label": "PASS",
+        "duration_seconds": 23
+      },
+      {
+        "config": "cv32a6_imac_sv32_obi",
+        "testcase": "base_pmp",
+        "conclusion": "success",
+        "status_label": "PASS",
+        "duration_seconds": 29
+      },
+      {
+        "config": "cv32a60x_zcmt_pmp",
+        "testcase": "base_zcmt",
+        "conclusion": "failure",
+        "status_label": "FAIL",
+        "duration_seconds": 5
+      },
+      {
+        "config": "cv64a6_imafdc_sv39_hpdcache_pmp_nommu_axi",
+        "testcase": "base_pmp",
+        "conclusion": "failure",
+        "status_label": "FAIL",
+        "duration_seconds": 5
+      },
+      {
+        "config": "cv64a6_imafdc_sv39_hpdcache_pmp_nommu_axi",
+        "testcase": "base_rv64_amo_p",
+        "conclusion": "failure",
+        "status_label": "FAIL",
+        "duration_seconds": 5
+      },
+      {
+        "config": "cv32a60x",
+        "testcase": "base_rv32_p",
+        "conclusion": "success",
+        "status_label": "PASS",
+        "duration_seconds": 24
+      },
+      {
+        "config": "cv32a65x_sv32",
+        "testcase": "base_pmp",
+        "conclusion": "success",
+        "status_label": "PASS",
+        "duration_seconds": 29
+      },
+      {
+        "config": "cv32a65x_sv32",
+        "testcase": "base_rv32_p",
+        "conclusion": "success",
+        "status_label": "PASS",
+        "duration_seconds": 25
+      },
+      {
+        "config": "cv32a60x_zcmt_pmp_axi",
+        "testcase": "base_pmp",
+        "conclusion": "success",
+        "status_label": "PASS",
+        "duration_seconds": 27
+      },
+      {
+        "config": "cv32a65x_sv32_axi",
+        "testcase": "base_rv32_p",
+        "conclusion": "success",
+        "status_label": "PASS",
+        "duration_seconds": 24
+      },
+      {
+        "config": "cv32a65x_sv32_axi",
+        "testcase": "base_pmp",
+        "conclusion": "success",
+        "status_label": "PASS",
+        "duration_seconds": 27
+      },
+      {
+        "config": "cv32a65x_noPMP_axi",
+        "testcase": "base_zcmt",
+        "conclusion": "failure",
+        "status_label": "FAIL",
+        "duration_seconds": 5
+      },
+      {
+        "config": "cv64a6_imafdc_sv39_hpdcache_pmp_mmu_obi",
+        "testcase": "base_rv64_amo_p",
+        "conclusion": "failure",
+        "status_label": "FAIL",
+        "duration_seconds": 5
+      },
+      {
+        "config": "cv64a6_imafdc_sv39_hpdcache_pmp_mmu_obi",
+        "testcase": "base_rv64_p",
+        "conclusion": "success",
+        "status_label": "PASS",
+        "duration_seconds": 22
+      },
+      {
+        "config": "cv64a6_imafdc_sv39_hpdcache_pmp_mmu_obi",
+        "testcase": "base_pmp",
+        "conclusion": "failure",
+        "status_label": "FAIL",
+        "duration_seconds": 5
+      },
+      {
+        "config": "cv64a6_imafdc_sv39_hpdcache_pmp_mmu_obi",
+        "testcase": "base_rv64_amo_v",
+        "conclusion": "failure",
+        "status_label": "FAIL",
+        "duration_seconds": 5
+      },
+      {
+        "config": "cv32a60x_no_zcmt_axi",
+        "testcase": "base_rv32_p",
+        "conclusion": "success",
+        "status_label": "PASS",
+        "duration_seconds": 24
+      },
+      {
+        "config": "cv32a6_imac_sv32",
+        "testcase": "base_rv32_amo_p",
+        "conclusion": "failure",
+        "status_label": "FAIL",
+        "duration_seconds": 5
+      },
+      {
+        "config": "cv64a6_imafdc_sv39_hpdcache_pmp_mmu_axi",
+        "testcase": "base_pmp",
+        "conclusion": "failure",
+        "status_label": "FAIL",
+        "duration_seconds": 5
+      },
+      {
+        "config": "cv64a6_imafdc_sv39_hpdcache_pmp_mmu_axi",
+        "testcase": "base_rv64_amo_v",
+        "conclusion": "failure",
+        "status_label": "FAIL",
+        "duration_seconds": 5
+      },
+      {
+        "config": "cv64a6_imafdc_sv39_hpdcache_pmp_mmu_axi",
+        "testcase": "base_rv64_v",
+        "conclusion": "failure",
+        "status_label": "FAIL",
+        "duration_seconds": 5
+      },
+      {
+        "config": "cv64a6_imafdc_sv39_hpdcache_pmp_mmu_axi",
+        "testcase": "base_rv64_amo_p",
+        "conclusion": "failure",
+        "status_label": "FAIL",
+        "duration_seconds": 4
+      },
+      {
+        "config": "cv64a6_imafdc_sv39_hpdcache_nopmp_nommu_axi",
+        "testcase": "base_rv64_p",
+        "conclusion": "failure",
+        "status_label": "FAIL",
+        "duration_seconds": 4
+      },
+      {
+        "config": "cv64a6_imafdc_sv39_hpdcache_pmp_mmu_axi",
+        "testcase": "base_rv64_p",
+        "conclusion": "success",
+        "status_label": "PASS",
+        "duration_seconds": 22
+      },
+      {
+        "config": "cv64a6_imafdc_sv39_hpdcache_pmp_nommu_obi",
+        "testcase": "base_rv64_p",
+        "conclusion": "success",
+        "status_label": "PASS",
+        "duration_seconds": 22
+      }
+    ],
+    "passed_jobs": 26,
+    "failed_jobs": 24,
+    "total_jobs": 50,
+    "pass_rate": 52.0
+  },
+  "stale": false,
+  "collected_at": "2026-08-19T10:06:13.409733+00:00"
+}
