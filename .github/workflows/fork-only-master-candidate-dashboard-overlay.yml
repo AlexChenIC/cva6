@@ -27,7 +27,7 @@ permissions:
   id-token: write
 
 env:
-  DASHBOARD_SOURCE_SHA: 0c34448ec0bf51ea513764d7d38987e475bd4a68
+  DASHBOARD_SOURCE_SHA: 6464894fa0709630c09ea0414691358aec4fa9e7
   TIER_BRANCH: jchen/master-candidate-openhw-tier-ci
   TARGET_BRANCH: master_candidate
   THALES_DASHBOARD_URL: https://riscv-ci.pages.thales-invia.fr/dashboard/dashboard_cva6.html
