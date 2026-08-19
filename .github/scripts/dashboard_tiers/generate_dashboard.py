@@ -36,6 +36,7 @@ MATRIX_CONFIGS_ORDER = ["cv32a60x_axi", "cv32a65x_axi"]
 MATRIX_SUITES_ORDER = ["base-rv32-p", "base-pmp"]
 TREND_COUNT = 20
 THALES_FILE = "thales_reference.json"
+FRESH_AFTER_HOURS = 8
 
 
 def is_valid_matrix_job(job: dict) -> bool:
@@ -67,6 +68,53 @@ def format_datetime(value: str) -> str:
     except (TypeError, ValueError):
         return value
     return parsed.strftime("%Y-%m-%d %H:%M UTC")
+
+
+def parse_datetime(value: str) -> datetime | None:
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def age_label(value: str, now: datetime) -> str:
+    parsed = parse_datetime(value)
+    if parsed is None:
+        return "age unavailable"
+    seconds = max(0, int((now - parsed).total_seconds()))
+    if seconds < 60:
+        return "less than a minute ago"
+    minutes = seconds // 60
+    if minutes < 60:
+        return f"{minutes}m ago"
+    hours = minutes // 60
+    if hours < 48:
+        return f"{hours}h ago"
+    return f"{hours // 24}d ago"
+
+
+def freshness(
+    value: str,
+    now: datetime,
+    *,
+    forced_stale: bool = False,
+) -> dict[str, str | bool]:
+    parsed = parse_datetime(value)
+    stale = forced_stale
+    if parsed is not None:
+        age_hours = max(0, (now - parsed).total_seconds()) / 3600
+        stale = stale or age_hours > FRESH_AFTER_HOURS
+    return {
+        "display": format_datetime(value),
+        "age": age_label(value, now),
+        "stale": stale,
+        "label": "STALE" if stale else ("FRESH" if parsed else "UNKNOWN"),
+    }
 
 
 def load_json(path: Path, default):
@@ -134,33 +182,60 @@ def build_chart_data(all_data: dict[str, list[dict]]) -> dict:
     chart_data = {}
     for workflow in WORKFLOW_INFO:
         runs = list(reversed(all_data.get(workflow["key"], [])[:TREND_COUNT]))
+        pass_rates = [
+            round(run.get("passed_jobs", 0) / run.get("total_jobs", 1) * 100, 1)
+            if run.get("total_jobs", 0)
+            else 0
+            for run in runs
+        ]
+        durations = [
+            round(run.get("duration_seconds", 0) / 60, 1) for run in runs
+        ]
         chart_data[workflow["key"]] = {
             "labels": [str(run.get("run_number", "")) for run in runs],
-            "pass_rates": [
-                round(run.get("passed_jobs", 0) / run.get("total_jobs", 1) * 100, 1)
-                if run.get("total_jobs", 0)
-                else 0
-                for run in runs
-            ],
-            "durations": [
-                round(run.get("duration_seconds", 0) / 60, 1) for run in runs
-            ],
+            "pass_rates": pass_rates,
+            "durations": durations,
+            "count": len(runs),
+            "summary": (
+                f"{len(runs)} completed runs. Latest pass rate "
+                f"{pass_rates[-1]:g} percent and duration "
+                f"{durations[-1]:g} minutes."
+                if runs
+                else "No completed run data."
+            ),
         }
     return chart_data
 
 
-def enrich_run(run: dict) -> dict:
+def enrich_run(run: dict, now: datetime) -> dict:
     run["duration_display"] = format_duration(run.get("duration_seconds", 0))
     run["created_at_display"] = format_datetime(run.get("created_at", ""))
+    run["updated_at_display"] = format_datetime(
+        run.get("updated_at", run.get("created_at", ""))
+    )
+    run["observed_age"] = age_label(
+        run.get("updated_at", run.get("created_at", "")), now
+    )
+    environment = run.get("environment", {})
+    if isinstance(environment, dict):
+        environment["freshness"] = freshness(
+            environment.get("collected_at", ""),
+            now,
+            forced_stale=bool(environment.get("stale")),
+        )
     for job in run.get("jobs", []):
         job["duration_display"] = format_duration(job.get("duration_seconds", 0))
     return run
 
 
-def build_workflows_context(all_data: dict[str, list[dict]]) -> list[dict]:
+def build_workflows_context(
+    all_data: dict[str, list[dict]], now: datetime
+) -> list[dict]:
     workflows = []
     for definition in WORKFLOW_INFO:
-        runs = [enrich_run(run) for run in all_data.get(definition["key"], [])]
+        runs = [
+            enrich_run(run, now) for run in all_data.get(definition["key"], [])
+        ]
         latest = runs[0] if runs else {
             "conclusion": "unknown",
             "head_branch": "N/A",
@@ -173,12 +248,15 @@ def build_workflows_context(all_data: dict[str, list[dict]]) -> list[dict]:
             "duration_display": "N/A",
             "run_number": 0,
             "html_url": "",
+            "observed_age": "age unavailable",
+            "updated_at_display": "N/A",
+            "environment": {},
         }
         workflows.append({**definition, "latest": latest, "runs": runs})
     return workflows
 
 
-def load_thales_reference(data_dir: Path) -> dict:
+def load_thales_reference(data_dir: Path, now: datetime) -> dict:
     reference = load_json(data_dir / THALES_FILE, {})
     if not isinstance(reference, dict) or not reference.get("available"):
         return {
@@ -198,11 +276,18 @@ def load_thales_reference(data_dir: Path) -> dict:
             "created_at_display": "N/A",
             "duration_display": "N/A",
             "evidence": {},
+            "collection_freshness": freshness("", now),
         }
 
     reference["created_at_display"] = format_datetime(reference.get("created_at", ""))
+    reference["observed_age"] = age_label(reference.get("created_at", ""), now)
     reference["duration_display"] = format_duration(
         reference.get("duration_seconds", 0)
+    )
+    reference["collection_freshness"] = freshness(
+        reference.get("collected_at", ""),
+        now,
+        forced_stale=bool(reference.get("stale")),
     )
     evidence = reference.get("testlist_evidence", {})
     if not evidence:
@@ -216,6 +301,7 @@ def load_thales_reference(data_dir: Path) -> dict:
         evidence["duration_display"] = format_duration(
             evidence.get("duration_seconds", 0)
         )
+        evidence["observed_age"] = age_label(evidence.get("created_at", ""), now)
     reference["evidence"] = evidence
     return reference
 
@@ -245,6 +331,13 @@ def build_matrix_metadata(workflows: list[dict]) -> dict:
     }
 
 
+def thales_card_state(relation: dict[str, str], evidence: dict) -> str:
+    if relation.get("kind") != "match":
+        return "unknown"
+    status = evidence.get("status", "unknown")
+    return status if status in {"success", "failure"} else "unknown"
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--data-dir", default="data")
@@ -259,11 +352,14 @@ def main() -> None:
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    all_data = load_workflow_data(data_dir)
-    workflows = build_workflows_context(all_data)
-    thales = load_thales_reference(data_dir)
-    matrix, matrix_orders = build_matrix(all_data)
     now = datetime.now(timezone.utc)
+    all_data = load_workflow_data(data_dir)
+    workflows = build_workflows_context(all_data, now)
+    thales = load_thales_reference(data_dir, now)
+    matrix, matrix_orders = build_matrix(all_data)
+    metadata = load_json(data_dir / "metadata.json", {})
+    github_freshness = freshness(metadata.get("generated_at", ""), now)
+    relation = source_relation(workflows, thales.get("evidence", {}))
 
     context = {
         "generated_at": now.strftime("%Y-%m-%d %H:%M UTC"),
@@ -271,7 +367,11 @@ def main() -> None:
         "repo": args.repo,
         "workflows": workflows,
         "thales": thales,
-        "source_relation": source_relation(workflows, thales.get("evidence", {})),
+        "source_relation": relation,
+        "thales_card_state": thales_card_state(
+            relation, thales.get("evidence", {})
+        ),
+        "github_freshness": github_freshness,
         "matrix_data": matrix,
         "matrix_metadata": build_matrix_metadata(workflows),
         "matrix_orders": matrix_orders,

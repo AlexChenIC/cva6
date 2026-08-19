@@ -4,8 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>CVA6 master_candidate Tier CI Dashboard</title>
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+  <link href="assets/vendor/bootstrap/bootstrap.min.css" rel="stylesheet">
+  <script src="assets/vendor/chartjs/chart.umd.min.js"></script>
   <style>
     :root {
       --pass-color: #198754;
@@ -53,6 +53,29 @@
     .relation-match { color: #146c43; }
     .relation-different { color: #997404; }
     .relation-unknown { color: #6c757d; }
+    .freshness-badge { font-size: 0.65rem; letter-spacing: 0; }
+    .freshness-fresh { background: #d1e7dd; color: #0a3622; }
+    .freshness-stale { background: #fff3cd; color: #664d03; }
+    .freshness-unknown { background: #e9ecef; color: #495057; }
+    .reference-block { border-top: 1px solid #e5e7eb; padding-top: 0.65rem; }
+    .reference-label {
+      color: #495057;
+      font-size: 0.7rem;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+    .environment-table { font-size: 0.8rem; }
+    .environment-table td, .environment-table th { vertical-align: middle; }
+    .environment-table code { white-space: normal; overflow-wrap: anywhere; }
+    .environment-mobile-row { border-bottom: 1px solid #e5e7eb; padding: 0.75rem; }
+    .environment-mobile-row:last-child { border-bottom: 0; }
+    .environment-key {
+      color: #6c757d;
+      font-size: 0.68rem;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+    .environment-value { font-size: 0.78rem; overflow-wrap: anywhere; }
 
     /* Test Matrix */
     .matrix-table th.suite-header {
@@ -150,8 +173,8 @@
         <div class="card-body">
           <div class="d-flex justify-content-between align-items-start mb-2">
             <div>
-              <h6 class="card-title mb-1">{{ wf.display_name }}</h6>
-              <span class="badge source-chip">GitHub Actions · {{ wf.backend }}</span>
+              <h6 class="card-title mb-1">{{ wf.display_name }} (Verilator)</h6>
+              <span class="badge source-chip">GitHub Actions</span>
             </div>
             {% if wf.latest.conclusion == 'success' %}
               <span class="badge badge-pass">PASS</span>
@@ -181,6 +204,17 @@
               <strong>Duration:</strong> {{ wf.latest.duration_display }}
               &middot; <strong>Run:</strong> #{{ wf.latest.run_number }}
             </div>
+            <div>
+              <strong>Completed:</strong> {{ wf.latest.updated_at_display }}
+              ({{ wf.latest.observed_age }})
+            </div>
+            <div class="mt-1">
+              <span class="badge freshness-badge freshness-{{ 'stale' if github_freshness.stale else ('fresh' if github_freshness.label == 'FRESH' else 'unknown') }}">
+                {{ github_freshness.label }}
+              </span>
+              Collected {{ github_freshness.age }}
+              &middot; {{ github_freshness.display }}
+            </div>
           </div>
           <div class="mt-3">
             {% if wf.latest.html_url %}
@@ -196,37 +230,83 @@
 
     {% set thales_evidence = thales.evidence %}
     <div class="col-md-6 col-xl-4">
-      <div class="card status-card shadow-sm {{ 'pass' if thales_evidence.status == 'success' else ('fail' if thales_evidence.status == 'failure' else 'unknown') }}">
+      <div class="card status-card shadow-sm {{ 'pass' if thales_card_state == 'success' else ('fail' if thales_card_state == 'failure' else 'unknown') }}">
         <div class="card-body">
           <div class="d-flex justify-content-between align-items-start mb-2">
             <div>
-              <h6 class="card-title mb-1">Thales GitLab Reference</h6>
-              <span class="badge source-chip">GitLab CI · {{ thales.backend }}</span>
+              <h6 class="card-title mb-1">Thales GitLab (Reference, VCS/UVM)</h6>
             </div>
-            {% if thales_evidence.status == 'success' %}
-              <span class="badge badge-pass">PASS</span>
-            {% elif thales_evidence.status == 'failure' %}
-              <span class="badge badge-fail">FAIL</span>
+            {% if thales_card_state == 'success' %}
+              <span class="badge badge-pass">COMPARABLE PASS</span>
+            {% elif thales_card_state == 'failure' %}
+              <span class="badge badge-fail">COMPARABLE FAIL</span>
             {% else %}
-              <span class="badge badge-skip">NO EVIDENCE</span>
+              <span class="badge badge-skip">REFERENCE</span>
             {% endif %}
           </div>
           <div class="text-muted" style="font-size:0.8rem">
+            {% if thales.available %}
+            <div class="reference-label">Latest public pipeline</div>
+            <div>
+              <strong>#{{ thales.pipeline_id }}</strong>
+              &middot;
+              {% if thales.status == 'success' %}
+                <span class="text-success">PASS</span>
+              {% elif thales.status == 'failure' %}
+                <span class="text-danger">FAIL</span>
+              {% else %}
+                {{ thales.status_label }}
+              {% endif %}
+              &middot; {{ thales.branch }} @ <code>{{ thales.head_sha }}</code>
+            </div>
+            <div>
+              {{ thales.created_at_display }} ({{ thales.observed_age }})
+              &middot; {{ thales.duration_display }}
+            </div>
+            {% else %}
+            <div>Latest public pipeline is unavailable.</div>
+            {% endif %}
+
+            <div class="reference-block mt-2">
+              <div class="reference-label">Latest Testlist evidence</div>
             {% if thales_evidence %}
-            <div><strong>Branch:</strong> {{ thales_evidence.branch }} &middot; <code>{{ thales_evidence.head_sha }}</code></div>
-            <div><strong>Pipeline:</strong> {{ thales_evidence.pipeline_id }} &middot; {{ thales_evidence.duration_display }}</div>
-            <div><strong>Observed jobs:</strong> {{ thales_evidence.passed_jobs }} passed / {{ thales_evidence.failed_jobs }} failed ({{ thales_evidence.total_jobs }} total)</div>
-            <div><strong>Started:</strong> {{ thales_evidence.created_at_display }}</div>
+            <div>
+              <strong>#{{ thales_evidence.pipeline_id }}</strong>
+              &middot;
+              {% if thales_evidence.status == 'success' %}
+                <span class="badge badge-pass">PASS</span>
+              {% elif thales_evidence.status == 'failure' %}
+                <span class="badge badge-fail">FAIL</span>
+              {% else %}
+                <span class="badge badge-skip">UNKNOWN</span>
+              {% endif %}
+              &middot; {{ thales_evidence.branch }} @ <code>{{ thales_evidence.head_sha }}</code>
+            </div>
+            <div>
+              {{ thales_evidence.passed_jobs }} passed /
+              {{ thales_evidence.failed_jobs }} failed
+              ({{ thales_evidence.total_jobs }} observed jobs)
+            </div>
+            <div>
+              {{ thales_evidence.created_at_display }}
+              ({{ thales_evidence.observed_age }})
+            </div>
             {% else %}
             <div>No public pipeline containing Testlist RTL run evidence was found.</div>
             {% endif %}
+            </div>
             <div class="mt-1 relation-{{ source_relation.kind }}">
               <strong>{{ source_relation.label }}</strong>
             </div>
-            {% if thales.stale %}
-            <div class="mt-1 text-warning-emphasis">
-              <strong>Refresh failed; showing the previous public result.</strong>
+            <div class="mt-1">
+              <span class="badge freshness-badge freshness-{{ 'stale' if thales.collection_freshness.stale else ('fresh' if thales.collection_freshness.label == 'FRESH' else 'unknown') }}">
+                {{ thales.collection_freshness.label }}
+              </span>
+              Collected {{ thales.collection_freshness.age }}
+              &middot; {{ thales.collection_freshness.display }}
             </div>
+            {% if thales.stale %}
+            <div class="text-warning-emphasis">Refresh failed; previous data retained.</div>
             {% endif %}
           </div>
           <div class="mt-3 d-flex flex-wrap gap-2">
@@ -237,6 +317,83 @@
         </div>
       </div>
     </div>
+  </div>
+</section>
+
+<section class="mb-4">
+  <h5 class="text-muted mb-3">Execution Environment</h5>
+  <div class="table-responsive border rounded bg-white shadow-sm d-none d-md-block">
+    <table class="table table-sm environment-table mb-0">
+      <thead class="table-light">
+        <tr>
+          <th>Tier</th>
+          <th>Artifact sample</th>
+          <th>GCC</th>
+          <th>Spike</th>
+          <th>Verilator</th>
+          <th>Metadata</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for wf in workflows %}
+        {% set environment = wf.latest.environment %}
+        <tr>
+          <td class="text-nowrap"><strong>{{ wf.display_name }}</strong></td>
+          {% if environment.available %}
+          <td><code>{{ environment.artifact_name }}</code></td>
+          <td>{{ environment.gcc_version or 'N/A' }}</td>
+          <td>{{ environment.spike_version or 'N/A' }}</td>
+          <td>{{ environment.verilator_version or 'N/A' }}</td>
+          <td>
+            {% if environment.source_revision %}<code>{{ environment.source_revision[:8] }}</code>{% else %}N/A{% endif %}
+            {% if environment.freshness %}
+            <br><span class="badge freshness-badge freshness-{{ 'stale' if environment.freshness.stale else ('fresh' if environment.freshness.label == 'FRESH' else 'unknown') }}">
+              {{ environment.freshness.label }}
+            </span>
+            {% endif %}
+          </td>
+          {% else %}
+          <td colspan="5" class="text-muted">Environment metadata is unavailable for the latest retained run.</td>
+          {% endif %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="border rounded bg-white shadow-sm d-md-none">
+    {% for wf in workflows %}
+    {% set environment = wf.latest.environment %}
+    <div class="environment-mobile-row">
+      <div class="d-flex justify-content-between align-items-start gap-2 mb-2">
+        <strong>{{ wf.display_name }}</strong>
+        {% if environment.freshness %}
+        <span class="badge freshness-badge freshness-{{ 'stale' if environment.freshness.stale else ('fresh' if environment.freshness.label == 'FRESH' else 'unknown') }}">
+          {{ environment.freshness.label }}
+        </span>
+        {% endif %}
+      </div>
+      {% if environment.available %}
+      <div class="environment-key">Artifact sample</div>
+      <div class="environment-value mb-2"><code>{{ environment.artifact_name }}</code></div>
+      <div class="row g-2">
+        <div class="col-6">
+          <div class="environment-key">GCC</div>
+          <div class="environment-value">{{ environment.gcc_version or 'N/A' }}</div>
+        </div>
+        <div class="col-6">
+          <div class="environment-key">Spike</div>
+          <div class="environment-value">{{ environment.spike_version or 'N/A' }}</div>
+        </div>
+        <div class="col-12">
+          <div class="environment-key">Verilator</div>
+          <div class="environment-value">{{ environment.verilator_version or 'N/A' }}</div>
+        </div>
+      </div>
+      {% else %}
+      <div class="environment-value text-muted">Environment metadata is unavailable.</div>
+      {% endif %}
+    </div>
+    {% endfor %}
   </div>
 </section>
 
@@ -278,16 +435,24 @@
 </section>
 
 <section class="mb-4">
-  <h5 class="text-muted mb-3">GitHub Trends (Last {{ trend_count }} Runs)</h5>
+  <h5 class="text-muted mb-3">GitHub Trends (up to {{ trend_count }} runs)</h5>
   <div class="row g-3">
     {% for wf in workflows %}
     <div class="col-lg-6">
       <div class="card shadow-sm">
-        <div class="card-header py-2" style="font-size:0.85rem">{{ wf.display_name }}</div>
+        <div class="card-header py-2" style="font-size:0.85rem">
+          {{ wf.display_name }} &middot; {{ chart_data[wf.key].count }} completed runs
+        </div>
         <div class="card-body p-2">
+          <p class="visually-hidden">{{ chart_data[wf.key].summary }}</p>
+          {% if chart_data[wf.key].count %}
           <div class="chart-container">
-            <canvas id="chart-{{ wf.key }}"></canvas>
+            <canvas id="chart-{{ wf.key }}" role="img"
+                    aria-label="{{ wf.display_name }} pass rate and duration trend"></canvas>
           </div>
+          {% else %}
+          <div class="text-muted p-3">No completed run data.</div>
+          {% endif %}
         </div>
       </div>
     </div>
@@ -414,7 +579,7 @@
   </div>
 </footer>
 
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script src="assets/vendor/bootstrap/bootstrap.bundle.min.js"></script>
 <script>
 // ============================================================
 // Matrix data (all workflows combined) - injected by Jinja2
@@ -534,7 +699,7 @@ function renderTrendChart(canvasId, data, secondaryKey, secondaryLabel, titlePre
           borderColor: '#198754',
           backgroundColor: 'rgba(25, 135, 84, 0.1)',
           fill: true,
-          tension: 0.3,
+          tension: 0,
           yAxisID: 'y',
           pointRadius: 3,
         },
@@ -544,7 +709,7 @@ function renderTrendChart(canvasId, data, secondaryKey, secondaryLabel, titlePre
           borderColor: '#0d6efd',
           backgroundColor: 'rgba(13, 110, 253, 0.1)',
           fill: false,
-          tension: 0.3,
+          tension: 0,
           yAxisID: 'y1',
           pointRadius: 3,
           borderDash: [5, 3],

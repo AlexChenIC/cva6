@@ -7,6 +7,8 @@ on:
       - openhw-cva6-ci-tier2
     types:
       - completed
+  schedule:
+    - cron: "17 */4 * * *"
   workflow_dispatch:
     inputs:
       branch:
@@ -39,8 +41,11 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v7
 
-      - name: Install dashboard dependency
-        run: python3 -m pip install --disable-pip-version-check jinja2==3.1.6
+      - name: Install dashboard dependencies
+        run: |
+          python3 -m pip install --disable-pip-version-check \
+            jinja2==3.1.6 \
+            pyyaml==6.0.3
 
       - name: Restore dashboard history
         run: |

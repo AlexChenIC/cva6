@@ -5,12 +5,17 @@
 
 import argparse
 from datetime import datetime, timezone
+from io import BytesIO
 import json
 import os
 from pathlib import Path
+import re
 import subprocess
 import sys
 from urllib.parse import urlencode
+import zipfile
+
+import yaml
 
 from parser import parse_job_name
 
@@ -35,6 +40,19 @@ def gh_api(endpoint: str, repo: str) -> dict:
     return json.loads(result.stdout)
 
 
+def gh_api_bytes(endpoint: str, repo: str) -> bytes:
+    url = f"/repos/{repo}/actions/{endpoint}"
+    result = subprocess.run(
+        ["gh", "api", url],
+        capture_output=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        detail = result.stderr.decode("utf-8", errors="replace").strip()
+        raise RuntimeError(f"gh api {url} failed: {detail}")
+    return result.stdout
+
+
 def build_runs_endpoint(workflow_file: str, count: int, branch: str = "") -> str:
     params: dict[str, str | int] = {
         "status": "completed",
@@ -53,6 +71,140 @@ def fetch_runs(repo: str, workflow_file: str, count: int, branch: str = "") -> l
 def fetch_jobs(repo: str, run_id: int) -> list[dict]:
     data = gh_api(f"runs/{run_id}/jobs?per_page=100", repo)
     return data.get("jobs", [])
+
+
+def archive_text(archive: zipfile.ZipFile, suffix: str) -> str:
+    matches = sorted(
+        (name for name in archive.namelist() if name.endswith(suffix)),
+        key=lambda name: (name.count("/"), len(name)),
+    )
+    if not matches:
+        return ""
+    return archive.read(matches[0]).decode("utf-8", errors="replace")
+
+
+def first_version(log_text: str, label: str) -> str:
+    match = re.search(rf"{re.escape(label)}:\s*([^\r\n]+)", log_text)
+    return match.group(1).strip() if match else ""
+
+
+def parse_metadata_text(text: str) -> dict[str, str]:
+    metadata = {}
+    for line in text.splitlines():
+        if "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        metadata[key.strip()] = value.strip()
+    return metadata
+
+
+def parse_environment_artifact(payload: bytes, artifact_name: str) -> dict:
+    with zipfile.ZipFile(BytesIO(payload)) as archive:
+        environment_text = archive_text(
+            archive, "ci-results/toolchain-environment.yml"
+        )
+        run_log = archive_text(archive, "ci-results/run.log")
+        metadata = parse_metadata_text(
+            archive_text(archive, "ci-results/metadata.txt")
+        )
+
+    environment_data = (
+        yaml.safe_load(environment_text) if environment_text else {}
+    )
+    if not isinstance(environment_data, dict):
+        environment_data = {}
+    toolchain_name = environment_data.get("required_toolchain", "")
+    toolchains = environment_data.get("toolchains", {})
+    if not isinstance(toolchains, dict):
+        toolchains = {}
+    toolchain = toolchains.get(toolchain_name, {})
+    if not isinstance(toolchain, dict):
+        toolchain = {}
+
+    gcc_version = first_version(run_log, "GCC Version") or str(
+        toolchain.get("version", "")
+    )
+    spike_version = first_version(run_log, "Spike Version")
+    verilator_version = first_version(run_log, "Verilator Version")
+    available = bool(gcc_version or spike_version or verilator_version)
+    return {
+        "available": available,
+        "source": "ci-results artifact",
+        "artifact_name": artifact_name,
+        "toolchain": toolchain_name,
+        "gcc_version": gcc_version,
+        "spike_version": spike_version,
+        "verilator_version": verilator_version,
+        "simulator": metadata.get("simulator", ""),
+        "compiler_march": metadata.get("compiler_march", ""),
+        "source_revision": metadata.get("source_revision", ""),
+    }
+
+
+def fetch_run_environment(repo: str, run_id: int, workflow_name: str) -> dict:
+    artifact_data = gh_api(f"runs/{run_id}/artifacts?per_page=100", repo)
+    prefix = f"{workflow_name}-"
+    artifacts = sorted(
+        (
+            artifact
+            for artifact in artifact_data.get("artifacts", [])
+            if artifact.get("name", "").startswith(prefix)
+            and not artifact.get("expired", False)
+        ),
+        key=lambda artifact: artifact.get("name", ""),
+    )
+    if not artifacts:
+        return {
+            "available": False,
+            "source": "ci-results artifact",
+            "error": "No unexpired Tier artifact was found",
+        }
+
+    artifact = artifacts[0]
+    environment = parse_environment_artifact(
+        gh_api_bytes(f"artifacts/{artifact['id']}/zip", repo),
+        artifact["name"],
+    )
+    environment["collected_at"] = datetime.now(timezone.utc).isoformat()
+    return environment
+
+
+def refresh_environment(repo: str, run: dict, workflow_name: str) -> None:
+    try:
+        environment = fetch_run_environment(
+            repo, run["id"], workflow_name
+        )
+        if environment.get("available"):
+            run["environment"] = environment
+            return
+
+        previous = run.get("environment")
+        if isinstance(previous, dict) and previous.get("available"):
+            previous["stale"] = True
+            previous["last_error"] = environment.get(
+                "error", "Environment metadata is unavailable"
+            )
+            previous["attempted_at"] = datetime.now(timezone.utc).isoformat()
+        else:
+            run["environment"] = environment
+    except (
+        KeyError,
+        RuntimeError,
+        ValueError,
+        zipfile.BadZipFile,
+        yaml.YAMLError,
+    ) as error:
+        previous = run.get("environment")
+        if isinstance(previous, dict) and previous.get("available"):
+            previous["stale"] = True
+            previous["last_error"] = str(error)
+            previous["attempted_at"] = datetime.now(timezone.utc).isoformat()
+        else:
+            run["environment"] = {
+                "available": False,
+                "source": "ci-results artifact",
+                "error": str(error),
+            }
 
 
 def duration_seconds(started_at: str, completed_at: str) -> int:
@@ -205,6 +357,8 @@ def main() -> None:
                 if run["id"] not in existing_ids
             ]
             merged = merge_runs(existing, new_runs)
+            if merged:
+                refresh_environment(args.repo, merged[0], name)
             json_path.write_text(json.dumps(merged, indent=2), encoding="utf-8")
             print(f"{name}: {len(new_runs)} new, {len(merged)} stored")
     except (json.JSONDecodeError, KeyError, OSError, RuntimeError) as error:

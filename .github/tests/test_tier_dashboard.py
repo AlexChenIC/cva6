@@ -3,6 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import importlib.util
+from io import BytesIO
 import json
 from pathlib import Path
 import subprocess
@@ -10,6 +11,7 @@ import sys
 import tempfile
 import unittest
 from unittest import mock
+import zipfile
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -102,6 +104,61 @@ class GitHubCollectorTest(unittest.TestCase):
                 "execute-riscv32-tests (base, config, simulator)", "tier2"
             )
         )
+
+    def test_environment_is_read_from_a_tier_artifact(self) -> None:
+        payload = BytesIO()
+        with zipfile.ZipFile(payload, "w") as archive:
+            archive.writestr(
+                "ci-results/toolchain-environment.yml",
+                "required_toolchain: github_actions_gcc\n"
+                "toolchains:\n"
+                "  github_actions_gcc:\n"
+                "    version: fallback-gcc\n",
+            )
+            archive.writestr(
+                "ci-results/run.log",
+                "GCC Version: 13.2.0\n"
+                "Spike Version: 1.1.1-dev 69c5379\n"
+                "Verilator Version: Verilator 5.008\n",
+            )
+            archive.writestr(
+                "ci-results/metadata.txt",
+                "simulator=verilator\n"
+                "compiler_march=rv32imc\n"
+                "source_revision=0123456789abcdef\n",
+            )
+
+        environment = collector.parse_environment_artifact(
+            payload.getvalue(), "tier1-rv32-cv32a60x_axi-base-rv32-p"
+        )
+        self.assertTrue(environment["available"])
+        self.assertEqual(environment["toolchain"], "github_actions_gcc")
+        self.assertEqual(environment["gcc_version"], "13.2.0")
+        self.assertEqual(environment["spike_version"], "1.1.1-dev 69c5379")
+        self.assertEqual(environment["verilator_version"], "Verilator 5.008")
+        self.assertEqual(environment["source_revision"], "0123456789abcdef")
+
+    def test_previous_environment_survives_missing_artifact(self) -> None:
+        run = {
+            "id": 7,
+            "environment": {
+                "available": True,
+                "gcc_version": "13.2.0",
+                "collected_at": "2026-08-18T10:00:00+00:00",
+            },
+        }
+        unavailable = {
+            "available": False,
+            "error": "No unexpired Tier artifact was found",
+        }
+        with mock.patch.object(
+            collector, "fetch_run_environment", return_value=unavailable
+        ):
+            collector.refresh_environment("AlexChenIC/cva6", run, "tier1")
+
+        self.assertEqual(run["environment"]["gcc_version"], "13.2.0")
+        self.assertTrue(run["environment"]["stale"])
+        self.assertIn("No unexpired", run["environment"]["last_error"])
 
 
 class ThalesCollectorTest(unittest.TestCase):
@@ -233,8 +290,18 @@ class GeneratorTest(unittest.TestCase):
                 "total_jobs": 1,
                 "duration_seconds": 60,
                 "created_at": "2026-08-18T10:00:00Z",
+                "updated_at": "2026-08-18T10:01:00Z",
                 "html_url": f"https://github.com/AlexChenIC/cva6/actions/runs/{run_id}",
                 "event": "workflow_dispatch",
+                "environment": {
+                    "available": True,
+                    "artifact_name": "tier1-rv32-cv32a65x_axi-base-rv32-p",
+                    "gcc_version": "13.2.0",
+                    "spike_version": "1.1.1-dev 69c5379",
+                    "verilator_version": "Verilator 5.008",
+                    "source_revision": full_sha,
+                    "collected_at": "2026-08-18T10:02:00Z",
+                },
                 "jobs": [
                     {
                         "arch": "rv32",
@@ -250,6 +317,8 @@ class GeneratorTest(unittest.TestCase):
         thales = thales_collector.parse_public_dashboard(
             ThalesCollectorTest.RELEVANT_PAGE
         )
+        thales["collected_at"] = "2026-08-18T10:03:00Z"
+        thales["stale"] = False
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             data_dir = root / "data"
@@ -263,6 +332,10 @@ class GeneratorTest(unittest.TestCase):
             )
             (data_dir / "thales_reference.json").write_text(
                 json.dumps(thales), encoding="utf-8"
+            )
+            (data_dir / "metadata.json").write_text(
+                json.dumps({"generated_at": "2026-08-18T10:04:00Z"}),
+                encoding="utf-8",
             )
 
             subprocess.run(
@@ -281,17 +354,21 @@ class GeneratorTest(unittest.TestCase):
             )
             page = (output_dir / "index.html").read_text(encoding="utf-8")
 
-        self.assertIn(">Tier 1<", page)
-        self.assertIn(">Tier 2<", page)
-        self.assertNotIn("Tier 1 (Verilator)", page)
-        self.assertNotIn("Tier 2 (Verilator)", page)
-        self.assertIn("GitHub Actions · Verilator/TestHarness", page)
+        self.assertIn("Tier 1 (Verilator)", page)
+        self.assertIn("Tier 2 (Verilator)", page)
+        self.assertNotIn("GitHub Actions · Verilator/TestHarness", page)
         self.assertIn("Verilator/TestHarness", page)
-        self.assertIn("Thales GitLab Reference", page)
-        self.assertNotIn("Thales GitLab (Reference, VCS/UVM)", page)
-        self.assertIn("GitLab CI · VCS/UVM", page)
+        self.assertNotIn("Thales GitLab Reference", page)
+        self.assertIn("Thales GitLab (Reference, VCS/UVM)", page)
+        self.assertNotIn("GitLab CI · VCS/UVM", page)
         self.assertIn("VCS/UVM", page)
         self.assertIn("Thales GitLab", page)
+        self.assertIn("Latest public pipeline", page)
+        self.assertIn("Latest Testlist evidence", page)
+        self.assertIn("#58367", page)
+        self.assertIn("#58298", page)
+        self.assertIn("Different source revisions", page)
+        self.assertIn(">REFERENCE<", page)
         self.assertIn("GitHub Tier Coverage Matrix", page)
         self.assertNotIn('for="wf-thales"', page)
         self.assertNotIn("Thales GitLab Testlist Trend", page)
@@ -301,6 +378,15 @@ class GeneratorTest(unittest.TestCase):
         self.assertNotIn("GitLab pipeline", page)
         self.assertNotIn("gitlab.thales-invia.fr/riscv-ci/cva6/-/pipelines", page)
         self.assertIn(thales_collector.DEFAULT_URL, page)
+        self.assertIn("Execution Environment", page)
+        self.assertIn("13.2.0", page)
+        self.assertIn("1.1.1-dev 69c5379", page)
+        self.assertIn("Verilator 5.008", page)
+        self.assertIn("GitHub Trends (up to 20 runs)", page)
+        self.assertIn("Tier 1 &middot; 1 completed runs", page)
+        self.assertNotIn("cdn.jsdelivr.net", page)
+        self.assertIn("assets/vendor/bootstrap/bootstrap.min.css", page)
+        self.assertIn("assets/vendor/chartjs/chart.umd.min.js", page)
         self.assertNotIn("runs_ci.json", page)
         self.assertNotIn("openhw-cva6-ci.yml", page)
         self.assertNotIn("</script><script>", page)
@@ -313,6 +399,18 @@ class GeneratorTest(unittest.TestCase):
                 workflows, {"head_sha_full": "thales-sha"}
             )["kind"],
             "different",
+        )
+        self.assertEqual(
+            generator.thales_card_state(
+                {"kind": "different"}, {"status": "failure"}
+            ),
+            "unknown",
+        )
+        self.assertEqual(
+            generator.thales_card_state(
+                {"kind": "match"}, {"status": "failure"}
+            ),
+            "failure",
         )
         self.assertEqual(
             generator.source_relation(
@@ -342,11 +440,26 @@ class WorkflowTest(unittest.TestCase):
         self.assertIn("collect_thales_reference.py", workflow)
         self.assertNotIn("repository: openhwgroup/cva6", workflow)
         self.assertNotIn("--matrix-file", workflow)
-        self.assertNotIn("PyYAML", workflow)
+        self.assertIn('pyyaml==6.0.3', workflow)
+        self.assertIn('cron: "17 */4 * * *"', workflow)
         self.assertIn("DASHBOARD_TARGET_BRANCH: master_candidate", workflow)
         self.assertIn('--base-branch "$DASHBOARD_TARGET_BRANCH"', workflow)
         self.assertNotIn("openhw-cva6-ci.yml", workflow)
         self.assertNotIn("\n      - ci\n", workflow)
+
+    def test_frontend_dependencies_are_vendored(self) -> None:
+        static = DASHBOARD_DIR / "static" / "vendor"
+        expected = (
+            static / "bootstrap" / "bootstrap.min.css",
+            static / "bootstrap" / "bootstrap.bundle.min.js",
+            static / "bootstrap" / "LICENSE",
+            static / "chartjs" / "chart.umd.min.js",
+            static / "chartjs" / "LICENSE.md",
+        )
+        for path in expected:
+            with self.subTest(path=path):
+                self.assertTrue(path.is_file())
+                self.assertGreater(path.stat().st_size, 1000)
 
 
 if __name__ == "__main__":
