@@ -1,4 +1,4 @@
-name: fork-only-master-candidate-dashboard-overlay
+name: fork-only-cva6-pages-dashboard-publisher
 
 on:
   push:
@@ -8,9 +8,12 @@ on:
       - .github/workflows/fork-only-master-candidate-dashboard-overlay.yml
   workflow_run:
     workflows:
-      - openhw-cva6-tier-dashboard
+      - openhw-cva6-ci-tier1
+      - openhw-cva6-ci-tier2
     types:
       - completed
+  schedule:
+    - cron: "17 */4 * * *"
   workflow_dispatch:
 
 concurrency:
@@ -19,12 +22,12 @@ concurrency:
 
 permissions:
   actions: read
-  contents: read
+  contents: write
   pages: write
   id-token: write
 
 env:
-  DASHBOARD_SOURCE_SHA: 2de536e3b4b7f1c46b81a41ab9ca4fa0ff21e575
+  DASHBOARD_SOURCE_SHA: e72fa25c7033ab74db40575bc93b9fb3f0b92ca5
   TIER_BRANCH: jchen/master-candidate-openhw-tier-ci
   TARGET_BRANCH: master_candidate
   THALES_DASHBOARD_URL: https://riscv-ci.pages.thales-invia.fr/dashboard/dashboard_cva6.html
@@ -35,7 +38,8 @@ jobs:
     if: >-
       github.repository == 'AlexChenIC/cva6' &&
       (github.event_name != 'workflow_run' ||
-      github.event.workflow_run.conclusion == 'success')
+      github.event.workflow_run.head_branch ==
+      'jchen/master-candidate-openhw-tier-ci')
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
@@ -48,13 +52,22 @@ jobs:
           ref: ${{ env.DASHBOARD_SOURCE_SHA }}
           path: candidate-dashboard-source
 
-      - name: Install dashboard dependency
-        run: python3 -m pip install --disable-pip-version-check jinja2==3.1.6
+      - name: Install dashboard dependencies
+        run: |
+          python3 -m pip install --disable-pip-version-check \
+            jinja2==3.1.6 \
+            pyyaml==6.0.3
 
       - name: Restore published dashboard data
         run: |
           set -euo pipefail
-          mkdir -p /tmp/legacy-data /tmp/tier-data /tmp/legacy-persisted /tmp/tier-persisted
+          mkdir -p \
+            /tmp/legacy-data \
+            /tmp/tier-data \
+            /tmp/master-candidate-data \
+            /tmp/legacy-persisted \
+            /tmp/tier-persisted \
+            /tmp/master-candidate-persisted
           if git ls-remote --exit-code --heads origin gh-pages >/dev/null 2>&1; then
             git fetch origin gh-pages:refs/remotes/origin/gh-pages --depth=1
             git archive origin/gh-pages data | tar -x -C /tmp/legacy-persisted
@@ -64,6 +77,11 @@ jobs:
             git fetch origin gh-pages-cva6-tier-dashboard-data:refs/remotes/origin/gh-pages-cva6-tier-dashboard-data --depth=1
             git archive origin/gh-pages-cva6-tier-dashboard-data data | tar -x -C /tmp/tier-persisted
             cp -r /tmp/tier-persisted/data/. /tmp/tier-data/
+          fi
+          if git ls-remote --exit-code --heads origin gh-pages-master-candidate-dashboard-data >/dev/null 2>&1; then
+            git fetch origin gh-pages-master-candidate-dashboard-data:refs/remotes/origin/gh-pages-master-candidate-dashboard-data --depth=1
+            git archive origin/gh-pages-master-candidate-dashboard-data data | tar -x -C /tmp/master-candidate-persisted
+            cp -r /tmp/master-candidate-persisted/data/. /tmp/master-candidate-data/
           fi
 
       - name: Collect existing dashboard data
@@ -77,7 +95,6 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          mkdir -p /tmp/master-candidate-data
           python3 candidate-dashboard-source/.github/scripts/dashboard_tiers/collect_data.py --repo "${{ github.repository }}" --data-dir /tmp/master-candidate-data --fetch-count 20 --branch "$TIER_BRANCH" --base-branch "$TARGET_BRANCH"
 
       - name: Collect Thales GitLab reference
@@ -112,11 +129,18 @@ jobs:
           path: /tmp/dash-site/master_candidate
           retention-days: 14
 
+      - name: Upload dashboard data for persistence
+        uses: actions/upload-artifact@v4
+        with:
+          name: cva6-dashboard-data-snapshots
+          path: |
+            /tmp/legacy-data/
+            /tmp/tier-data/
+            /tmp/master-candidate-data/
+          retention-days: 7
+
   deploy:
-    if: >-
-      github.repository == 'AlexChenIC/cva6' &&
-      (github.event_name != 'workflow_run' ||
-      github.event.workflow_run.conclusion == 'success')
+    if: github.repository == 'AlexChenIC/cva6'
     needs: build
     runs-on: ubuntu-24.04
     timeout-minutes: 10
@@ -127,3 +151,70 @@ jobs:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
+
+  persist-data:
+    name: Persist ${{ matrix.label }} Data
+    if: github.repository == 'AlexChenIC/cva6'
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: Legacy dashboard
+            branch: gh-pages
+            source: legacy-data
+          - label: Tier dashboard
+            branch: gh-pages-cva6-tier-dashboard-data
+            source: tier-data
+          - label: master_candidate dashboard
+            branch: gh-pages-master-candidate-dashboard-data
+            source: master-candidate-data
+    steps:
+      - name: Checkout fork
+        uses: actions/checkout@v7
+
+      - name: Prepare data branch
+        env:
+          DATA_BRANCH: ${{ matrix.branch }}
+          DATA_LABEL: ${{ matrix.label }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          if git ls-remote --exit-code --heads origin "$DATA_BRANCH" >/dev/null 2>&1; then
+            git fetch origin "$DATA_BRANCH" --depth=1
+            git checkout -B "$DATA_BRANCH" "origin/$DATA_BRANCH"
+          else
+            git checkout --orphan "$DATA_BRANCH"
+            git rm -rf . >/dev/null 2>&1 || true
+            find . -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
+            printf '# %s Data\n' "$DATA_LABEL" > README.md
+            git add README.md
+            git commit -m "Initialize $DATA_LABEL data"
+          fi
+
+      - name: Download data snapshot
+        uses: actions/download-artifact@v4
+        with:
+          name: cva6-dashboard-data-snapshots
+          path: /tmp/dashboard-data
+
+      - name: Commit data update
+        env:
+          DATA_BRANCH: ${{ matrix.branch }}
+          DATA_LABEL: ${{ matrix.label }}
+          DATA_SOURCE: ${{ matrix.source }}
+        run: |
+          set -euo pipefail
+          rm -rf data
+          mkdir data
+          cp -r "/tmp/dashboard-data/$DATA_SOURCE/." data/
+          git add -A data/
+          if git diff --cached --quiet; then
+            echo "No $DATA_LABEL changes"
+          else
+            git commit -m "Update $DATA_LABEL data [skip ci]"
+            git push origin "HEAD:$DATA_BRANCH"
+          fi

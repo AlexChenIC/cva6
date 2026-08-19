@@ -1,13 +1,6 @@
-name: openhw-cva6-tier-dashboard
+name: fork-only-tier-dashboard-preview
 
 on:
-  workflow_run:
-    workflows:
-      - ci
-      - openhw-cva6-ci-tier1
-      - openhw-cva6-ci-tier2
-    types:
-      - completed
   workflow_dispatch:
 
 concurrency:
@@ -16,9 +9,7 @@ concurrency:
 
 permissions:
   actions: read
-  contents: write
-  pages: write
-  id-token: write
+  contents: read
 
 jobs:
   build:
@@ -26,7 +17,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Restore tier dashboard history from gh-pages-cva6-tier-dashboard-data
         run: |
@@ -50,7 +41,7 @@ jobs:
             --fetch-count 20
 
       - name: Install Jinja2
-        run: pip install jinja2
+        run: python3 -m pip install --disable-pip-version-check jinja2==3.1.6
 
       - name: Generate tier dashboard HTML
         run: |
@@ -63,75 +54,9 @@ jobs:
         run: |
           cp -r /tmp/tier-data /tmp/dash-site/data
 
-      - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: /tmp/dash-site
-
       - name: Upload preview artifact
         uses: actions/upload-artifact@v4
         with:
           name: cva6-tier-dashboard-site
           path: /tmp/dash-site
           retention-days: 14
-
-      - name: Upload data for persistence job
-        uses: actions/upload-artifact@v4
-        with:
-          name: cva6-tier-dashboard-data
-          path: /tmp/tier-data/
-          retention-days: 7
-
-  deploy:
-    name: Deploy to Pages
-    needs: build
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v4
-
-  persist-tier-data:
-    name: Persist Tier Dashboard Data
-    needs: build
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v6
-
-      - name: Prepare gh-pages-cva6-tier-dashboard-data branch
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          if git ls-remote --exit-code --heads origin gh-pages-cva6-tier-dashboard-data >/dev/null 2>&1; then
-            git fetch origin gh-pages-cva6-tier-dashboard-data --depth=1
-            git checkout -B gh-pages-cva6-tier-dashboard-data origin/gh-pages-cva6-tier-dashboard-data
-          else
-            git checkout --orphan gh-pages-cva6-tier-dashboard-data
-            git rm -rf . >/dev/null 2>&1 || true
-            find . -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
-            echo "# CVA6 Tier Dashboard Data" > README.md
-            git add README.md
-            git commit -m "Initialize gh-pages-cva6-tier-dashboard-data branch"
-          fi
-
-      - name: Download updated tier data
-        uses: actions/download-artifact@v4
-        with:
-          name: cva6-tier-dashboard-data
-          path: data/
-
-      - name: Commit and push tier data
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add data/
-          if git diff --cached --quiet; then
-            echo "No data changes to commit"
-          else
-            git commit -m "Update cva6 tier dashboard data [skip ci]"
-            git push origin HEAD:gh-pages-cva6-tier-dashboard-data
-          fi
