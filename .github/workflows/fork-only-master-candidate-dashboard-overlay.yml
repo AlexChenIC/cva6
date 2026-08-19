@@ -27,7 +27,7 @@ permissions:
   id-token: write
 
 env:
-  DASHBOARD_SOURCE_SHA: e72fa25c7033ab74db40575bc93b9fb3f0b92ca5
+  DASHBOARD_SOURCE_SHA: 0c34448ec0bf51ea513764d7d38987e475bd4a68
   TIER_BRANCH: jchen/master-candidate-openhw-tier-ci
   TARGET_BRANCH: master_candidate
   THALES_DASHBOARD_URL: https://riscv-ci.pages.thales-invia.fr/dashboard/dashboard_cva6.html
@@ -118,19 +118,19 @@ jobs:
           touch /tmp/dash-site/.nojekyll
 
       - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@v5
         with:
           path: /tmp/dash-site
 
       - name: Upload dashboard preview
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: cva6-master-candidate-dashboard-overlay
           path: /tmp/dash-site/master_candidate
           retention-days: 14
 
       - name: Upload dashboard data for persistence
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: cva6-dashboard-data-snapshots
           path: |
@@ -196,7 +196,7 @@ jobs:
           fi
 
       - name: Download data snapshot
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: cva6-dashboard-data-snapshots
           path: /tmp/dashboard-data
