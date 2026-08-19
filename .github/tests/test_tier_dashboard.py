@@ -178,44 +178,6 @@ class ThalesCollectorTest(unittest.TestCase):
     </div>
     """
 
-    RELEVANT_PAGE = PAGE + """
-    <div class="list-group-item list-group-item-action py-3">
-      <button class="btn btn-danger m-1">FAIL</button>
-      <strong>Feature validation
-        <span class="badge bg-warning text-white rounded-pill"> dev/relevant</span>
-        <a href=https://github.com/openhwgroup/cva6/commit/89abcdef0123456789abcdef0123456789abcdef>sha</a>
-      </strong>
-      <small>Authored by CI User | Pipeline ID:
-        <a href=https://gitlab.thales-invia.fr/riscv-ci/cva6/-/pipelines/58298>58298</a>
-      </small>
-      <script>timeDifference_absolute(5916)</script>
-      <script>timeDifference_from_now(1786631841)</script>
-      <div class="col-12 border-top p-1">
-        <button class="btn btn-success m-1"><small>PASS</small></button>
-        <strong>Testlist RTL run - cv32a60x_axi - base_rv32_p</strong>
-        <a href=https://gitlab.thales-invia.fr/riscv-ci/cva6/-/jobs/296314>job</a>
-        <script>timeDifference_absolute(25)</script>
-      </div>
-      <div class="col-12 border-top p-1">
-        <button class="btn btn-success m-1"><small>PASS</small></button>
-        <strong>Testlist RTL run - cv32a65x_axi - base_rv32_p</strong>
-        <a href=https://gitlab.thales-invia.fr/riscv-ci/cva6/-/jobs/296333>job</a>
-        <script>timeDifference_absolute(26)</script>
-      </div>
-      <div class="col-12 border-top p-1">
-        <button class="btn btn-success m-1"><small>PASS</small></button>
-        <strong>Testlist RTL run - cv32a65x_axi - base_pmp</strong>
-        <a href=https://gitlab.thales-invia.fr/riscv-ci/cva6/-/jobs/296335>job</a>
-        <script>timeDifference_absolute(29)</script>
-      </div>
-      <div class="col-12 border-top p-1">
-        <button class="btn btn-danger m-1"><small>FAIL</small></button>
-        <strong>Testlist RTL run - cv32a60x - base_zcmt</strong>
-        <script>timeDifference_absolute(31)</script>
-      </div>
-    </div>
-    """
-
     def test_latest_public_pipeline_is_parsed(self) -> None:
         result = thales_collector.parse_latest_pipeline(self.PAGE)
         self.assertEqual(result["status"], "success")
@@ -224,28 +186,6 @@ class ThalesCollectorTest(unittest.TestCase):
         self.assertEqual(result["pipeline_id"], 58367)
         self.assertEqual(result["backend"], "VCS/UVM")
         self.assertNotIn("pipeline_url", result)
-
-    def test_latest_testlist_pipeline_is_selected(self) -> None:
-        result = thales_collector.parse_public_dashboard(self.RELEVANT_PAGE)
-        snapshot = result["testlist_evidence"]
-
-        self.assertEqual(result["pipeline_id"], 58367)
-        self.assertEqual(snapshot["pipeline_id"], 58298)
-        self.assertEqual(snapshot["total_jobs"], 4)
-        self.assertEqual(snapshot["passed_jobs"], 3)
-        self.assertEqual(snapshot["failed_jobs"], 1)
-        self.assertEqual(snapshot["pass_rate"], 75.0)
-        self.assertEqual(
-            {(job["config"], job["testcase"]) for job in snapshot["jobs"]},
-            {
-                ("cv32a60x_axi", "base_rv32_p"),
-                ("cv32a65x_axi", "base_rv32_p"),
-                ("cv32a65x_axi", "base_pmp"),
-                ("cv32a60x", "base_zcmt"),
-            },
-        )
-        self.assertNotIn("pipeline_url", json.dumps(result))
-        self.assertNotIn("/-/jobs/", json.dumps(result))
 
     def test_previous_reference_survives_fetch_failure(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -314,9 +254,7 @@ class GeneratorTest(unittest.TestCase):
                 ],
             }
 
-        thales = thales_collector.parse_public_dashboard(
-            ThalesCollectorTest.RELEVANT_PAGE
-        )
+        thales = thales_collector.parse_public_dashboard(ThalesCollectorTest.PAGE)
         thales["collected_at"] = "2026-08-18T10:03:00Z"
         thales["stale"] = False
         with tempfile.TemporaryDirectory() as directory:
@@ -364,11 +302,11 @@ class GeneratorTest(unittest.TestCase):
         self.assertIn("VCS/UVM", page)
         self.assertIn("Thales GitLab", page)
         self.assertIn("Latest public pipeline", page)
-        self.assertIn("Latest Testlist evidence", page)
+        self.assertNotIn("Latest Testlist evidence", page)
         self.assertIn("#58367", page)
-        self.assertIn("#58298", page)
         self.assertIn("Different source revisions", page)
         self.assertIn(">REFERENCE<", page)
+        self.assertNotIn("Collected ", page)
         self.assertIn("GitHub Tier Coverage Matrix", page)
         self.assertNotIn('for="wf-thales"', page)
         self.assertNotIn("Thales GitLab Testlist Trend", page)
@@ -379,6 +317,9 @@ class GeneratorTest(unittest.TestCase):
         self.assertNotIn("gitlab.thales-invia.fr/riscv-ci/cva6/-/pipelines", page)
         self.assertIn(thales_collector.DEFAULT_URL, page)
         self.assertIn("Execution Environment", page)
+        self.assertGreater(
+            page.index("Execution Environment"), page.index("GitHub Run History")
+        )
         self.assertIn("13.2.0", page)
         self.assertIn("1.1.1-dev 69c5379", page)
         self.assertIn("Verilator 5.008", page)
@@ -399,18 +340,6 @@ class GeneratorTest(unittest.TestCase):
                 workflows, {"head_sha_full": "thales-sha"}
             )["kind"],
             "different",
-        )
-        self.assertEqual(
-            generator.thales_card_state(
-                {"kind": "different"}, {"status": "failure"}
-            ),
-            "unknown",
-        )
-        self.assertEqual(
-            generator.thales_card_state(
-                {"kind": "match"}, {"status": "failure"}
-            ),
-            "failure",
         )
         self.assertEqual(
             generator.source_relation(

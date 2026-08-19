@@ -275,8 +275,6 @@ def load_thales_reference(data_dir: Path, now: datetime) -> dict:
             ),
             "created_at_display": "N/A",
             "duration_display": "N/A",
-            "evidence": {},
-            "collection_freshness": freshness("", now),
         }
 
     reference["created_at_display"] = format_datetime(reference.get("created_at", ""))
@@ -284,25 +282,6 @@ def load_thales_reference(data_dir: Path, now: datetime) -> dict:
     reference["duration_display"] = format_duration(
         reference.get("duration_seconds", 0)
     )
-    reference["collection_freshness"] = freshness(
-        reference.get("collected_at", ""),
-        now,
-        forced_stale=bool(reference.get("stale")),
-    )
-    evidence = reference.get("testlist_evidence", {})
-    if not evidence:
-        evidence = reference.get("latest_matrix_snapshot", {})
-    if not isinstance(evidence, dict):
-        evidence = {}
-    if evidence:
-        evidence["created_at_display"] = format_datetime(
-            evidence.get("created_at", "")
-        )
-        evidence["duration_display"] = format_duration(
-            evidence.get("duration_seconds", 0)
-        )
-        evidence["observed_age"] = age_label(evidence.get("created_at", ""), now)
-    reference["evidence"] = evidence
     return reference
 
 
@@ -331,13 +310,6 @@ def build_matrix_metadata(workflows: list[dict]) -> dict:
     }
 
 
-def thales_card_state(relation: dict[str, str], evidence: dict) -> str:
-    if relation.get("kind") != "match":
-        return "unknown"
-    status = evidence.get("status", "unknown")
-    return status if status in {"success", "failure"} else "unknown"
-
-
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--data-dir", default="data")
@@ -357,9 +329,7 @@ def main() -> None:
     workflows = build_workflows_context(all_data, now)
     thales = load_thales_reference(data_dir, now)
     matrix, matrix_orders = build_matrix(all_data)
-    metadata = load_json(data_dir / "metadata.json", {})
-    github_freshness = freshness(metadata.get("generated_at", ""), now)
-    relation = source_relation(workflows, thales.get("evidence", {}))
+    relation = source_relation(workflows, thales)
 
     context = {
         "generated_at": now.strftime("%Y-%m-%d %H:%M UTC"),
@@ -368,10 +338,6 @@ def main() -> None:
         "workflows": workflows,
         "thales": thales,
         "source_relation": relation,
-        "thales_card_state": thales_card_state(
-            relation, thales.get("evidence", {})
-        ),
-        "github_freshness": github_freshness,
         "matrix_data": matrix,
         "matrix_metadata": build_matrix_metadata(workflows),
         "matrix_orders": matrix_orders,

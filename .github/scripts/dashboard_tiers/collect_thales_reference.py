@@ -85,57 +85,6 @@ def parse_pipeline_summary(card: str, dashboard_url: str) -> dict:
     }
 
 
-def parse_testlist_jobs(card: str) -> list[dict]:
-    jobs = []
-    for block in card.split(JOB_MARKER)[1:]:
-        name_match = re.search(
-            r"<strong>\s*Testlist RTL run - (.*?) - (.*?)</strong>", block
-        )
-        if not name_match:
-            continue
-
-        config = clean_text(name_match.group(1))
-        testcase = clean_text(name_match.group(2))
-
-        status_match = re.search(
-            r'<button class="btn btn-(?:success|danger|warning)[^"]*"[^>]*>'
-            r"\s*(?:<small>)?([^<]+)(?:</small>)?\s*</button>",
-            block,
-        )
-        if not status_match:
-            continue
-
-        status_label = clean_text(status_match.group(1)).upper()
-        status = {"PASS": "success", "FAIL": "failure"}.get(
-            status_label, "unknown"
-        )
-        duration_match = re.search(r"timeDifference_absolute\(([0-9]+)\)", block)
-        jobs.append(
-            {
-                "config": config,
-                "testcase": testcase,
-                "conclusion": status,
-                "status_label": status_label,
-                "duration_seconds": (
-                    int(duration_match.group(1)) if duration_match else 0
-                ),
-            }
-        )
-    return jobs
-
-
-def add_testlist_job_summary(summary: dict, card: str) -> dict:
-    jobs = parse_testlist_jobs(card)
-    passed = sum(job["conclusion"] == "success" for job in jobs)
-    failed = sum(job["conclusion"] == "failure" for job in jobs)
-    summary["jobs"] = jobs
-    summary["passed_jobs"] = passed
-    summary["failed_jobs"] = failed
-    summary["total_jobs"] = len(jobs)
-    summary["pass_rate"] = round(passed / len(jobs) * 100, 1) if jobs else 0
-    return summary
-
-
 def parse_latest_pipeline(page: str, dashboard_url: str = DEFAULT_URL) -> dict:
     return parse_pipeline_summary(split_pipeline_cards(page)[0], dashboard_url)
 
@@ -144,22 +93,7 @@ def parse_public_dashboard(
     page: str,
     dashboard_url: str = DEFAULT_URL,
 ) -> dict:
-    cards = split_pipeline_cards(page)
-    latest = parse_pipeline_summary(cards[0], dashboard_url)
-    evidence = {}
-    for card in cards:
-        try:
-            summary = add_testlist_job_summary(
-                parse_pipeline_summary(card, dashboard_url), card
-            )
-        except ValueError:
-            continue
-        if summary["jobs"]:
-            evidence = summary
-            break
-
-    latest["testlist_evidence"] = evidence
-    return latest
+    return parse_latest_pipeline(page, dashboard_url)
 
 
 def fetch_page(url: str, timeout: int) -> str:
@@ -184,7 +118,6 @@ def unavailable_reference(url: str, error: Exception) -> dict:
         "status_label": "UNAVAILABLE",
         "stale": False,
         "dashboard_url": url,
-        "testlist_evidence": {},
         "error": str(error),
     }
 

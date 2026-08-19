@@ -57,7 +57,6 @@
     .freshness-fresh { background: #d1e7dd; color: #0a3622; }
     .freshness-stale { background: #fff3cd; color: #664d03; }
     .freshness-unknown { background: #e9ecef; color: #495057; }
-    .reference-block { border-top: 1px solid #e5e7eb; padding-top: 0.65rem; }
     .reference-label {
       color: #495057;
       font-size: 0.7rem;
@@ -208,13 +207,6 @@
               <strong>Completed:</strong> {{ wf.latest.updated_at_display }}
               ({{ wf.latest.observed_age }})
             </div>
-            <div class="mt-1">
-              <span class="badge freshness-badge freshness-{{ 'stale' if github_freshness.stale else ('fresh' if github_freshness.label == 'FRESH' else 'unknown') }}">
-                {{ github_freshness.label }}
-              </span>
-              Collected {{ github_freshness.age }}
-              &middot; {{ github_freshness.display }}
-            </div>
           </div>
           <div class="mt-3">
             {% if wf.latest.html_url %}
@@ -228,21 +220,14 @@
     </div>
     {% endfor %}
 
-    {% set thales_evidence = thales.evidence %}
     <div class="col-md-6 col-xl-4">
-      <div class="card status-card shadow-sm {{ 'pass' if thales_card_state == 'success' else ('fail' if thales_card_state == 'failure' else 'unknown') }}">
+      <div class="card status-card shadow-sm unknown">
         <div class="card-body">
           <div class="d-flex justify-content-between align-items-start mb-2">
             <div>
               <h6 class="card-title mb-1">Thales GitLab (Reference, VCS/UVM)</h6>
             </div>
-            {% if thales_card_state == 'success' %}
-              <span class="badge badge-pass">COMPARABLE PASS</span>
-            {% elif thales_card_state == 'failure' %}
-              <span class="badge badge-fail">COMPARABLE FAIL</span>
-            {% else %}
-              <span class="badge badge-skip">REFERENCE</span>
-            {% endif %}
+            <span class="badge badge-skip">REFERENCE</span>
           </div>
           <div class="text-muted" style="font-size:0.8rem">
             {% if thales.available %}
@@ -267,43 +252,8 @@
             <div>Latest public pipeline is unavailable.</div>
             {% endif %}
 
-            <div class="reference-block mt-2">
-              <div class="reference-label">Latest Testlist evidence</div>
-            {% if thales_evidence %}
-            <div>
-              <strong>#{{ thales_evidence.pipeline_id }}</strong>
-              &middot;
-              {% if thales_evidence.status == 'success' %}
-                <span class="badge badge-pass">PASS</span>
-              {% elif thales_evidence.status == 'failure' %}
-                <span class="badge badge-fail">FAIL</span>
-              {% else %}
-                <span class="badge badge-skip">UNKNOWN</span>
-              {% endif %}
-              &middot; {{ thales_evidence.branch }} @ <code>{{ thales_evidence.head_sha }}</code>
-            </div>
-            <div>
-              {{ thales_evidence.passed_jobs }} passed /
-              {{ thales_evidence.failed_jobs }} failed
-              ({{ thales_evidence.total_jobs }} observed jobs)
-            </div>
-            <div>
-              {{ thales_evidence.created_at_display }}
-              ({{ thales_evidence.observed_age }})
-            </div>
-            {% else %}
-            <div>No public pipeline containing Testlist RTL run evidence was found.</div>
-            {% endif %}
-            </div>
             <div class="mt-1 relation-{{ source_relation.kind }}">
               <strong>{{ source_relation.label }}</strong>
-            </div>
-            <div class="mt-1">
-              <span class="badge freshness-badge freshness-{{ 'stale' if thales.collection_freshness.stale else ('fresh' if thales.collection_freshness.label == 'FRESH' else 'unknown') }}">
-                {{ thales.collection_freshness.label }}
-              </span>
-              Collected {{ thales.collection_freshness.age }}
-              &middot; {{ thales.collection_freshness.display }}
             </div>
             {% if thales.stale %}
             <div class="text-warning-emphasis">Refresh failed; previous data retained.</div>
@@ -317,83 +267,6 @@
         </div>
       </div>
     </div>
-  </div>
-</section>
-
-<section class="mb-4">
-  <h5 class="text-muted mb-3">Execution Environment</h5>
-  <div class="table-responsive border rounded bg-white shadow-sm d-none d-md-block">
-    <table class="table table-sm environment-table mb-0">
-      <thead class="table-light">
-        <tr>
-          <th>Tier</th>
-          <th>Artifact sample</th>
-          <th>GCC</th>
-          <th>Spike</th>
-          <th>Verilator</th>
-          <th>Metadata</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for wf in workflows %}
-        {% set environment = wf.latest.environment %}
-        <tr>
-          <td class="text-nowrap"><strong>{{ wf.display_name }}</strong></td>
-          {% if environment.available %}
-          <td><code>{{ environment.artifact_name }}</code></td>
-          <td>{{ environment.gcc_version or 'N/A' }}</td>
-          <td>{{ environment.spike_version or 'N/A' }}</td>
-          <td>{{ environment.verilator_version or 'N/A' }}</td>
-          <td>
-            {% if environment.source_revision %}<code>{{ environment.source_revision[:8] }}</code>{% else %}N/A{% endif %}
-            {% if environment.freshness %}
-            <br><span class="badge freshness-badge freshness-{{ 'stale' if environment.freshness.stale else ('fresh' if environment.freshness.label == 'FRESH' else 'unknown') }}">
-              {{ environment.freshness.label }}
-            </span>
-            {% endif %}
-          </td>
-          {% else %}
-          <td colspan="5" class="text-muted">Environment metadata is unavailable for the latest retained run.</td>
-          {% endif %}
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
-  <div class="border rounded bg-white shadow-sm d-md-none">
-    {% for wf in workflows %}
-    {% set environment = wf.latest.environment %}
-    <div class="environment-mobile-row">
-      <div class="d-flex justify-content-between align-items-start gap-2 mb-2">
-        <strong>{{ wf.display_name }}</strong>
-        {% if environment.freshness %}
-        <span class="badge freshness-badge freshness-{{ 'stale' if environment.freshness.stale else ('fresh' if environment.freshness.label == 'FRESH' else 'unknown') }}">
-          {{ environment.freshness.label }}
-        </span>
-        {% endif %}
-      </div>
-      {% if environment.available %}
-      <div class="environment-key">Artifact sample</div>
-      <div class="environment-value mb-2"><code>{{ environment.artifact_name }}</code></div>
-      <div class="row g-2">
-        <div class="col-6">
-          <div class="environment-key">GCC</div>
-          <div class="environment-value">{{ environment.gcc_version or 'N/A' }}</div>
-        </div>
-        <div class="col-6">
-          <div class="environment-key">Spike</div>
-          <div class="environment-value">{{ environment.spike_version or 'N/A' }}</div>
-        </div>
-        <div class="col-12">
-          <div class="environment-key">Verilator</div>
-          <div class="environment-value">{{ environment.verilator_version or 'N/A' }}</div>
-        </div>
-      </div>
-      {% else %}
-      <div class="environment-value text-muted">Environment metadata is unavailable.</div>
-      {% endif %}
-    </div>
-    {% endfor %}
   </div>
 </section>
 
@@ -553,6 +426,83 @@
           {% endif %}
         </div>
       </div>
+    </div>
+    {% endfor %}
+  </div>
+</section>
+
+<section class="mb-4">
+  <h5 class="text-muted mb-3">Execution Environment</h5>
+  <div class="table-responsive border rounded bg-white shadow-sm d-none d-md-block">
+    <table class="table table-sm environment-table mb-0">
+      <thead class="table-light">
+        <tr>
+          <th>Tier</th>
+          <th>Artifact sample</th>
+          <th>GCC</th>
+          <th>Spike</th>
+          <th>Verilator</th>
+          <th>Metadata</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for wf in workflows %}
+        {% set environment = wf.latest.environment %}
+        <tr>
+          <td class="text-nowrap"><strong>{{ wf.display_name }}</strong></td>
+          {% if environment.available %}
+          <td><code>{{ environment.artifact_name }}</code></td>
+          <td>{{ environment.gcc_version or 'N/A' }}</td>
+          <td>{{ environment.spike_version or 'N/A' }}</td>
+          <td>{{ environment.verilator_version or 'N/A' }}</td>
+          <td>
+            {% if environment.source_revision %}<code>{{ environment.source_revision[:8] }}</code>{% else %}N/A{% endif %}
+            {% if environment.freshness %}
+            <br><span class="badge freshness-badge freshness-{{ 'stale' if environment.freshness.stale else ('fresh' if environment.freshness.label == 'FRESH' else 'unknown') }}">
+              {{ environment.freshness.label }}
+            </span>
+            {% endif %}
+          </td>
+          {% else %}
+          <td colspan="5" class="text-muted">Environment metadata is unavailable for the latest retained run.</td>
+          {% endif %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="border rounded bg-white shadow-sm d-md-none">
+    {% for wf in workflows %}
+    {% set environment = wf.latest.environment %}
+    <div class="environment-mobile-row">
+      <div class="d-flex justify-content-between align-items-start gap-2 mb-2">
+        <strong>{{ wf.display_name }}</strong>
+        {% if environment.freshness %}
+        <span class="badge freshness-badge freshness-{{ 'stale' if environment.freshness.stale else ('fresh' if environment.freshness.label == 'FRESH' else 'unknown') }}">
+          {{ environment.freshness.label }}
+        </span>
+        {% endif %}
+      </div>
+      {% if environment.available %}
+      <div class="environment-key">Artifact sample</div>
+      <div class="environment-value mb-2"><code>{{ environment.artifact_name }}</code></div>
+      <div class="row g-2">
+        <div class="col-6">
+          <div class="environment-key">GCC</div>
+          <div class="environment-value">{{ environment.gcc_version or 'N/A' }}</div>
+        </div>
+        <div class="col-6">
+          <div class="environment-key">Spike</div>
+          <div class="environment-value">{{ environment.spike_version or 'N/A' }}</div>
+        </div>
+        <div class="col-12">
+          <div class="environment-key">Verilator</div>
+          <div class="environment-value">{{ environment.verilator_version or 'N/A' }}</div>
+        </div>
+      </div>
+      {% else %}
+      <div class="environment-value text-muted">Environment metadata is unavailable.</div>
+      {% endif %}
     </div>
     {% endfor %}
   </div>
