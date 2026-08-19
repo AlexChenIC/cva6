@@ -90,19 +90,19 @@ jobs:
           cp -r /tmp/tier-data /tmp/dash-site/data
 
       - name: Upload dashboard preview
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: cva6-master-candidate-tier-dashboard
           path: /tmp/dash-site
           retention-days: 14
 
       - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@v5
         with:
           path: /tmp/dash-site
 
       - name: Upload data for persistence
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: cva6-master-candidate-tier-dashboard-data
           path: /tmp/tier-data/
@@ -148,7 +148,7 @@ jobs:
           fi
 
       - name: Download updated data
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: cva6-master-candidate-tier-dashboard-data
           path: data/
