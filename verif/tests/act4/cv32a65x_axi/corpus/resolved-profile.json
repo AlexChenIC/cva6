@@ -1,0 +1,121 @@
+{
+  "schema_version": 1,
+  "target": "cv32a65x_axi",
+  "base_profile": "cv32a65x",
+  "act4": {
+    "repository": "https://github.com/riscv/riscv-arch-test.git",
+    "branch": "act4",
+    "commit": "ffb1fffc78b264c6c0a0676532d89eaa2e8d8918",
+    "inputs": {
+      "linker_script": {
+        "path": "config/cores/cva6/link.ld",
+        "sha256": "b7ba2c8ad79953eb2d7ee93fd84ce74c73c24e592993d1ec6b154cb5a0dc69bc"
+      },
+      "rvmodel_macros": {
+        "path": "config/cores/cva6/rvmodel_macros.h",
+        "sha256": "49a19429cbac6bab4722fb47a37b835b58ba0cb7a31b7b1214fd26969e562885"
+      },
+      "sail": {
+        "path": "config/cores/cva6/cv32a65x/sail.json",
+        "sha256": "14e3ba1dc10ea9b3496b348f2bf1d615ec02f086f303af30be7121f46720dd9a"
+      },
+      "test_config": {
+        "path": "config/cores/cva6/cv32a65x/test_config.yaml",
+        "sha256": "fe64f9a9f2352b0bfb7fc396252e5397da7cf9cd92ad2d4323d615336424e5dd"
+      },
+      "udb": {
+        "path": "config/cores/cva6/cv32a65x/cv32a65x.yaml",
+        "sha256": "13497f9ff83b0a856d3285b4dab07e4a98afe87d6cc8c33bd35e9275fbb271f9"
+      }
+    }
+  },
+  "cva6": {
+    "baseline_commit": "e7c272c93dc0db08d030f1ebe7412af8d78dae6b",
+    "target": "cv32a65x_axi",
+    "files": {
+      "rtl_config": {
+        "path": "config/target/cv32a65x_axi/rtl_cfg_pkg.sv",
+        "sha256": "82dd0d1f568c5162103d7ebfefa48d7007fd761c6680fec929990f0461ed97af"
+      },
+      "isa_config": {
+        "path": "config/target/cv32a65x_axi/isa.yml",
+        "sha256": "acfcbc4f06123aca309c6cce846032be0fe7be8c10171942307caa0007f687c4"
+      },
+      "spike_config": {
+        "path": "config/target/cv32a65x_axi/spike.yaml",
+        "sha256": "5cfaf04526771d541a984cebccf9de5f42a4e0eab2c0f20923f98fd8d7c74f1b"
+      }
+    }
+  },
+  "generation_environment": {
+    "container": {
+      "image": "ghcr.io/riscv/act4-build:latest",
+      "digest": "sha256:3167a1e637af1ee068b3c2d14ef890689628490f469e5ac1b8238b1ecaa61a6d",
+      "platform": "linux/arm64",
+      "pin_policy": "digest"
+    },
+    "observed_tools": {
+      "gcc": "16.1.0",
+      "binutils": "2.46",
+      "sail": "0.13.1",
+      "mise": "2026.7.0",
+      "uv": "0.11.33",
+      "ruby": "3.4.10",
+      "bundler": "4.0.18"
+    }
+  },
+  "generation_scope": {
+    "include_priv_tests": false,
+    "selection_policy": "all-compatible-unprivileged",
+    "requested_suites": "auto",
+    "declared_extensions": [
+      "I",
+      "M",
+      "Zmmul",
+      "C",
+      "Zba",
+      "Zbb",
+      "Zbs",
+      "Zca",
+      "Zbc",
+      "Zcb",
+      "Zicsr",
+      "Sm",
+      "Zifencei",
+      "Zcmt"
+    ],
+    "known_suite_gaps": {
+      "Zcmt": "Declared by cv32a65x_axi, but the pinned ACT tree has no Zcmt test suite; it is not certified by this corpus."
+    }
+  },
+  "overlay_sha256": "dbe52f367287efb76d7d59cb482499cef5b3a094bc0fab0b290e0cbbdeb1e692",
+  "sail_reference_only_mmio": {
+    "simple_interrupt_generator": {
+      "base": 352321536,
+      "size": 4096,
+      "present_in_dut_macros": false
+    }
+  },
+  "outputs": {
+    "linker_script": {
+      "path": "link.ld",
+      "sha256": "b7ba2c8ad79953eb2d7ee93fd84ce74c73c24e592993d1ec6b154cb5a0dc69bc"
+    },
+    "rvmodel_macros": {
+      "path": "rvmodel_macros.h",
+      "sha256": "49a19429cbac6bab4722fb47a37b835b58ba0cb7a31b7b1214fd26969e562885"
+    },
+    "sail": {
+      "path": "sail.json",
+      "sha256": "3b451010e8748c4fe0a363e9320c7b8934b1d45d70f50246b08f831791b00bcc"
+    },
+    "test_config": {
+      "path": "test_config.yaml",
+      "sha256": "4ef355f91856ed2966bb984cf1196601e4f2b580178351f81e267c7d0fe9344b"
+    },
+    "udb": {
+      "path": "cv32a65x_axi.yaml",
+      "sha256": "99ce2ec7b1adb9090f0f1f19140b69835d9f6b16bdb84e805bed4baa8adde8a7"
+    }
+  }
+}

@@ -1,0 +1,245 @@
+{
+  "schema_version": 1,
+  "target": "cv32a65x_axi",
+  "base_profile": "cv32a65x",
+  "generation": {
+    "include_priv_tests": false,
+    "selection_policy": "all-compatible-unprivileged",
+    "requested_suites": "auto",
+    "declared_extensions": [
+      "I",
+      "M",
+      "Zmmul",
+      "C",
+      "Zba",
+      "Zbb",
+      "Zbs",
+      "Zca",
+      "Zbc",
+      "Zcb",
+      "Zicsr",
+      "Sm",
+      "Zifencei",
+      "Zcmt"
+    ],
+    "known_suite_gaps": {
+      "Zcmt": "Declared by cv32a65x_axi, but the pinned ACT tree has no Zcmt test suite; it is not certified by this corpus."
+    }
+  },
+  "base_assertions": {
+    "udb": {
+      "name": "cv32a65x",
+      "params": {
+        "MXLEN": 32,
+        "NUM_PMP_ENTRIES": 0
+      }
+    },
+    "sail": {
+      "base": {
+        "xlen": 32,
+        "writable_misa": false
+      },
+      "memory": {
+        "pmp": {
+          "count": 0,
+          "usable_count": 0
+        }
+      },
+      "platform": {
+        "simple_interrupt_generator": {
+          "supported": false,
+          "base": 0
+        }
+      },
+      "extensions": {
+        "S": {
+          "supported": false
+        },
+        "U": {
+          "supported": false
+        },
+        "Zifencei": {
+          "supported": false
+        }
+      }
+    },
+    "test_config": {
+      "name": "cv32a65x",
+      "udb_config": "cv32a65x.yaml",
+      "linker_script": "link.ld",
+      "dut_include_dir": "."
+    }
+  },
+  "udb_updates": {
+    "name": "cv32a65x_axi",
+    "description": "OpenHW Group CVA6 cv32a65x_axi configuration resolved from the pinned ACT cv32a65x profile",
+    "params": {
+      "NUM_PMP_ENTRIES": 16,
+      "NUM_USABLE_PMP_ENTRIES": 8,
+      "PMP_GRANULARITY": 3,
+      "PMP_NA4_SUPPORTED": false,
+      "PMP_NAPOT_SUPPORTED": false,
+      "PMP_TOR_SUPPORTED": true,
+      "JVT_BASE_TYPE": "mask",
+      "JVT_READ_ONLY": false,
+      "JVT_BASE_MASK": 2147483584,
+      "HPM_COUNTER_EN": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ]
+    }
+  },
+  "implemented_extensions_add": [
+    {
+      "name": "Zmmul",
+      "version": "= 1.0.0"
+    },
+    {
+      "name": "Zifencei",
+      "version": "= 2.0"
+    },
+    {
+      "name": "Zcmt",
+      "version": "= 1.0.0"
+    }
+  ],
+  "sail_updates": {
+    "base": {
+      "writable_hpm_counters": {
+        "len": 32,
+        "value": "0x0000_0000"
+      }
+    },
+    "memory": {
+      "pmp": {
+        "grain": 1,
+        "count": 16,
+        "usable_count": 8,
+        "tor_supported": true,
+        "na4_supported": false,
+        "napot_supported": false
+      }
+    },
+    "platform": {
+      "simple_interrupt_generator": {
+        "supported": true,
+        "base": 352321536
+      }
+    },
+    "extensions": {
+      "Zifencei": {
+        "supported": true
+      }
+    }
+  },
+  "sail_memory_regions_append": [
+    {
+      "label": "simple_interrupt_generator (Sail reference model only)",
+      "copy_attributes_from_base": "0x10000000",
+      "base": {
+        "len": 64,
+        "value": "0x15000000"
+      },
+      "size": {
+        "len": 64,
+        "value": "0x00001000"
+      },
+      "include_in_device_tree": false
+    }
+  ],
+  "test_config_updates": {
+    "name": "cv32a65x_axi",
+    "ref_model_type": "sail",
+    "udb_config": "cv32a65x_axi.yaml",
+    "linker_script": "link.ld",
+    "dut_include_dir": ".",
+    "include_priv_tests": false
+  },
+  "resolved_assertions": {
+    "udb": {
+      "name": "cv32a65x_axi",
+      "params": {
+        "MXLEN": 32,
+        "NUM_PMP_ENTRIES": 16,
+        "NUM_USABLE_PMP_ENTRIES": 8,
+        "PMP_GRANULARITY": 3,
+        "PMP_NA4_SUPPORTED": false,
+        "PMP_NAPOT_SUPPORTED": false,
+        "PMP_TOR_SUPPORTED": true,
+        "JVT_BASE_TYPE": "mask",
+        "JVT_READ_ONLY": false,
+        "JVT_BASE_MASK": 2147483584
+      }
+    },
+    "sail": {
+      "base": {
+        "xlen": 32
+      },
+      "memory": {
+        "pmp": {
+          "grain": 1,
+          "count": 16,
+          "usable_count": 8,
+          "tor_supported": true,
+          "na4_supported": false,
+          "napot_supported": false
+        }
+      },
+      "platform": {
+        "simple_interrupt_generator": {
+          "supported": true,
+          "base": 352321536
+        }
+      },
+      "extensions": {
+        "S": {
+          "supported": false
+        },
+        "U": {
+          "supported": false
+        },
+        "Zifencei": {
+          "supported": true
+        }
+      }
+    },
+    "test_config": {
+      "name": "cv32a65x_axi",
+      "ref_model_type": "sail",
+      "udb_config": "cv32a65x_axi.yaml",
+      "linker_script": "link.ld",
+      "dut_include_dir": ".",
+      "include_priv_tests": false
+    }
+  }
+}

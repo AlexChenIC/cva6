@@ -1,7 +1,7 @@
 # Copyright 2026 OpenHW Group
 # Licensed under the Apache License, Version 2.0, see LICENSE for details.
 # SPDX-License-Identifier: Apache-2.0
-# Cook and Verilator tandem sanity checks for master_candidate AXI targets.
+# Cook/Verilator sanity checks plus frozen self-checking ACT4 for master_candidate AXI targets.
 
 name: openhw-cva6-ci-tier1
 
@@ -31,6 +31,10 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          # ACT4 provenance tests prove that the locked CVA6 baseline is an
+          # ancestor of the checked-out revision; a depth-1 clone cannot make
+          # that claim once this integration gains its first commit.
+          fetch-depth: 0
           submodules: recursive
 
       - name: Setup CVA6 Environment
@@ -41,6 +45,9 @@ jobs:
 
       - name: Test Verilator TestHarness result handling
         run: python3 .github/tests/test_verilator_testharness_safety.py -v
+
+      - name: Test ACT4 frozen-corpus safety
+        run: python3 -m unittest discover -s .github/tests -p 'test_act4_*.py' -v
 
   execute-rv32-tier1:
     name: RV32 Tier1 ${{ matrix.config }} / ${{ matrix.testcase }}
@@ -100,5 +107,52 @@ jobs:
             build/${{ matrix.config }}/compile/
             build/${{ matrix.config }}/simulation/sim_verilator_testharness/
             build/${{ matrix.config }}/config/
+          if-no-files-found: error
+          retention-days: 14
+
+  execute-cv32a65x-axi-act4-tier1:
+    name: RV32 Tier1 cv32a65x_axi / ACT4 frozen corpus
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    needs: setup-tools
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+
+      - name: Setup CVA6 Environment
+        uses: ./.github/actions/setup-cva6-env
+        with:
+          install-cook-dependencies: "true"
+
+      - name: Install simulation prerequisites
+        run: source ci/install-prereq.sh
+
+      - name: Run cv32a65x_axi ACT4 frozen corpus
+        env:
+          # ACT4 ELFs are self-checking. Keep the global tandem setting out of
+          # both the TestHarness build and runtime; FESVR is still a link-time
+          # dependency supplied by the cached Spike installation.
+          SPIKE_TANDEM: ""
+          TIER_NAME: Tier 1 ACT4
+          TIER_MODE: act4-prebuilt
+          TIER_CONFIG: cv32a65x_axi
+          TIER_ACT4_CORPUS: verif/tests/act4/cv32a65x_axi/corpus
+          TIER_ACT4_CYCLE_TIMEOUT: 10000000
+          TIER_ACT4_WALL_TIMEOUT_SECONDS: 300
+          TIER_EVENT_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          TIER_EVENT_BASE_SHA: ${{ github.event.pull_request.base.sha || '' }}
+        run: bash .github/scripts/run-tier-regression.sh
+
+      - name: Upload ACT4 Results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tier1-act4-cv32a65x-axi
+          path: |
+            ci-results/
+            artifacts/act4/
+            artifacts/reports/
           if-no-files-found: error
           retention-days: 14

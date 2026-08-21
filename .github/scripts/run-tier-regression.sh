@@ -29,6 +29,21 @@ TIER_HWCONFIG_OPTS="${TIER_HWCONFIG_OPTS:-}"
 TIER_TOOLCHAIN="${TIER_TOOLCHAIN:-github_actions_gcc}"
 TIER_COMPILER_MARCH="${TIER_COMPILER_MARCH:-}"
 TIER_ISS_TIMEOUT="${TIER_ISS_TIMEOUT:-500}"
+TIER_ACT4_CORPUS="${TIER_ACT4_CORPUS:-verif/tests/act4/${TIER_CONFIG}/corpus}"
+TIER_ACT4_SIMULATOR="${TIER_ACT4_SIMULATOR:-work-ver/Variane_testharness}"
+TIER_ACT4_CYCLE_TIMEOUT="${TIER_ACT4_CYCLE_TIMEOUT:-10000000}"
+TIER_ACT4_WALL_TIMEOUT_SECONDS="${TIER_ACT4_WALL_TIMEOUT_SECONDS:-300}"
+TIER_ACT4_BUILD_JOBS="${TIER_ACT4_BUILD_JOBS:-${NUM_JOBS:-1}}"
+
+require_positive_integer() {
+  local value="$1"
+  local name="$2"
+
+  if [[ ! "${value}" =~ ^[1-9][0-9]*$ ]]; then
+    echo "ERROR: ${name} must be a positive integer" >&2
+    exit 2
+  fi
+}
 
 case "${TIER_MODE}" in
   script)
@@ -42,6 +57,20 @@ case "${TIER_MODE}" in
     : "${TIER_TESTLIST:?TIER_TESTLIST is required for cook-testlist mode}"
     : "${TIER_COMPILER_MARCH:?TIER_COMPILER_MARCH is required for cook-testlist mode}"
     ;;
+  act4-prebuilt)
+    if [ "${TIER_CONFIG}" != "cv32a65x_axi" ]; then
+      echo "ERROR: act4-prebuilt currently supports only cv32a65x_axi" >&2
+      exit 2
+    fi
+    : "${TIER_ACT4_CORPUS:?TIER_ACT4_CORPUS is required for act4-prebuilt mode}"
+    : "${TIER_ACT4_SIMULATOR:?TIER_ACT4_SIMULATOR is required for act4-prebuilt mode}"
+    require_positive_integer "${TIER_ACT4_CYCLE_TIMEOUT}" \
+      "TIER_ACT4_CYCLE_TIMEOUT"
+    require_positive_integer "${TIER_ACT4_WALL_TIMEOUT_SECONDS}" \
+      "TIER_ACT4_WALL_TIMEOUT_SECONDS"
+    require_positive_integer "${TIER_ACT4_BUILD_JOBS}" \
+      "TIER_ACT4_BUILD_JOBS"
+    ;;
   *)
     echo "ERROR: unsupported TIER_MODE=${TIER_MODE}" >&2
     exit 2
@@ -53,18 +82,25 @@ log_info() {
 }
 
 run_logged() {
+  local cmd_rc
   set +e
-  "$@" > >(tee -a "${RUN_LOG}") 2>&1
-  local cmd_rc=$?
+  "$@" 2>&1 | tee -a "${RUN_LOG}"
+  cmd_rc="${PIPESTATUS[0]}"
   return "${cmd_rc}"
 }
 
 source_logged() {
   local script_path="$1"
+  local previous_size
+  local first_new_byte
+  local source_rc
   set +e
+  previous_size="$(wc -c < "${RUN_LOG}")"
   # shellcheck source=/dev/null
-  source "${script_path}" > >(tee -a "${RUN_LOG}") 2>&1
-  local source_rc=$?
+  source "${script_path}" >> "${RUN_LOG}" 2>&1
+  source_rc=$?
+  first_new_byte=$((previous_size + 1))
+  tail -c "+${first_new_byte}" "${RUN_LOG}"
   return "${source_rc}"
 }
 
@@ -91,6 +127,67 @@ collect_reports() {
     find artifacts/reports -maxdepth 1 -type f -name 'report_*.yml' \
       -exec cp {} "${RESULTS_DIR}/reports/" \;
   fi
+  if [ "${TIER_MODE}" = "act4-prebuilt" ] && \
+    [ -f "${TIER_ACT4_CORPUS}/corpus-manifest.json" ]; then
+    cp "${TIER_ACT4_CORPUS}/corpus-manifest.json" \
+      "${RESULTS_DIR}/act4-corpus-manifest.json"
+  fi
+}
+
+write_act4_metadata() {
+  local manifest="${TIER_ACT4_CORPUS}/corpus-manifest.json"
+
+  echo "act4_corpus=${TIER_ACT4_CORPUS}"
+  echo "act4_simulator=${TIER_ACT4_SIMULATOR}"
+  echo "act4_cycle_timeout=${TIER_ACT4_CYCLE_TIMEOUT}"
+  echo "act4_wall_timeout_seconds=${TIER_ACT4_WALL_TIMEOUT_SECONDS}"
+  echo "act4_build_jobs=${TIER_ACT4_BUILD_JOBS}"
+  echo "act4_live_reference_model=disabled"
+  echo "act4_testharness_spike_tandem=disabled"
+  echo "act4_runtime_result=${ACT4_RUNTIME_RESULT:-not-run}"
+  if [ ! -f "${manifest}" ]; then
+    echo "act4_manifest_status=missing"
+    return
+  fi
+
+  python3 - "${manifest}" "${ACT4_RUNTIME_RESULT:-not-run}" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+
+def safe(value: object) -> str:
+    if isinstance(value, bool):
+        value = str(value).lower()
+    return str(value).replace("\\", "\\\\").replace("\r", "\\r").replace("\n", "\\n")
+
+
+try:
+    document = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+    runtime_result = sys.argv[2]
+    generation = document.get("generation", {})
+    archive = document.get("archive", {})
+    values = {
+        "act4_manifest_status": (
+            "validated" if runtime_result == "pass" else "present-unvalidated"
+        ),
+        "act4_scope": document.get("scope", "unknown"),
+        "act4_certification_claim": document.get("certification_claim", "unknown"),
+        "act4_archive_sha256": archive.get("sha256", "unknown"),
+        "act4_source_revision": generation.get("act_commit", "unknown"),
+        "act4_generation_cva6_revision": generation.get("cva6_commit", "unknown"),
+        "act4_profile_sha256": generation.get("profile_sha256", "unknown"),
+        "act4_generation_image_digest": generation.get("image_digest", "unknown"),
+        "act4_generation_image_platform": generation.get("image_platform", "unknown"),
+        "act4_test_count": len(document.get("tests", [])),
+    }
+except (OSError, json.JSONDecodeError, AttributeError, TypeError) as error:
+    print("act4_manifest_status=invalid")
+    print(f"act4_manifest_error={safe(error)}")
+else:
+    for key, value in values.items():
+        print(f"{key}={safe(value)}")
+PY
 }
 
 write_metadata() {
@@ -101,13 +198,20 @@ write_metadata() {
     echo "target=${TIER_CONFIG}"
     echo "testcase=${TIER_TESTCASE}"
     echo "testlist=${TIER_TESTLIST}"
-    echo "simulator=${TIER_SIMULATOR}"
+    if [ "${TIER_MODE}" = "act4-prebuilt" ]; then
+      echo "simulator=${TIER_ACT4_SIMULATOR}"
+    else
+      echo "simulator=${TIER_SIMULATOR}"
+    fi
     echo "toolchain=${TIER_TOOLCHAIN}"
     echo "compiler_march=${TIER_COMPILER_MARCH}"
     echo "spike_tandem=${SPIKE_TANDEM:-unset}"
     echo "source_revision=$(git rev-parse HEAD)"
     echo "event_head_sha=${TIER_EVENT_HEAD_SHA:-unknown}"
     echo "event_base_sha=${TIER_EVENT_BASE_SHA:-unknown}"
+    if [ "${TIER_MODE}" = "act4-prebuilt" ]; then
+      write_act4_metadata
+    fi
   } > "${RESULTS_DIR}/metadata.txt"
 }
 
@@ -124,6 +228,10 @@ scan_for_failures() {
     if [ -d "build/${TIER_CONFIG}" ]; then
       find "build/${TIER_CONFIG}" -type f \
         \( -name "*.log" -o -name "*.txt" \) \
+        -print0 2>/dev/null || true
+    fi
+    if [ "${TIER_MODE}" = "act4-prebuilt" ] && [ -d artifacts/act4 ]; then
+      find artifacts/act4 -type f -name "*.log" \
         -print0 2>/dev/null || true
     fi
   )
@@ -189,7 +297,30 @@ write_metadata
 source_logged verif/sim/setup-env.sh
 record_rc "$?"
 
-if [ "${rc}" -eq 0 ] && [ "${TIER_MODE}" = "cook-testlist" ]; then
+if [ "${rc}" -eq 0 ] && [ "${TIER_MODE}" = "act4-prebuilt" ]; then
+  log_info "Building standalone ${TIER_CONFIG} TestHarness without live Spike tandem"
+  run_logged env -u SPIKE_TANDEM \
+    make -j"${TIER_ACT4_BUILD_JOBS}" verilate target="${TIER_CONFIG}"
+  record_rc "$?"
+
+  if [ "${rc}" -eq 0 ]; then
+    log_info "Running integrity-verified frozen ACT4 corpus without Sail or Spike"
+    run_logged env -u SPIKE_TANDEM \
+      ./cook.py act4-run \
+      --target "${TIER_CONFIG}" \
+      --corpus-directory "${TIER_ACT4_CORPUS}" \
+      --simulator "${TIER_ACT4_SIMULATOR}" \
+      --cycle-timeout "${TIER_ACT4_CYCLE_TIMEOUT}" \
+      --wall-timeout-seconds "${TIER_ACT4_WALL_TIMEOUT_SECONDS}"
+    act4_rc=$?
+    if [ "${act4_rc}" -eq 0 ]; then
+      ACT4_RUNTIME_RESULT="pass"
+    else
+      ACT4_RUNTIME_RESULT="fail"
+    fi
+    record_rc "${act4_rc}"
+  fi
+elif [ "${rc}" -eq 0 ] && [ "${TIER_MODE}" = "cook-testlist" ]; then
   if [ -n "${TIER_INSTALL_SCRIPT}" ]; then
     source_logged "verif/regress/${TIER_INSTALL_SCRIPT}.sh"
     record_rc "$?"
@@ -283,7 +414,17 @@ fi
 collect_reports
 
 if [ "${rc}" -eq 0 ]; then
-  if [ "${TIER_MODE}" = "cook-testlist" ]; then
+  if [ "${TIER_MODE}" = "act4-prebuilt" ]; then
+    act4_report="artifacts/reports/report_act4_${TIER_CONFIG}.yml"
+    if [ ! -s "${act4_report}" ]; then
+      append_failure "ERROR: act4-prebuilt mode produced no ACT4 Cook report."
+      rc=1
+    elif ! find "artifacts/act4/${TIER_CONFIG}" -type f -name "*.log" \
+      -print -quit 2>/dev/null | grep -q .; then
+      append_failure "ERROR: act4-prebuilt mode produced no per-test ACT4 logs."
+      rc=1
+    fi
+  elif [ "${TIER_MODE}" = "cook-testlist" ]; then
     if ! find "build/${TIER_CONFIG}/simulation/sim_verilator_testharness" \
       -mindepth 1 -print -quit 2>/dev/null | grep -q .; then
       append_failure "ERROR: cook-testlist mode produced no simulation results."
