@@ -123,6 +123,31 @@ class VerilatorTestHarnessSafetyTest(unittest.TestCase):
         self.assertEqual(return_code, 7)
         self.assertFalse(timed_out)
 
+    def test_tandem_success_with_uvm_none(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            log = Path(directory) / "testharness.log"
+            log.write_text(
+                "Running binary in tandem mode\n"
+                "[SPIKE] Starting 'spike_create'...\n"
+                "example.elf *** SUCCESS *** (tohost = 0) after 10 cycles\n",
+                encoding="utf-8",
+            )
+            self.assertEqual(
+                RUNNER.testharness_log_passed(log, tandem_enabled=True),
+                (True, "live Spike tandem completed"),
+            )
+
+            log.write_text(
+                "Running binary in tandem mode\n"
+                "example.elf *** SUCCESS *** (tohost = 0) after 10 cycles\n",
+                encoding="utf-8",
+            )
+            passed, detail = RUNNER.testharness_log_passed(
+                log, tandem_enabled=True
+            )
+            self.assertFalse(passed)
+            self.assertIn("missing live Spike tandem markers", detail)
+
     def test_missing_tohost_is_failure(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

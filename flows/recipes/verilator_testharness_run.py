@@ -96,7 +96,10 @@ def testharness_log_passed(log: Path, tandem_enabled: bool) -> tuple[bool, str]:
         return False, "missing successful TestHarness tohost result"
 
     if tandem_enabled:
-        markers = ("Running binary in tandem mode", "spike_tandem Setting up Spike")
+        markers = (
+            "Running binary in tandem mode",
+            "[SPIKE] Starting 'spike_create'...",
+        )
         if any(marker not in text for marker in markers):
             return False, "missing live Spike tandem markers"
         return True, "live Spike tandem completed"
