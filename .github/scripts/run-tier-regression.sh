@@ -83,6 +83,10 @@ collect_reports() {
   mkdir -p "${RESULTS_DIR}/reports"
   find verif/sim -name "iss_regr.log" \
     -exec cp {} "${RESULTS_DIR}/" \; 2>/dev/null || true
+  if [ -d "build/${TIER_CONFIG}" ]; then
+    find "build/${TIER_CONFIG}" -name "iss_regr.log" \
+      -exec cp {} "${RESULTS_DIR}/" \; 2>/dev/null || true
+  fi
   if [ -f "${COOK_CONFIG_DIR}/environment.yml" ]; then
     cp "${COOK_CONFIG_DIR}/environment.yml" \
       "${RESULTS_DIR}/toolchain-environment.yml"
@@ -220,7 +224,15 @@ if [ "${rc}" -eq 0 ] && [ "${TIER_MODE}" = "cook-testlist" ]; then
   fi
 
   if [ "${rc}" -eq 0 ]; then
-    run_logged ./cook.py verilator-testharness-run-testlist \
+    run_logged ./cook.py verilator-testharness-comp \
+      --target "${TIER_CONFIG}" \
+      --tandem-enabled
+    record_rc "$?"
+  fi
+
+  if [ "${rc}" -eq 0 ]; then
+    run_logged ./cook.py testharness-run-testlist \
+      --simulator verilator \
       --target "${TIER_CONFIG}" \
       --testlist "${TIER_TESTLIST}" \
       --tandem-enabled \
