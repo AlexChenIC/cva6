@@ -1,5 +1,93 @@
 [
   {
+    "id": 32631426943,
+    "source": "github-actions",
+    "simulator": "verilator",
+    "run_number": 49,
+    "status": "completed",
+    "conclusion": "success",
+    "html_url": "https://github.com/AlexChenIC/cva6/actions/runs/32631426943",
+    "head_branch": "jchen/master-candidate-openhw-tier-ci-cook-architecture-poc",
+    "head_sha": "ee95e5a9",
+    "event": "workflow_dispatch",
+    "created_at": "2026-08-23T09:35:34Z",
+    "updated_at": "2026-08-23T09:40:13Z",
+    "run_started_at": "2026-08-23T09:35:34Z",
+    "duration_seconds": 279,
+    "total_jobs": 2,
+    "passed_jobs": 2,
+    "failed_jobs": 0,
+    "skipped_jobs": 0,
+    "jobs": [
+      {
+        "name": "RV32 Tier1 cv32a60x_axi / base-rv32-p",
+        "conclusion": "success",
+        "started_at": "2026-08-23T09:36:56Z",
+        "completed_at": "2026-08-23T09:40:13Z",
+        "duration_seconds": 197,
+        "html_url": "https://github.com/AlexChenIC/cva6/actions/runs/32631426943/job/97174872866",
+        "arch": "rv32",
+        "config": "cv32a60x_axi",
+        "testcase": "base-rv32-p"
+      },
+      {
+        "name": "RV32 Tier1 cv32a65x_axi / base-rv32-p",
+        "conclusion": "success",
+        "started_at": "2026-08-23T09:36:56Z",
+        "completed_at": "2026-08-23T09:40:05Z",
+        "duration_seconds": 189,
+        "html_url": "https://github.com/AlexChenIC/cva6/actions/runs/32631426943/job/97174872943",
+        "arch": "rv32",
+        "config": "cv32a65x_axi",
+        "testcase": "base-rv32-p"
+      }
+    ]
+  },
+  {
+    "id": 32629749738,
+    "source": "github-actions",
+    "simulator": "verilator",
+    "run_number": 48,
+    "status": "completed",
+    "conclusion": "failure",
+    "html_url": "https://github.com/AlexChenIC/cva6/actions/runs/32629749738",
+    "head_branch": "jchen/master-candidate-openhw-tier-ci-cook-architecture-poc",
+    "head_sha": "e792b9ca",
+    "event": "workflow_dispatch",
+    "created_at": "2026-08-23T08:59:33Z",
+    "updated_at": "2026-08-23T09:21:07Z",
+    "run_started_at": "2026-08-23T08:59:33Z",
+    "duration_seconds": 1294,
+    "total_jobs": 2,
+    "passed_jobs": 0,
+    "failed_jobs": 2,
+    "skipped_jobs": 0,
+    "jobs": [
+      {
+        "name": "RV32 Tier1 cv32a60x_axi / base-rv32-p",
+        "conclusion": "failure",
+        "started_at": "2026-08-23T09:17:51Z",
+        "completed_at": "2026-08-23T09:20:47Z",
+        "duration_seconds": 176,
+        "html_url": "https://github.com/AlexChenIC/cva6/actions/runs/32629749738/job/97172721566",
+        "arch": "rv32",
+        "config": "cv32a60x_axi",
+        "testcase": "base-rv32-p"
+      },
+      {
+        "name": "RV32 Tier1 cv32a65x_axi / base-rv32-p",
+        "conclusion": "failure",
+        "started_at": "2026-08-23T09:17:47Z",
+        "completed_at": "2026-08-23T09:21:06Z",
+        "duration_seconds": 199,
+        "html_url": "https://github.com/AlexChenIC/cva6/actions/runs/32629749738/job/97172721583",
+        "arch": "rv32",
+        "config": "cv32a65x_axi",
+        "testcase": "base-rv32-p"
+      }
+    ]
+  },
+  {
     "id": 32482623750,
     "source": "github-actions",
     "simulator": "verilator",
