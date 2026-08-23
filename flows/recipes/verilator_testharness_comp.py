@@ -227,11 +227,14 @@ def verilator_testharness_comp(
     jobs: int | None = typer.Option(
         None, min=1, help="Parallel jobs used by the Verilator build"
     ),
-    clean: bool = typer.Option(True, "--clean/--no-clean"),
+    clean: bool = typer.Option(
+        True, "--clean/--no-clean", help="Remove the existing elaboration directory"
+    ),
     quiet: bool = typer.Option(
         False, "--quiet", "-q", help="Suppress output (errors only)"
     ),
 ) -> None:
+    """Compile the CVA6 Verilator TestHarness executable directly."""
     print_recipe_title("VERILATOR TESTHARNESS COMPILATION", quiet=quiet)
     repo_dir = Path.cwd().resolve()
 

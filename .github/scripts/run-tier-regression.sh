@@ -79,6 +79,15 @@ append_failure() {
   echo "$*" | tee -a "${FAILURE_SUMMARY}" >&2
 }
 
+append_cook_failure_details() {
+  local details
+  details="$(grep -E ': FAIL \(' "${RUN_LOG}" | tail -n 20 || true)"
+  if [ -n "${details}" ]; then
+    append_failure "Cook TestHarness failure details:"
+    printf "%s\n" "${details}" | tee -a "${FAILURE_SUMMARY}" >&2
+  fi
+}
+
 collect_reports() {
   mkdir -p "${RESULTS_DIR}/reports"
   find verif/sim -name "iss_regr.log" \
@@ -98,6 +107,12 @@ collect_reports() {
 }
 
 write_metadata() {
+  local simulator="${TIER_SIMULATOR}"
+  local spike_tandem="${SPIKE_TANDEM:-unset}"
+  if [ "${TIER_MODE}" = "cook-testlist" ]; then
+    simulator="verilator"
+    spike_tandem="true"
+  fi
   {
     echo "schema_version=1"
     echo "tier=${TIER_NAME}"
@@ -105,10 +120,10 @@ write_metadata() {
     echo "target=${TIER_CONFIG}"
     echo "testcase=${TIER_TESTCASE}"
     echo "testlist=${TIER_TESTLIST}"
-    echo "simulator=${TIER_SIMULATOR}"
+    echo "simulator=${simulator}"
     echo "toolchain=${TIER_TOOLCHAIN}"
     echo "compiler_march=${TIER_COMPILER_MARCH}"
-    echo "spike_tandem=${SPIKE_TANDEM:-unset}"
+    echo "spike_tandem=${spike_tandem}"
     echo "source_revision=$(git rev-parse HEAD)"
     echo "event_head_sha=${TIER_EVENT_HEAD_SHA:-unknown}"
     echo "event_base_sha=${TIER_EVENT_BASE_SHA:-unknown}"
@@ -296,7 +311,7 @@ collect_reports
 
 if [ "${rc}" -eq 0 ]; then
   if [ "${TIER_MODE}" = "cook-testlist" ]; then
-    if ! find "build/${TIER_CONFIG}/simulation/sim_verilator_testharness" \
+    if ! find "build/${TIER_CONFIG}/simulation/sim_verilator_testharness_tandem" \
       -mindepth 1 -print -quit 2>/dev/null | grep -q .; then
       append_failure "ERROR: cook-testlist mode produced no simulation results."
       rc=1
@@ -312,6 +327,9 @@ scan_for_failures || scan_rc=1
 scan_iss_traces || scan_rc=1
 if [ "${rc}" -eq 0 ] && [ "${scan_rc}" -ne 0 ]; then
   rc=1
+fi
+if [ "${rc}" -ne 0 ] && [ "${TIER_MODE}" = "cook-testlist" ]; then
+  append_cook_failure_details
 fi
 if [ "${rc}" -ne 0 ] && [ ! -s "${FAILURE_SUMMARY}" ]; then
   append_failure "Regression exited with code ${rc}; inspect run.log for details."

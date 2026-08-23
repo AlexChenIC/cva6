@@ -13,9 +13,19 @@ from pathlib import Path
 SIMULATION_MODE = "sim_verilator_testharness"
 
 
+def validate_path_component(value: str, label: str) -> str:
+    if value in {"", ".", ".."} or Path(value).name != value:
+        raise ValueError(f"Invalid {label}: {value}")
+    return value
+
+
+def simulation_mode(tandem_enabled: bool) -> str:
+    suffix = "_tandem" if tandem_enabled else ""
+    return f"{SIMULATION_MODE}{suffix}"
+
+
 def target_directory(repo_dir: Path, target: str) -> Path:
-    if target in {"", ".", ".."} or Path(target).name != target:
-        raise ValueError(f"Invalid target name: {target}")
+    target = validate_path_component(target, "target name")
     return repo_dir / "config" / "target" / target
 
 
@@ -32,8 +42,8 @@ def require_target_files(repo_dir: Path, target: str, names: tuple[str, ...]) ->
 def verilator_elab_directory(
     repo_dir: Path, target: str, tandem_enabled: bool
 ) -> Path:
-    suffix = "_tandem" if tandem_enabled else ""
-    return repo_dir / "build" / target / "elab" / f"{SIMULATION_MODE}{suffix}"
+    target = validate_path_component(target, "target name")
+    return repo_dir / "build" / target / "elab" / simulation_mode(tandem_enabled)
 
 
 def verilator_binary(repo_dir: Path, target: str, tandem_enabled: bool) -> Path:
@@ -42,12 +52,16 @@ def verilator_binary(repo_dir: Path, target: str, tandem_enabled: bool) -> Path:
     )
 
 
-def test_simulation_directory(repo_dir: Path, target: str, test_name: str) -> Path:
+def test_simulation_directory(
+    repo_dir: Path, target: str, test_name: str, tandem_enabled: bool
+) -> Path:
+    target = validate_path_component(target, "target name")
+    test_name = validate_path_component(test_name, "test name")
     return (
         repo_dir
         / "build"
         / target
         / "simulation"
-        / SIMULATION_MODE
+        / simulation_mode(tandem_enabled)
         / test_name
     )

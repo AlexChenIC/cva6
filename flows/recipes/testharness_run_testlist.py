@@ -14,7 +14,8 @@ from typing import Any
 import typer
 import yaml
 
-from flows.recipes.verilator_testharness_run import run_test
+from flows.recipes.testharness_common import validate_path_component
+from flows.recipes.verilator_testharness_run import run_test as run_verilator_test
 from flows.utils.report_builder import Report, TableStatusMetric
 from flows.utils.utils import (
     TraceMode,
@@ -25,6 +26,8 @@ from flows.utils.utils import (
     print_param_table,
     print_recipe_end,
     print_recipe_title,
+    print_step,
+    print_success,
 )
 
 app = typer.Typer()
@@ -32,6 +35,9 @@ app = typer.Typer()
 
 class Simulator(str, Enum):
     verilator = "verilator"
+
+
+RUNNERS = {Simulator.verilator: run_verilator_test}
 
 
 def enabled_tests(
@@ -45,14 +51,15 @@ def enabled_tests(
     for index, entry in enumerate(entries):
         if not isinstance(entry, dict) or not isinstance(entry.get("test"), str):
             raise ValueError(f"Invalid test entry at index {index}")
+        test_name = validate_path_component(entry["test"], "test name")
         try:
             iterations = int(entry.get("iterations", 1))
         except (TypeError, ValueError) as error:
-            raise ValueError(f"Invalid iterations for test {entry['test']}") from error
+            raise ValueError(f"Invalid iterations for test {test_name}") from error
         if iterations < 0:
-            raise ValueError(f"Negative iterations for test {entry['test']}")
+            raise ValueError(f"Negative iterations for test {test_name}")
         if iterations:
-            tests.append({**entry, "iterations": iterations})
+            tests.append({**entry, "test": test_name, "iterations": iterations})
 
     if selected:
         requested = set(selected)
@@ -111,18 +118,20 @@ def testharness_run_testlist(
         TraceMode.notrace, help="Waveform trace format"
     ),
     run_options: list[str] = typer.Option(
-        [], "--run-opt", help="Additional TestHarness argument"
+        [], "--run-opt", help="Additional TestHarness or SystemVerilog argument"
     ),
     quiet: bool = typer.Option(
         False, "--quiet", "-q", help="Suppress command output and summaries"
     ),
 ) -> None:
+    """Run enabled Cook-compiled tests with a TestHarness simulator backend."""
     print_recipe_title(
         f"{simulator.value.upper()} TESTHARNESS TESTLIST", quiet=quiet
     )
     repo_dir = Path.cwd().resolve()
     testlist_file = (repo_dir / testlist).resolve()
     try:
+        target = validate_path_component(target, "target name")
         data = yaml.safe_load(testlist_file.read_text(encoding="utf-8"))
         if not isinstance(data, dict):
             raise ValueError(f"Expected a mapping in {testlist_file}")
@@ -149,6 +158,14 @@ def testharness_run_testlist(
         quiet=quiet,
     )
 
+    try:
+        run_test = RUNNERS[simulator]
+    except KeyError as error:
+        print_error(
+            f"Unsupported TestHarness simulator: {simulator.value}", quiet=quiet
+        )
+        raise typer.Exit(code=1) from error
+
     metric = TableStatusMetric("TestHarness test results")
     metric.add_column("Target", "text")
     metric.add_column("Test", "text")
@@ -156,11 +173,13 @@ def testharness_run_testlist(
     metric.add_column("ABI", "text")
     metric.add_column("Simulator", "text")
     metric.add_column("Backend", "text")
+    metric.add_column("Detail", "text")
 
     failed = False
     for test in tests:
         for iteration in range(test["iterations"]):
             compiled_name = f"{test['test']}_{iteration}"
+            print_step(f"Run {compiled_name}", quiet=quiet)
             result = run_test(
                 target=target,
                 test_name=compiled_name,
@@ -178,12 +197,16 @@ def testharness_run_testlist(
                 result.mabi,
                 simulator.value,
                 result.backend,
+                result.detail,
             )
             if result.passed:
                 metric.add_pass(*row)
+                print_success(
+                    f"{result.name}: PASS ({result.detail})", quiet=quiet
+                )
             else:
                 metric.add_fail(*row)
-                print_error(f"{result.name}: {result.detail}", quiet=quiet)
+                print_error(f"{result.name}: FAIL ({result.detail})", quiet=quiet)
                 failed = True
 
     report = Report()

@@ -22,6 +22,7 @@ import yaml
 from flows.recipes.testharness_common import (
     require_target_files,
     test_simulation_directory,
+    validate_path_component,
     verilator_binary,
 )
 from flows.utils.utils import (
@@ -39,6 +40,11 @@ from flows.utils.utils import (
 )
 
 app = typer.Typer()
+
+BOOT_PC_RE = re.compile(
+    r"^\s*\d+\s*\|\s*core\s+\d+:\s*0x0000000080000000\s", re.MULTILINE
+)
+TANDEM_COMMIT_RE = re.compile(r"^\s*core\s+\d+:", re.MULTILINE)
 
 
 class TestHarnessResult(NamedTuple):
@@ -92,6 +98,12 @@ def testharness_log_passed(log: Path, tandem_enabled: bool) -> tuple[bool, str]:
     failures = [marker for marker in failure_markers if marker in text]
     if failures:
         return False, "failure marker(s): " + ", ".join(failures)
+    for line in text.splitlines():
+        normalized = line.lower()
+        if "spike_tandem" in normalized and (
+            "uvm_warning" in normalized or "mismatch" in normalized
+        ):
+            return False, "live Spike tandem mismatch"
     if "*** SUCCESS *** (tohost = 0)" not in text:
         return False, "missing successful TestHarness tohost result"
 
@@ -104,6 +116,30 @@ def testharness_log_passed(log: Path, tandem_enabled: bool) -> tuple[bool, str]:
             return False, "missing live Spike tandem markers"
         return True, "live Spike tandem completed"
     return True, "TestHarness completed"
+
+
+def tandem_trace_passed(log: Path) -> tuple[bool, str]:
+    if not log.is_file():
+        return False, f"missing live Spike tandem trace: {log}"
+    try:
+        text = log.read_text(encoding="utf-8")
+    except OSError as error:
+        return False, f"cannot read live Spike tandem trace: {error}"
+    if not TANDEM_COMMIT_RE.search(text):
+        return False, "live Spike tandem trace contains no committed instruction"
+    return True, "live Spike tandem trace contains committed instructions"
+
+
+def boot_pc_reached(log: Path) -> tuple[bool, str]:
+    if not log.is_file():
+        return False, f"missing disassembled TestHarness trace: {log}"
+    try:
+        text = log.read_text(encoding="utf-8")
+    except OSError as error:
+        return False, f"cannot read disassembled TestHarness trace: {error}"
+    if not BOOT_PC_RE.search(text):
+        return False, "TestHarness trace did not reach boot PC 0x80000000"
+    return True, "TestHarness trace reached boot PC 0x80000000"
 
 
 def _terminate(process: subprocess.Popen[object]) -> None:
@@ -179,6 +215,23 @@ def _runtime_environment(
     return env, riscv, spike
 
 
+def _is_emulator_option(argument: str) -> bool:
+    flags = {
+        "+cycle-count",
+        "+verbose",
+        "--cycle-count",
+        "--verbose",
+    }
+    prefixes = (
+        "+dump-start=",
+        "+max-cycles=",
+        "--dump-start=",
+        "--max-cycles=",
+        "--rbb-port=",
+    )
+    return argument in flags or argument.startswith(prefixes)
+
+
 def testharness_command(
     binary: Path,
     elf: Path,
@@ -197,7 +250,11 @@ def testharness_command(
         command.extend(("--fst", "verilator.fst"))
     elif trace_mode != TraceMode.notrace:
         raise ValueError(f"Unsupported Verilator trace mode: {trace_mode.value}")
-    command.extend(("--seed", seed, str(elf)))
+    emulator_options = [option for option in run_options if _is_emulator_option(option)]
+    host_options = [option for option in run_options if not _is_emulator_option(option)]
+    command.extend(("--seed", seed))
+    command.extend(emulator_options)
+    command.append(str(elf))
     command.extend(
         (
             "+tb_performance_mode",
@@ -213,7 +270,7 @@ def testharness_command(
         )
     )
     command.append(f"+tohost_addr={tohost}")
-    command.extend(run_options)
+    command.extend(host_options)
     return command
 
 
@@ -221,18 +278,23 @@ def _run_spike_dasm(
     spike_dasm: Path,
     raw_trace: Path,
     output_log: Path,
+    error_log: Path,
     compiler_isa: str,
     timeout: int,
 ) -> bool:
     if not raw_trace.is_file() or not spike_dasm.is_file():
         return False
     try:
-        with raw_trace.open("rb") as source, output_log.open("wb") as output:
+        with (
+            raw_trace.open("rb") as source,
+            output_log.open("wb") as output,
+            error_log.open("wb") as errors,
+        ):
             result = subprocess.run(
                 [str(spike_dasm), f"--isa={compiler_isa}"],
                 stdin=source,
                 stdout=output,
-                stderr=subprocess.STDOUT,
+                stderr=errors,
                 timeout=timeout,
                 check=False,
             )
@@ -363,21 +425,23 @@ def run_test(
     if iss_enabled and not tandem_enabled:
         backend += "+spike"
 
-    compile_dir = repo_dir / "build" / target / "compile" / test_name
-    elf = compile_dir / f"{test_name}.elf"
-    isa_file = compile_dir / "isa_string"
-    tohost_file = compile_dir / f"{test_name}.add_tohost"
-    simulation_dir = test_simulation_directory(repo_dir, target, test_name)
-    binary = verilator_binary(repo_dir, target, tandem_enabled)
-
     compiler_isa = "unknown"
     mabi = "unknown"
     try:
-        target_dir = require_target_files(repo_dir, target, ("isa.yml", "spike.yaml"))
-        isa_data = yaml.safe_load((target_dir / "isa.yml").read_text(encoding="utf-8"))
-        spike_data = yaml.safe_load(
-            (target_dir / "spike.yaml").read_text(encoding="utf-8")
+        target = validate_path_component(target, "target name")
+        test_name = validate_path_component(test_name, "test name")
+        compile_dir = repo_dir / "build" / target / "compile" / test_name
+        elf = compile_dir / f"{test_name}.elf"
+        isa_file = compile_dir / "isa_string"
+        tohost_file = compile_dir / f"{test_name}.add_tohost"
+        simulation_dir = test_simulation_directory(
+            repo_dir, target, test_name, tandem_enabled
         )
+        binary = verilator_binary(repo_dir, target, tandem_enabled)
+        target_dir = require_target_files(repo_dir, target, ("isa.yml", "spike.yaml"))
+        spike_yaml = target_dir / "spike.yaml"
+        isa_data = yaml.safe_load((target_dir / "isa.yml").read_text(encoding="utf-8"))
+        spike_data = yaml.safe_load(spike_yaml.read_text(encoding="utf-8"))
         if not isinstance(isa_data, dict) or not isinstance(spike_data, dict):
             raise ValueError("target ISA and Spike configuration must be mappings")
         mabi = isa_data.get("mabi")
@@ -420,7 +484,6 @@ def run_test(
             False,
             f"cannot prepare output: {error}",
         )
-    spike_yaml = target_dir / "spike.yaml"
     testharness_log = simulation_dir / "testharness.log"
 
     command = testharness_command(
@@ -450,11 +513,19 @@ def run_test(
     passed, detail = testharness_log_passed(testharness_log, tandem_enabled)
     if not passed:
         return TestHarnessResult(test_name, compiler_isa, mabi, backend, False, detail)
+    if tandem_enabled:
+        passed, detail = tandem_trace_passed(simulation_dir / "tandem.log")
+        if not passed:
+            return TestHarnessResult(
+                test_name, compiler_isa, mabi, backend, False, detail
+            )
 
+    verilator_log = simulation_dir / "verilator.log"
     if not _run_spike_dasm(
         spike_install / "bin" / "spike-dasm",
         simulation_dir / "trace_rvfi_hart_00.dasm",
-        simulation_dir / "verilator.log",
+        verilator_log,
+        simulation_dir / "spike_dasm.log",
         compiler_isa,
         min(iss_timeout, 120),
     ):
@@ -466,6 +537,9 @@ def run_test(
             False,
             "TestHarness trace disassembly failed",
         )
+    passed, detail = boot_pc_reached(verilator_log)
+    if not passed:
+        return TestHarnessResult(test_name, compiler_isa, mabi, backend, False, detail)
 
     if iss_enabled and not tandem_enabled:
         passed, detail = _run_standalone_spike(
@@ -476,7 +550,7 @@ def run_test(
             spike_yaml=spike_yaml,
             simulation_dir=simulation_dir,
             env=env,
-            timeout=max(1, iss_timeout // 10),
+            timeout=iss_timeout,
         )
         if passed:
             passed, detail = _postprocess_and_compare(repo_dir, simulation_dir)
@@ -522,13 +596,21 @@ def verilator_testharness_run(
         TraceMode.notrace, help="Waveform trace format"
     ),
     run_options: list[str] = typer.Option(
-        [], "--run-opt", help="Additional TestHarness argument"
+        [], "--run-opt", help="Additional TestHarness or SystemVerilog argument"
     ),
     quiet: bool = typer.Option(
         False, "--quiet", "-q", help="Suppress output (errors only)"
     ),
 ) -> None:
+    """Run one Cook-compiled ELF with the Verilator TestHarness."""
     print_recipe_title("VERILATOR TESTHARNESS RUN", quiet=quiet)
+    try:
+        simulation_dir = test_simulation_directory(
+            Path.cwd().resolve(), target, test_name, tandem_enabled
+        )
+    except ValueError as error:
+        print_error(str(error), quiet=quiet)
+        raise typer.Exit(code=1) from error
     print_param_table(
         {
             "Target": target,
@@ -552,9 +634,6 @@ def verilator_testharness_run(
         seed=seed,
         trace_mode=trace_mode,
         run_options=run_options,
-    )
-    simulation_dir = test_simulation_directory(
-        Path.cwd().resolve(), target, test_name
     )
     if not quiet and (simulation_dir / "testharness.log").is_file():
         tail_file(simulation_dir / "testharness.log", n=20)

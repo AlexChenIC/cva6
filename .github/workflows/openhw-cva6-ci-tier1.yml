@@ -99,7 +99,7 @@ jobs:
             artifacts/reports/
             build/${{ matrix.config }}/compile/
             build/${{ matrix.config }}/elab/sim_verilator_testharness_tandem/compile.log
-            build/${{ matrix.config }}/simulation/sim_verilator_testharness/
+            build/${{ matrix.config }}/simulation/sim_verilator_testharness_tandem/
             build/${{ matrix.config }}/config/
           if-no-files-found: error
           retention-days: 14

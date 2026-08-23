@@ -5,6 +5,9 @@
 // SPDX-License-Identifier: Apache-2.0 WITH SHL-2.0
 // You may obtain a copy of the License at https://solderpad.org/licenses/
 
+// Keep this ordered manifest aligned with the root Makefile TestHarness sources.
+// dm_pkg.sv is passed before this file; dm_obi_top.sv is filtered from that build.
+
 // SoC and peripheral RTL
 ${CVA6_REPO_DIR}/corev_apu/src/ariane.sv
 ${CVA6_REPO_DIR}/corev_apu/bootrom/bootrom.sv
