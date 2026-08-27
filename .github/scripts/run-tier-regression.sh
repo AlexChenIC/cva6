@@ -29,6 +29,9 @@ TIER_HWCONFIG_OPTS="${TIER_HWCONFIG_OPTS:-}"
 TIER_TOOLCHAIN="${TIER_TOOLCHAIN:-github_actions_gcc}"
 TIER_COMPILER_MARCH="${TIER_COMPILER_MARCH:-}"
 TIER_ISS_TIMEOUT="${TIER_ISS_TIMEOUT:-500}"
+TIER_COMP_MODE="${TIER_COMP_MODE:-rtl}"
+TIER_TRACE_MODE="${TIER_TRACE_MODE:-notrace}"
+TIER_SINGLE_TEST_SMOKE="${TIER_SINGLE_TEST_SMOKE:-}"
 
 case "${TIER_MODE}" in
   script)
@@ -123,6 +126,9 @@ write_metadata() {
     echo "simulator=${simulator}"
     echo "toolchain=${TIER_TOOLCHAIN}"
     echo "compiler_march=${TIER_COMPILER_MARCH}"
+    echo "comp_mode=${TIER_COMP_MODE}"
+    echo "trace_mode=${TIER_TRACE_MODE}"
+    echo "single_test_smoke=${TIER_SINGLE_TEST_SMOKE}"
     echo "spike_tandem=${spike_tandem}"
     echo "source_revision=$(git rev-parse HEAD)"
     echo "event_head_sha=${TIER_EVENT_HEAD_SHA:-unknown}"
@@ -238,10 +244,32 @@ if [ "${rc}" -eq 0 ] && [ "${TIER_MODE}" = "cook-testlist" ]; then
     record_rc "$?"
   fi
 
+  if [ "${rc}" -eq 0 ] && [ -n "${TIER_SINGLE_TEST_SMOKE}" ]; then
+    run_logged ./cook.py "${TIER_SINGLE_TEST_SMOKE}" \
+      --target "${TIER_CONFIG}" \
+      --toolchain "${TIER_TOOLCHAIN}" \
+      --march "${TIER_COMPILER_MARCH}"
+    record_rc "$?"
+  fi
+
   if [ "${rc}" -eq 0 ]; then
     run_logged ./cook.py verilator-testharness-comp \
       --target "${TIER_CONFIG}" \
+      --comp-mode "${TIER_COMP_MODE}" \
+      --trace-mode "${TIER_TRACE_MODE}" \
       --tandem-enabled
+    record_rc "$?"
+  fi
+
+  if [ "${rc}" -eq 0 ] && [ -n "${TIER_SINGLE_TEST_SMOKE}" ]; then
+    run_logged ./cook.py verilator-testharness-run \
+      --target "${TIER_CONFIG}" \
+      --testname "${TIER_SINGLE_TEST_SMOKE}" \
+      --comp-mode "${TIER_COMP_MODE}" \
+      --trace-mode "${TIER_TRACE_MODE}" \
+      --tandem-enabled \
+      --iss-enabled \
+      --iss-timeout "${TIER_ISS_TIMEOUT}"
     record_rc "$?"
   fi
 
@@ -250,7 +278,10 @@ if [ "${rc}" -eq 0 ] && [ "${TIER_MODE}" = "cook-testlist" ]; then
       --simulator verilator \
       --target "${TIER_CONFIG}" \
       --testlist "${TIER_TESTLIST}" \
+      --comp-mode "${TIER_COMP_MODE}" \
+      --trace-mode "${TIER_TRACE_MODE}" \
       --tandem-enabled \
+      --iss-enabled \
       --iss-timeout "${TIER_ISS_TIMEOUT}"
     record_rc "$?"
   fi
@@ -311,7 +342,7 @@ collect_reports
 
 if [ "${rc}" -eq 0 ]; then
   if [ "${TIER_MODE}" = "cook-testlist" ]; then
-    if ! find "build/${TIER_CONFIG}/simulation/sim_verilator_testharness_tandem" \
+    if ! find "build/${TIER_CONFIG}/simulation/sim_${TIER_COMP_MODE}_verilator_testharness_tandem" \
       -mindepth 1 -print -quit 2>/dev/null | grep -q .; then
       append_failure "ERROR: cook-testlist mode produced no simulation results."
       rc=1

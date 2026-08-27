@@ -6,12 +6,16 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 import importlib.util
+import inspect
+import json
 import os
 from pathlib import Path
 import sys
 import tempfile
 import unittest
 from unittest.mock import Mock, patch
+
+from typer.testing import CliRunner
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT))
@@ -36,7 +40,7 @@ from flows.recipes import testharness_common as COMMON  # noqa: E402
 from flows.recipes import testharness_run_testlist as DISPATCHER  # noqa: E402
 from flows.recipes import verilator_testharness_comp as COMPILER  # noqa: E402
 from flows.recipes import verilator_testharness_run as RUNNER  # noqa: E402
-from flows.utils.utils import TraceMode  # noqa: E402
+from flows.utils.utils import CompMode, TraceMode  # noqa: E402
 
 
 def load_module(name: str, path: Path):
@@ -58,13 +62,108 @@ def working_directory(path: Path):
 
 
 class VerilatorTestHarnessSafetyTest(unittest.TestCase):
+    def test_public_interfaces_use_shared_cook_modes(self) -> None:
+        compile_parameters = inspect.signature(
+            COMPILER.verilator_testharness_comp
+        ).parameters
+        run_parameters = inspect.signature(
+            RUNNER.verilator_testharness_run
+        ).parameters
+        testlist_parameters = inspect.signature(
+            DISPATCHER.testharness_run_testlist
+        ).parameters
+
+        self.assertLess(
+            list(compile_parameters).index("comp_mode"),
+            list(compile_parameters).index("trace_mode"),
+        )
+        self.assertIn("stats", compile_parameters)
+        self.assertLess(
+            list(run_parameters).index("comp_mode"),
+            list(run_parameters).index("trace_mode"),
+        )
+        self.assertIn("interactive_gui", run_parameters)
+        self.assertEqual(run_parameters["iss_enabled"].default.default, False)
+        self.assertIn("comp_mode", testlist_parameters)
+        self.assertIn("trace_mode", testlist_parameters)
+        self.assertEqual(testlist_parameters["iss_enabled"].default.default, False)
+
+    def test_unsupported_verilator_modes_fail_explicitly(self) -> None:
+        for comp_mode in (
+            CompMode.coverage,
+            CompMode.gate_wc_timing,
+            CompMode.gate_wc_power,
+        ):
+            with self.assertRaisesRegex(ValueError, "only rtl"):
+                COMMON.validate_verilator_options(
+                    comp_mode=comp_mode, trace_mode=TraceMode.notrace
+                )
+
+        with self.assertRaisesRegex(ValueError, "Interactive GUI"):
+            COMMON.validate_verilator_options(
+                comp_mode=CompMode.rtl, trace_mode=TraceMode.gui
+            )
+        with self.assertRaisesRegex(ValueError, "perf tracer"):
+            COMMON.validate_verilator_options(
+                comp_mode=CompMode.rtl,
+                trace_mode=TraceMode.notrace,
+                stats=True,
+            )
+
+    def test_tandem_requires_iss_enabled(self) -> None:
+        with self.assertRaisesRegex(ValueError, "requires --iss-enabled"):
+            COMMON.validate_iss_options(
+                iss_enabled=False, tandem_enabled=True
+            )
+        COMMON.validate_iss_options(iss_enabled=True, tandem_enabled=True)
+        COMMON.validate_iss_options(iss_enabled=False, tandem_enabled=False)
+
+    def test_build_manifest_is_the_compile_run_contract(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            build_dir = Path(directory)
+            COMMON.write_build_manifest(
+                build_dir,
+                target="cv32a60x_axi",
+                comp_mode=CompMode.rtl,
+                trace_mode=TraceMode.fast,
+                tandem_enabled=True,
+            )
+            COMMON.require_matching_build(
+                build_dir,
+                target="cv32a60x_axi",
+                comp_mode=CompMode.rtl,
+                trace_mode=TraceMode.fast,
+                tandem_enabled=True,
+            )
+            manifest = build_dir / COMMON.BUILD_MANIFEST
+            manifest_data = json.loads(manifest.read_text(encoding="utf-8"))
+            manifest_data["verilator_version"] = "5.050"
+            manifest.write_text(json.dumps(manifest_data), encoding="utf-8")
+            COMMON.require_matching_build(
+                build_dir,
+                target="cv32a60x_axi",
+                comp_mode=CompMode.rtl,
+                trace_mode=TraceMode.fast,
+                tandem_enabled=True,
+            )
+            with self.assertRaisesRegex(ValueError, "do not match"):
+                COMMON.require_matching_build(
+                    build_dir,
+                    target="cv32a60x_axi",
+                    comp_mode=CompMode.rtl,
+                    trace_mode=TraceMode.compact,
+                    tandem_enabled=True,
+                )
+
     def test_compile_command_invokes_verilator_directly(self) -> None:
         root = Path("/repo")
         command = COMPILER.build_command(
             repo_dir=root,
             target="cv32a60x_axi",
+            comp_mode=CompMode.rtl,
             tandem_enabled=True,
             trace_mode=TraceMode.compact,
+            stats=False,
             jobs=4,
             verilator="/tools/verilator/bin/verilator",
             riscv=Path("/tools/riscv"),
@@ -114,6 +213,62 @@ class VerilatorTestHarnessSafetyTest(unittest.TestCase):
         )
         self.assertNotIn("make", command)
         self.assertFalse(any("cva6.py" in argument for argument in command))
+
+    def test_single_test_cli_accepts_the_proposed_interface(self) -> None:
+        result = COMMON.TestHarnessResult(
+            "rv32ui-p-add_0",
+            "rv32imc",
+            "ilp32",
+            "verilator+spike-tandem",
+            True,
+            "live Spike tandem completed",
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory)
+            with (
+                patch.object(RUNNER, "run_test", return_value=result) as run_test,
+                patch.object(
+                    RUNNER,
+                    "test_simulation_directory",
+                    return_value=output,
+                ),
+            ):
+                cli = CliRunner().invoke(
+                    RUNNER.app,
+                    [
+                        "--target",
+                        "cv32a60x_axi",
+                        "--testname",
+                        "rv32ui-p-add_0",
+                        "--comp-mode",
+                        "rtl",
+                        "--trace-mode",
+                        "notrace",
+                        "--tandem-enabled",
+                        "--iss-enabled",
+                    ],
+                )
+
+        self.assertEqual(cli.exit_code, 0, cli.output)
+        self.assertEqual(run_test.call_args.kwargs["comp_mode"], CompMode.rtl)
+        self.assertEqual(run_test.call_args.kwargs["trace_mode"], TraceMode.notrace)
+        self.assertTrue(run_test.call_args.kwargs["iss_enabled"])
+        self.assertTrue(run_test.call_args.kwargs["tandem_enabled"])
+
+    def test_tier1_exercises_the_single_test_recipe(self) -> None:
+        workflow = (
+            REPO_ROOT / ".github/workflows/openhw-cva6-ci-tier1.yml"
+        ).read_text(encoding="utf-8")
+        runner = (
+            REPO_ROOT / ".github/scripts/run-tier-regression.sh"
+        ).read_text(encoding="utf-8")
+
+        self.assertEqual(workflow.count("single_test_smoke: hello-world"), 1)
+        self.assertIn("TIER_SINGLE_TEST_SMOKE", workflow)
+        self.assertEqual(runner.count('./cook.py "${TIER_SINGLE_TEST_SMOKE}"'), 1)
+        self.assertEqual(
+            runner.count("./cook.py verilator-testharness-run"), 1
+        )
 
     def test_nonzero_child_is_failure(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -228,7 +383,7 @@ class VerilatorTestHarnessSafetyTest(unittest.TestCase):
             compile_dir.mkdir(parents=True)
             (compile_dir / f"{test_name}.elf").touch()
             (compile_dir / "isa_string").write_text("rv32imc\n", encoding="utf-8")
-            binary = RUNNER.verilator_binary(root, target, True)
+            binary = RUNNER.verilator_binary(root, target, CompMode.rtl, True)
             binary.parent.mkdir(parents=True)
             binary.touch()
 
@@ -236,11 +391,12 @@ class VerilatorTestHarnessSafetyTest(unittest.TestCase):
                 result = RUNNER.run_test(
                     target=target,
                     test_name=test_name,
+                    comp_mode=CompMode.rtl,
+                    trace_mode=TraceMode.notrace,
                     tandem_enabled=True,
                     iss_enabled=True,
                     iss_timeout=500,
                     seed="1",
-                    trace_mode=TraceMode.notrace,
                     run_options=[],
                 )
 
@@ -262,11 +418,12 @@ class VerilatorTestHarnessSafetyTest(unittest.TestCase):
                 result = RUNNER.run_test(
                     target="cv32a60x_axi",
                     test_name="../victim",
+                    comp_mode=CompMode.rtl,
+                    trace_mode=TraceMode.notrace,
                     tandem_enabled=True,
                     iss_enabled=True,
                     iss_timeout=500,
                     seed="1",
-                    trace_mode=TraceMode.notrace,
                     run_options=[],
                 )
 
@@ -305,11 +462,12 @@ class VerilatorTestHarnessSafetyTest(unittest.TestCase):
                     target="../../../victim",
                     testlist=str(testlist.relative_to(root)),
                     test_name=None,
+                    comp_mode=CompMode.rtl,
+                    trace_mode=TraceMode.notrace,
                     tandem_enabled=True,
                     iss_enabled=True,
                     iss_timeout=500,
                     seed="1",
-                    trace_mode=TraceMode.notrace,
                     run_options=[],
                     quiet=True,
                 )
@@ -320,14 +478,14 @@ class VerilatorTestHarnessSafetyTest(unittest.TestCase):
     def test_tandem_and_non_tandem_outputs_are_isolated(self) -> None:
         root = Path("/repo")
         tandem = COMMON.test_simulation_directory(
-            root, "cv32a60x_axi", "example_0", True
+            root, "cv32a60x_axi", "example_0", CompMode.rtl, True
         )
         standalone = COMMON.test_simulation_directory(
-            root, "cv32a60x_axi", "example_0", False
+            root, "cv32a60x_axi", "example_0", CompMode.rtl, False
         )
         self.assertNotEqual(tandem, standalone)
-        self.assertEqual(tandem.parent.name, "sim_verilator_testharness_tandem")
-        self.assertEqual(standalone.parent.name, "sim_verilator_testharness")
+        self.assertEqual(tandem.parent.name, "sim_rtl_verilator_testharness_tandem")
+        self.assertEqual(standalone.parent.name, "sim_rtl_verilator_testharness")
 
     def test_standalone_spike_uses_the_requested_timeout(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -347,9 +505,16 @@ class VerilatorTestHarnessSafetyTest(unittest.TestCase):
             (compile_dir / f"{test_name}.add_tohost").write_text(
                 "80001000\n", encoding="utf-8"
             )
-            binary = RUNNER.verilator_binary(root, target, False)
+            binary = RUNNER.verilator_binary(root, target, CompMode.rtl, False)
             binary.parent.mkdir(parents=True)
             binary.touch()
+            COMMON.write_build_manifest(
+                binary.parent,
+                target=target,
+                comp_mode=CompMode.rtl,
+                trace_mode=TraceMode.notrace,
+                tandem_enabled=False,
+            )
             run_spike = Mock(return_value=(False, "probe complete"))
 
             with (
@@ -376,11 +541,12 @@ class VerilatorTestHarnessSafetyTest(unittest.TestCase):
                 result = RUNNER.run_test(
                     target=target,
                     test_name=test_name,
+                    comp_mode=CompMode.rtl,
+                    trace_mode=TraceMode.notrace,
                     tandem_enabled=False,
                     iss_enabled=True,
                     iss_timeout=37,
                     seed="1",
-                    trace_mode=TraceMode.notrace,
                     run_options=[],
                 )
 
@@ -412,12 +578,13 @@ class VerilatorTestHarnessSafetyTest(unittest.TestCase):
             failed = RUNNER.TestHarnessResult(
                 "example_0", "rv32imc", "ilp32", "verilator", False, "failed"
             )
+            run_test = Mock(return_value=failed)
 
             with (
                 working_directory(root),
                 patch.dict(
                     DISPATCHER.RUNNERS,
-                    {DISPATCHER.Simulator.verilator: Mock(return_value=failed)},
+                    {DISPATCHER.Simulator.verilator: run_test},
                     clear=True,
                 ),
                 patch.object(DISPATCHER.Report, "dump"),
@@ -428,15 +595,20 @@ class VerilatorTestHarnessSafetyTest(unittest.TestCase):
                     target="cv32a60x_axi",
                     testlist=str(testlist.relative_to(root)),
                     test_name=None,
+                    comp_mode=CompMode.rtl,
+                    trace_mode=TraceMode.notrace,
                     tandem_enabled=True,
                     iss_enabled=True,
                     iss_timeout=500,
                     seed="1",
-                    trace_mode=TraceMode.notrace,
                     run_options=[],
                     quiet=True,
                 )
         self.assertEqual(raised.exception.exit_code, 1)
+        self.assertEqual(run_test.call_args.kwargs["comp_mode"], CompMode.rtl)
+        self.assertEqual(run_test.call_args.kwargs["trace_mode"], TraceMode.notrace)
+        self.assertTrue(run_test.call_args.kwargs["iss_enabled"])
+        self.assertTrue(run_test.call_args.kwargs["tandem_enabled"])
 
     def test_trace_parser_requires_cycle_prefixed_instruction_lines(self) -> None:
         sim_dir = REPO_ROOT / "verif/sim"

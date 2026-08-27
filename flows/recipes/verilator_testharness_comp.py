@@ -16,10 +16,13 @@ import typer
 
 from flows.recipes.testharness_common import (
     require_target_files,
+    validate_verilator_options,
     verilator_binary,
     verilator_elab_directory,
+    write_build_manifest,
 )
 from flows.utils.utils import (
+    CompMode,
     TraceMode,
     autocompletion_target,
     print_error,
@@ -85,15 +88,22 @@ def build_command(
     *,
     repo_dir: Path,
     target: str,
+    comp_mode: CompMode,
     tandem_enabled: bool,
     trace_mode: TraceMode,
+    stats: bool,
     jobs: int,
     verilator: str,
     riscv: Path,
     verilator_install: Path,
     spike_install: Path,
 ) -> list[str]:
-    elab_dir = verilator_elab_directory(repo_dir, target, tandem_enabled)
+    validate_verilator_options(
+        comp_mode=comp_mode, trace_mode=trace_mode, stats=stats
+    )
+    elab_dir = verilator_elab_directory(
+        repo_dir, target, comp_mode, tandem_enabled
+    )
     cflags = [
         f"-I{repo_dir}",
         f"-I{spike_install / 'include' / 'riscv'}",
@@ -216,13 +226,19 @@ def verilator_testharness_comp(
         help="CVA6 user configuration",
         autocompletion=autocompletion_target,
     ),
+    comp_mode: CompMode = typer.Option(
+        CompMode.rtl, help="Hardware compilation mode (currently rtl only)"
+    ),
+    trace_mode: TraceMode = typer.Option(
+        TraceMode.notrace, help="Waveform trace format (gui is not supported)"
+    ),
     tandem_enabled: bool = typer.Option(
         False,
         "--tandem-enabled/--no-tandem",
         help="Compile the live Spike tandem components",
     ),
-    trace_mode: TraceMode = typer.Option(
-        TraceMode.notrace, help="Waveform trace format"
+    stats: bool = typer.Option(
+        False, help="Enable RTL perf tracer (not supported yet)"
     ),
     jobs: int | None = typer.Option(
         None, min=1, help="Parallel jobs used by the Verilator build"
@@ -239,6 +255,9 @@ def verilator_testharness_comp(
     repo_dir = Path.cwd().resolve()
 
     try:
+        validate_verilator_options(
+            comp_mode=comp_mode, trace_mode=trace_mode, stats=stats
+        )
         require_target_files(repo_dir, target, ("Flist.cva6", "rtl_cfg_pkg.sv"))
         riscv, verilator_install, spike_install = _tool_paths(repo_dir)
         verilator = shutil.which("verilator")
@@ -250,8 +269,10 @@ def verilator_testharness_comp(
         command = build_command(
             repo_dir=repo_dir,
             target=target,
+            comp_mode=comp_mode,
             tandem_enabled=tandem_enabled,
             trace_mode=trace_mode,
+            stats=stats,
             jobs=job_count,
             verilator=verilator,
             riscv=riscv,
@@ -262,13 +283,17 @@ def verilator_testharness_comp(
         print_error(str(error), quiet=quiet)
         raise typer.Exit(code=1) from error
 
-    elab_dir = verilator_elab_directory(repo_dir, target, tandem_enabled)
-    binary = verilator_binary(repo_dir, target, tandem_enabled)
+    elab_dir = verilator_elab_directory(
+        repo_dir, target, comp_mode, tandem_enabled
+    )
+    binary = verilator_binary(repo_dir, target, comp_mode, tandem_enabled)
     print_param_table(
         {
             "Target": target,
+            "Compilation mode": comp_mode.value,
             "Tandem enabled": tandem_enabled,
             "Trace mode": trace_mode.value,
+            "RTL perf tracer": stats,
             "Build directory": elab_dir,
             "Jobs": job_count,
         },
@@ -298,6 +323,19 @@ def verilator_testharness_comp(
         print_error(f"Missing Verilator executable: {binary}", quiet=quiet)
         raise typer.Exit(code=1)
 
+    try:
+        manifest = write_build_manifest(
+            elab_dir,
+            target=target,
+            comp_mode=comp_mode,
+            trace_mode=trace_mode,
+            tandem_enabled=tandem_enabled,
+        )
+    except OSError as error:
+        print_error(f"Cannot write TestHarness build manifest: {error}", quiet=quiet)
+        raise typer.Exit(code=1) from error
+
     print_success(f"Verilator TestHarness: {binary}", quiet=quiet)
+    print_info(f"Build manifest: {manifest}", quiet=quiet)
     print_info(f"Compile log: {elab_dir / 'compile.log'}", quiet=quiet)
     print_recipe_end("Completed", quiet=quiet)

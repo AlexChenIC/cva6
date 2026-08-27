@@ -14,10 +14,16 @@ from typing import Any
 import typer
 import yaml
 
-from flows.recipes.testharness_common import validate_path_component
+from flows.recipes.testharness_common import (
+    TestHarnessRunner,
+    validate_iss_options,
+    validate_path_component,
+    validate_verilator_options,
+)
 from flows.recipes.verilator_testharness_run import run_test as run_verilator_test
 from flows.utils.report_builder import Report, TableStatusMetric
 from flows.utils.utils import (
+    CompMode,
     TraceMode,
     autocompletion_target,
     autocompletion_testlist,
@@ -37,7 +43,9 @@ class Simulator(str, Enum):
     verilator = "verilator"
 
 
-RUNNERS = {Simulator.verilator: run_verilator_test}
+RUNNERS: dict[Simulator, TestHarnessRunner] = {
+    Simulator.verilator: run_verilator_test
+}
 
 
 def enabled_tests(
@@ -100,23 +108,26 @@ def testharness_run_testlist(
         help="Run selected enabled tests from the testlist",
         autocompletion=autocompletion_testname_in_testlist,
     ),
+    comp_mode: CompMode = typer.Option(
+        CompMode.rtl, help="Hardware compilation mode (currently rtl only)"
+    ),
+    trace_mode: TraceMode = typer.Option(
+        TraceMode.notrace, help="Trace mode (Verilator gui is not supported)"
+    ),
     tandem_enabled: bool = typer.Option(
         False,
         "--tandem-enabled/--no-tandem",
         help="Use live Spike tandem mode",
     ),
     iss_enabled: bool = typer.Option(
-        True,
+        False,
         "--iss-enabled/--no-iss",
-        help="Compare with a standalone ISS when tandem mode is disabled",
+        help="Enable reference-model comparison",
     ),
     iss_timeout: int = typer.Option(
         500, min=1, help="Timeout in seconds for each simulator process"
     ),
     seed: str = typer.Option("1", "--seed", help="TestHarness random seed"),
-    trace_mode: TraceMode = typer.Option(
-        TraceMode.notrace, help="Waveform trace format"
-    ),
     run_options: list[str] = typer.Option(
         [], "--run-opt", help="Additional TestHarness or SystemVerilog argument"
     ),
@@ -132,6 +143,13 @@ def testharness_run_testlist(
     testlist_file = (repo_dir / testlist).resolve()
     try:
         target = validate_path_component(target, "target name")
+        if simulator == Simulator.verilator:
+            validate_verilator_options(
+                comp_mode=comp_mode, trace_mode=trace_mode
+            )
+        validate_iss_options(
+            iss_enabled=iss_enabled, tandem_enabled=tandem_enabled
+        )
         data = yaml.safe_load(testlist_file.read_text(encoding="utf-8"))
         if not isinstance(data, dict):
             raise ValueError(f"Expected a mapping in {testlist_file}")
@@ -148,11 +166,12 @@ def testharness_run_testlist(
             "Target": target,
             "Testlist": testlist,
             "Selected tests": test_name or "all enabled tests",
+            "Compilation mode": comp_mode.value,
+            "Trace mode": trace_mode.value,
             "Tandem enabled": tandem_enabled,
-            "Standalone ISS enabled": iss_enabled and not tandem_enabled,
+            "ISS enabled": iss_enabled,
             "Timeout (seconds)": iss_timeout,
             "Seed": seed,
-            "Trace mode": trace_mode.value,
         },
         "Options",
         quiet=quiet,
@@ -169,6 +188,7 @@ def testharness_run_testlist(
     metric = TableStatusMetric("TestHarness test results")
     metric.add_column("Target", "text")
     metric.add_column("Test", "text")
+    metric.add_column("Compilation mode", "text")
     metric.add_column("Compiler ISA", "text")
     metric.add_column("ABI", "text")
     metric.add_column("Simulator", "text")
@@ -183,16 +203,18 @@ def testharness_run_testlist(
             result = run_test(
                 target=target,
                 test_name=compiled_name,
+                comp_mode=comp_mode,
+                trace_mode=trace_mode,
                 tandem_enabled=tandem_enabled,
                 iss_enabled=iss_enabled,
                 iss_timeout=iss_timeout,
                 seed=seed,
-                trace_mode=trace_mode,
                 run_options=run_options,
             )
             row = (
                 target,
                 result.name,
+                comp_mode.value,
                 result.compiler_isa,
                 result.mabi,
                 simulator.value,

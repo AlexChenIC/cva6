@@ -56,12 +56,14 @@ jobs:
             install_script: install-riscv-tests
             testlist: verif/tests/base_rv32_p.yaml
             compiler_march: rv32imc_zicsr_zba_zbb_zbs_zbc
+            single_test_smoke: hello-world
 
           - config: cv32a65x_axi
             testcase: base-rv32-p
             install_script: install-riscv-tests
             testlist: verif/tests/base_rv32_p.yaml
             compiler_march: rv32imc_zicsr_zba_zbb_zbs_zbc_zifencei
+            single_test_smoke: ""
 
     steps:
       - uses: actions/checkout@v7
@@ -85,6 +87,7 @@ jobs:
           TIER_INSTALL_SCRIPT: ${{ matrix.install_script }}
           TIER_TESTLIST: ${{ matrix.testlist }}
           TIER_COMPILER_MARCH: ${{ matrix.compiler_march }}
+          TIER_SINGLE_TEST_SMOKE: ${{ matrix.single_test_smoke }}
           TIER_EVENT_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
           TIER_EVENT_BASE_SHA: ${{ github.event.pull_request.base.sha || '' }}
         run: bash .github/scripts/run-tier-regression.sh
@@ -98,8 +101,8 @@ jobs:
             ci-results/
             artifacts/reports/
             build/${{ matrix.config }}/compile/
-            build/${{ matrix.config }}/elab/sim_verilator_testharness_tandem/compile.log
-            build/${{ matrix.config }}/simulation/sim_verilator_testharness_tandem/
+            build/${{ matrix.config }}/elab/sim_rtl_verilator_testharness_tandem/
+            build/${{ matrix.config }}/simulation/sim_rtl_verilator_testharness_tandem/
             build/${{ matrix.config }}/config/
           if-no-files-found: error
           retention-days: 14

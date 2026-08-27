@@ -14,18 +14,23 @@ import shutil
 import signal
 import subprocess
 import sys
-from typing import NamedTuple
 
 import typer
 import yaml
 
 from flows.recipes.testharness_common import (
+    TestHarnessResult,
+    require_matching_build,
     require_target_files,
     test_simulation_directory,
     validate_path_component,
+    validate_iss_options,
+    validate_verilator_options,
     verilator_binary,
+    verilator_elab_directory,
 )
 from flows.utils.utils import (
+    CompMode,
     TraceMode,
     autocompletion_target,
     autocompletion_testname_compiled,
@@ -45,15 +50,6 @@ BOOT_PC_RE = re.compile(
     r"^\s*\d+\s*\|\s*core\s+\d+:\s*0x0000000080000000\s", re.MULTILINE
 )
 TANDEM_COMMIT_RE = re.compile(r"^\s*core\s+\d+:", re.MULTILINE)
-
-
-class TestHarnessResult(NamedTuple):
-    name: str
-    compiler_isa: str
-    mabi: str
-    backend: str
-    passed: bool
-    detail: str
 
 
 def comparison_report_passed(report: Path) -> tuple[bool, str]:
@@ -413,11 +409,12 @@ def run_test(
     *,
     target: str,
     test_name: str,
+    comp_mode: CompMode,
+    trace_mode: TraceMode,
     tandem_enabled: bool,
     iss_enabled: bool,
     iss_timeout: int,
     seed: str,
-    trace_mode: TraceMode,
     run_options: list[str],
 ) -> TestHarnessResult:
     repo_dir = Path.cwd().resolve()
@@ -428,6 +425,10 @@ def run_test(
     compiler_isa = "unknown"
     mabi = "unknown"
     try:
+        validate_verilator_options(comp_mode=comp_mode, trace_mode=trace_mode)
+        validate_iss_options(
+            iss_enabled=iss_enabled, tandem_enabled=tandem_enabled
+        )
         target = validate_path_component(target, "target name")
         test_name = validate_path_component(test_name, "test name")
         compile_dir = repo_dir / "build" / target / "compile" / test_name
@@ -435,9 +436,12 @@ def run_test(
         isa_file = compile_dir / "isa_string"
         tohost_file = compile_dir / f"{test_name}.add_tohost"
         simulation_dir = test_simulation_directory(
-            repo_dir, target, test_name, tandem_enabled
+            repo_dir, target, test_name, comp_mode, tandem_enabled
         )
-        binary = verilator_binary(repo_dir, target, tandem_enabled)
+        elab_dir = verilator_elab_directory(
+            repo_dir, target, comp_mode, tandem_enabled
+        )
+        binary = verilator_binary(repo_dir, target, comp_mode, tandem_enabled)
         target_dir = require_target_files(repo_dir, target, ("isa.yml", "spike.yaml"))
         spike_yaml = target_dir / "spike.yaml"
         isa_data = yaml.safe_load((target_dir / "isa.yml").read_text(encoding="utf-8"))
@@ -457,6 +461,13 @@ def run_test(
             raise ValueError(f"Missing Cook software output for {test_name}")
         if not binary.is_file():
             raise ValueError(f"Missing Verilator executable: {binary}")
+        require_matching_build(
+            elab_dir,
+            target=target,
+            comp_mode=comp_mode,
+            trace_mode=trace_mode,
+            tandem_enabled=tandem_enabled,
+        )
         compiler_isa = isa_file.read_text(encoding="utf-8").strip()
         if not compiler_isa:
             raise ValueError(f"Empty compiler ISA in {isa_file}")
@@ -578,23 +589,29 @@ def verilator_testharness_run(
         help="Cook-compiled test name",
         autocompletion=autocompletion_testname_compiled,
     ),
+    comp_mode: CompMode = typer.Option(
+        CompMode.rtl, help="Hardware compilation mode (currently rtl only)"
+    ),
+    trace_mode: TraceMode = typer.Option(
+        TraceMode.notrace, help="Waveform trace format (gui is not supported)"
+    ),
     tandem_enabled: bool = typer.Option(
         False,
         "--tandem-enabled/--no-tandem",
         help="Use the TestHarness live Spike tandem build",
     ),
     iss_enabled: bool = typer.Option(
-        True,
+        False,
         "--iss-enabled/--no-iss",
-        help="Compare with standalone Spike when tandem mode is disabled",
+        help="Enable Spike reference comparison",
+    ),
+    interactive_gui: bool = typer.Option(
+        False, help="Launch an interactive simulator GUI (not supported yet)"
     ),
     iss_timeout: int = typer.Option(
         500, min=1, help="Timeout in seconds for simulator processes"
     ),
     seed: str = typer.Option("1", "--seed", help="TestHarness random seed"),
-    trace_mode: TraceMode = typer.Option(
-        TraceMode.notrace, help="Waveform trace format"
-    ),
     run_options: list[str] = typer.Option(
         [], "--run-opt", help="Additional TestHarness or SystemVerilog argument"
     ),
@@ -605,8 +622,16 @@ def verilator_testharness_run(
     """Run one Cook-compiled ELF with the Verilator TestHarness."""
     print_recipe_title("VERILATOR TESTHARNESS RUN", quiet=quiet)
     try:
+        validate_verilator_options(
+            comp_mode=comp_mode,
+            trace_mode=trace_mode,
+            interactive_gui=interactive_gui,
+        )
+        validate_iss_options(
+            iss_enabled=iss_enabled, tandem_enabled=tandem_enabled
+        )
         simulation_dir = test_simulation_directory(
-            Path.cwd().resolve(), target, test_name, tandem_enabled
+            Path.cwd().resolve(), target, test_name, comp_mode, tandem_enabled
         )
     except ValueError as error:
         print_error(str(error), quiet=quiet)
@@ -615,11 +640,13 @@ def verilator_testharness_run(
         {
             "Target": target,
             "Test": test_name,
+            "Compilation mode": comp_mode.value,
+            "Trace mode": trace_mode.value,
             "Tandem enabled": tandem_enabled,
-            "Standalone ISS enabled": iss_enabled and not tandem_enabled,
+            "ISS enabled": iss_enabled,
+            "Interactive GUI": interactive_gui,
             "Timeout (seconds)": iss_timeout,
             "Seed": seed,
-            "Trace mode": trace_mode.value,
         },
         "Options",
         quiet=quiet,
@@ -628,11 +655,12 @@ def verilator_testharness_run(
     result = run_test(
         target=target,
         test_name=test_name,
+        comp_mode=comp_mode,
+        trace_mode=trace_mode,
         tandem_enabled=tandem_enabled,
         iss_enabled=iss_enabled,
         iss_timeout=iss_timeout,
         seed=seed,
-        trace_mode=trace_mode,
         run_options=run_options,
     )
     if not quiet and (simulation_dir / "testharness.log").is_file():
