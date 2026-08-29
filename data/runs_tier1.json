@@ -57,7 +57,7 @@
       "simulator": "veri-testharness,spike",
       "compiler_march": "rv32imc_zicsr_zba_zbb_zbs_zbc",
       "source_revision": "e7c272c93dc0db08d030f1ebe7412af8d78dae6b",
-      "collected_at": "2026-08-28T22:24:13.980344+00:00"
+      "collected_at": "2026-08-29T07:08:11.928813+00:00"
     }
   },
   {
