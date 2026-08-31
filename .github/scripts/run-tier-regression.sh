@@ -32,6 +32,7 @@ TIER_ISS_TIMEOUT="${TIER_ISS_TIMEOUT:-500}"
 TIER_COMP_MODE="${TIER_COMP_MODE:-rtl}"
 TIER_TRACE_MODE="${TIER_TRACE_MODE:-notrace}"
 TIER_SINGLE_TEST_SMOKE="${TIER_SINGLE_TEST_SMOKE:-}"
+TIER_NON_TANDEM_SMOKE="${TIER_NON_TANDEM_SMOKE:-false}"
 
 case "${TIER_MODE}" in
   script)
@@ -50,6 +51,20 @@ case "${TIER_MODE}" in
     exit 2
     ;;
 esac
+
+case "${TIER_NON_TANDEM_SMOKE}" in
+  true|false)
+    ;;
+  *)
+    echo "ERROR: TIER_NON_TANDEM_SMOKE must be true or false" >&2
+    exit 2
+    ;;
+esac
+
+if [ "${TIER_NON_TANDEM_SMOKE}" = "true" ] && [ -z "${TIER_SINGLE_TEST_SMOKE}" ]; then
+  echo "ERROR: TIER_SINGLE_TEST_SMOKE is required for non-tandem smoke" >&2
+  exit 2
+fi
 
 log_info() {
   echo "$*" | tee -a "${RUN_LOG}"
@@ -129,6 +144,7 @@ write_metadata() {
     echo "comp_mode=${TIER_COMP_MODE}"
     echo "trace_mode=${TIER_TRACE_MODE}"
     echo "single_test_smoke=${TIER_SINGLE_TEST_SMOKE}"
+    echo "non_tandem_smoke=${TIER_NON_TANDEM_SMOKE}"
     echo "spike_tandem=${spike_tandem}"
     echo "source_revision=$(git rev-parse HEAD)"
     echo "event_head_sha=${TIER_EVENT_HEAD_SHA:-unknown}"
@@ -281,6 +297,46 @@ if [ "${rc}" -eq 0 ] && [ "${TIER_MODE}" = "cook-testlist" ]; then
       --comp-mode "${TIER_COMP_MODE}" \
       --trace-mode "${TIER_TRACE_MODE}" \
       --tandem-enabled \
+      --iss-enabled \
+      --iss-timeout "${TIER_ISS_TIMEOUT}"
+    record_rc "$?"
+  fi
+
+  if [ "${rc}" -eq 0 ] && [ "${TIER_NON_TANDEM_SMOKE}" = "true" ]; then
+    run_logged ./cook.py verilator-testharness-comp \
+      --target "${TIER_CONFIG}" \
+      --comp-mode "${TIER_COMP_MODE}" \
+      --trace-mode "${TIER_TRACE_MODE}" \
+      --no-tandem
+    record_rc "$?"
+  fi
+
+  if [ "${rc}" -eq 0 ] && [ "${TIER_NON_TANDEM_SMOKE}" = "true" ]; then
+    run_logged ./cook.py verilator-testharness-run \
+      --target "${TIER_CONFIG}" \
+      --testname "${TIER_SINGLE_TEST_SMOKE}" \
+      --comp-mode "${TIER_COMP_MODE}" \
+      --trace-mode "${TIER_TRACE_MODE}" \
+      --no-tandem \
+      --no-iss \
+      --iss-timeout "${TIER_ISS_TIMEOUT}"
+    record_rc "$?"
+  fi
+
+  if [ "${rc}" -eq 0 ] && [ "${TIER_NON_TANDEM_SMOKE}" = "true" ]; then
+    run_logged cp \
+      "build/${TIER_CONFIG}/simulation/sim_${TIER_COMP_MODE}_verilator_testharness/${TIER_SINGLE_TEST_SMOKE}/testharness.log" \
+      "${RESULTS_DIR}/non-tandem-testharness.log"
+    record_rc "$?"
+  fi
+
+  if [ "${rc}" -eq 0 ] && [ "${TIER_NON_TANDEM_SMOKE}" = "true" ]; then
+    run_logged ./cook.py verilator-testharness-run \
+      --target "${TIER_CONFIG}" \
+      --testname "${TIER_SINGLE_TEST_SMOKE}" \
+      --comp-mode "${TIER_COMP_MODE}" \
+      --trace-mode "${TIER_TRACE_MODE}" \
+      --no-tandem \
       --iss-enabled \
       --iss-timeout "${TIER_ISS_TIMEOUT}"
     record_rc "$?"

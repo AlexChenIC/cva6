@@ -47,14 +47,17 @@ A modular command runner to automate and simplify RTL flow execution for the CVA
 
 ## Current Status
 
-At the moment, the command runner only provides recipes for the Synopsys tools (VCS, DC_shell, and SpyGlass). Only the UVM testbench is currently supported, with an optional tandem comparison mode against the SPIKE reference model.
+The command runner provides recipes for the commercial UVM flows and an
+RTL-only Verilator TestHarness flow. The TestHarness recipes support direct
+execution, testlist dispatch, live Spike tandem mode, and optional standalone
+Spike comparison.
 
 ### Roadmap
 
 Future developments are planned to include:
 
 - Support for the Questa and Verilator ISSs (MustHave).
-- Support for the TestHarness testbench (MustHave).
+- Additional TestHarness simulators and compilation modes
 - FPGA builds
 - Documentation generation
 - Dependency installation
@@ -690,6 +693,68 @@ Run all tests (or a single test) from a testlist with any simulator.
   -n test_mul \
   --stats
 ```
+
+
+#### Verilator TestHarness
+
+The TestHarness flow separates hardware compilation, one-test execution, and
+testlist dispatch:
+
+```bash
+# Compile an RTL TestHarness executable.
+./cook.py verilator-testharness-comp \
+  --target cv32a60x_axi \
+  --comp-mode rtl \
+  --trace-mode notrace
+
+# Run one ELF compiled by a Cook software recipe.
+./cook.py verilator-testharness-run \
+  --target cv32a60x_axi \
+  --testname hello-world
+
+# Run one test with a separate Spike execution and trace comparison.
+./cook.py verilator-testharness-run \
+  --target cv32a60x_axi \
+  --testname hello-world \
+  --iss-enabled
+
+# Build the matching live-tandem executable, then dispatch a compiled testlist.
+./cook.py verilator-testharness-comp \
+  --target cv32a60x_axi \
+  --comp-mode rtl \
+  --trace-mode notrace \
+  --tandem-enabled
+
+./cook.py testharness-run-testlist \
+  --simulator verilator \
+  --target cv32a60x_axi \
+  --testlist verif/tests/base_rv32_p.yaml \
+  --tandem-enabled \
+  --iss-enabled
+```
+
+The compile and run options must match. The compiler records them in
+`build/<target>/elab/sim_rtl_verilator_testharness*/testharness-build.json`,
+and the run recipe rejects a mismatched executable.
+
+`--emulator-opt` places one complete C++ TestHarness option before the ELF.
+For options beginning with `--`, use the `--emulator-opt=<value>` form so the
+CLI does not interpret the value as a Cook option. `--run-opt` is reserved for
+Verilog plusargs and HTIF/host arguments placed after the ELF.
+
+```bash
+./cook.py verilator-testharness-run \
+  --target cv32a60x_axi \
+  --testname hello-world \
+  --emulator-opt=--max-cycles=2000000 \
+  --run-opt=+UVM_VERBOSITY=UVM_LOW
+```
+
+Only `rtl` compilation is currently supported. `fast` and `compact` enable
+VCD and FST tracing respectively; trace-only emulator options are rejected for
+`notrace` builds. Tandem mode requires `--iss-enabled` because Spike is part of
+the live backend. Without `--tandem-enabled`, `--iss-enabled` runs standalone
+Spike and compares the post-processed traces.
 
 
 #### `vcs-uvm-gui`

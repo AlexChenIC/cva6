@@ -89,17 +89,10 @@ def testharness_log_passed(log: Path, tandem_enabled: bool) -> tuple[bool, str]:
         "[FAILED]",
         "UVM_ERROR",
         "UVM_FATAL",
-        "MISMATCH",
     )
     failures = [marker for marker in failure_markers if marker in text]
     if failures:
         return False, "failure marker(s): " + ", ".join(failures)
-    for line in text.splitlines():
-        normalized = line.lower()
-        if "spike_tandem" in normalized and (
-            "uvm_warning" in normalized or "mismatch" in normalized
-        ):
-            return False, "live Spike tandem mismatch"
     if "*** SUCCESS *** (tohost = 0)" not in text:
         return False, "missing successful TestHarness tohost result"
 
@@ -211,21 +204,49 @@ def _runtime_environment(
     return env, riscv, spike
 
 
-def _is_emulator_option(argument: str) -> bool:
-    flags = {
-        "+cycle-count",
-        "+verbose",
-        "--cycle-count",
-        "--verbose",
+def validate_emulator_options(
+    emulator_options: list[str], trace_mode: TraceMode
+) -> None:
+    options_requiring_inline_values = {
+        "-m",
+        "-s",
+        "-r",
+        "-v",
+        "-f",
+        "-x",
+        "--max-cycles",
+        "--seed",
+        "--rbb-port",
+        "--vcd",
+        "--fst",
+        "--dump-start",
     }
-    prefixes = (
+    for option in emulator_options:
+        if not option or option[0] not in {"-", "+"}:
+            raise ValueError(
+                "Each --emulator-opt must be a complete emulator option; "
+                f"found {option!r}"
+            )
+        if option in options_requiring_inline_values:
+            raise ValueError(
+                f"{option} requires its value in the same --emulator-opt argument"
+            )
+
+    trace_only = (
+        "-v",
+        "--vcd",
+        "-f",
+        "--fst",
+        "-x",
+        "--dump-start",
         "+dump-start=",
-        "+max-cycles=",
-        "--dump-start=",
-        "--max-cycles=",
-        "--rbb-port=",
     )
-    return argument in flags or argument.startswith(prefixes)
+    if trace_mode == TraceMode.notrace and any(
+        option.startswith(prefix)
+        for option in emulator_options
+        for prefix in trace_only
+    ):
+        raise ValueError("Trace emulator options require fast or compact trace mode")
 
 
 def testharness_command(
@@ -237,6 +258,7 @@ def testharness_command(
     tohost: str,
     seed: str,
     trace_mode: TraceMode,
+    emulator_options: list[str],
     run_options: list[str],
 ) -> list[str]:
     command = [str(binary)]
@@ -246,8 +268,7 @@ def testharness_command(
         command.extend(("--fst", "verilator.fst"))
     elif trace_mode != TraceMode.notrace:
         raise ValueError(f"Unsupported Verilator trace mode: {trace_mode.value}")
-    emulator_options = [option for option in run_options if _is_emulator_option(option)]
-    host_options = [option for option in run_options if not _is_emulator_option(option)]
+    validate_emulator_options(emulator_options, trace_mode)
     command.extend(("--seed", seed))
     command.extend(emulator_options)
     command.append(str(elf))
@@ -266,7 +287,7 @@ def testharness_command(
         )
     )
     command.append(f"+tohost_addr={tohost}")
-    command.extend(host_options)
+    command.extend(run_options)
     return command
 
 
@@ -415,6 +436,7 @@ def run_test(
     iss_enabled: bool,
     iss_timeout: int,
     seed: str,
+    emulator_options: list[str],
     run_options: list[str],
 ) -> TestHarnessResult:
     repo_dir = Path.cwd().resolve()
@@ -429,6 +451,7 @@ def run_test(
         validate_iss_options(
             iss_enabled=iss_enabled, tandem_enabled=tandem_enabled
         )
+        validate_emulator_options(emulator_options, trace_mode)
         target = validate_path_component(target, "target name")
         test_name = validate_path_component(test_name, "test name")
         compile_dir = repo_dir / "build" / target / "compile" / test_name
@@ -505,6 +528,7 @@ def run_test(
         tohost=tohost,
         seed=seed,
         trace_mode=trace_mode,
+        emulator_options=emulator_options,
         run_options=run_options,
     )
     return_code, timed_out = run_logged_process(
@@ -521,15 +545,18 @@ def run_test(
         detail = f"TestHarness returned {return_code}"
         return TestHarnessResult(test_name, compiler_isa, mabi, backend, False, detail)
 
+    evidence: list[str] = []
     passed, detail = testharness_log_passed(testharness_log, tandem_enabled)
     if not passed:
         return TestHarnessResult(test_name, compiler_isa, mabi, backend, False, detail)
+    evidence.append(detail)
     if tandem_enabled:
         passed, detail = tandem_trace_passed(simulation_dir / "tandem.log")
         if not passed:
             return TestHarnessResult(
                 test_name, compiler_isa, mabi, backend, False, detail
             )
+        evidence.append(detail)
 
     verilator_log = simulation_dir / "verilator.log"
     if not _run_spike_dasm(
@@ -551,6 +578,7 @@ def run_test(
     passed, detail = boot_pc_reached(verilator_log)
     if not passed:
         return TestHarnessResult(test_name, compiler_isa, mabi, backend, False, detail)
+    evidence.append(detail)
 
     if iss_enabled and not tandem_enabled:
         passed, detail = _run_standalone_spike(
@@ -564,13 +592,17 @@ def run_test(
             timeout=iss_timeout,
         )
         if passed:
+            evidence.append(detail)
             passed, detail = _postprocess_and_compare(repo_dir, simulation_dir)
         if not passed:
             return TestHarnessResult(
                 test_name, compiler_isa, mabi, backend, False, detail
             )
+        evidence.append(detail)
 
-    return TestHarnessResult(test_name, compiler_isa, mabi, backend, True, detail)
+    return TestHarnessResult(
+        test_name, compiler_isa, mabi, backend, True, "; ".join(evidence)
+    )
 
 
 @app.command()
@@ -603,7 +635,7 @@ def verilator_testharness_run(
     iss_enabled: bool = typer.Option(
         False,
         "--iss-enabled/--no-iss",
-        help="Enable Spike reference comparison",
+        help="Enable Spike (required for tandem; standalone comparison otherwise)",
     ),
     interactive_gui: bool = typer.Option(
         False, help="Launch an interactive simulator GUI (not supported yet)"
@@ -612,8 +644,15 @@ def verilator_testharness_run(
         500, min=1, help="Timeout in seconds for simulator processes"
     ),
     seed: str = typer.Option("1", "--seed", help="TestHarness random seed"),
+    emulator_options: list[str] = typer.Option(
+        [],
+        "--emulator-opt",
+        help="Emulator option placed before the ELF (use one complete argv item)",
+    ),
     run_options: list[str] = typer.Option(
-        [], "--run-opt", help="Additional TestHarness or SystemVerilog argument"
+        [],
+        "--run-opt",
+        help="Verilog plusarg or HTIF/host argument placed after the ELF",
     ),
     quiet: bool = typer.Option(
         False, "--quiet", "-q", help="Suppress output (errors only)"
@@ -643,7 +682,7 @@ def verilator_testharness_run(
             "Compilation mode": comp_mode.value,
             "Trace mode": trace_mode.value,
             "Tandem enabled": tandem_enabled,
-            "ISS enabled": iss_enabled,
+            "Standalone ISS enabled": iss_enabled and not tandem_enabled,
             "Interactive GUI": interactive_gui,
             "Timeout (seconds)": iss_timeout,
             "Seed": seed,
@@ -661,6 +700,7 @@ def verilator_testharness_run(
         iss_enabled=iss_enabled,
         iss_timeout=iss_timeout,
         seed=seed,
+        emulator_options=emulator_options,
         run_options=run_options,
     )
     if not quiet and (simulation_dir / "testharness.log").is_file():

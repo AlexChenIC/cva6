@@ -35,6 +35,7 @@ class TestHarnessRunner(Protocol):
         iss_enabled: bool,
         iss_timeout: int,
         seed: str,
+        emulator_options: list[str],
         run_options: list[str],
     ) -> TestHarnessResult: ...
 

@@ -83,9 +83,11 @@ class VerilatorTestHarnessSafetyTest(unittest.TestCase):
             list(run_parameters).index("trace_mode"),
         )
         self.assertIn("interactive_gui", run_parameters)
+        self.assertIn("emulator_options", run_parameters)
         self.assertEqual(run_parameters["iss_enabled"].default.default, False)
         self.assertIn("comp_mode", testlist_parameters)
         self.assertIn("trace_mode", testlist_parameters)
+        self.assertIn("emulator_options", testlist_parameters)
         self.assertEqual(testlist_parameters["iss_enabled"].default.default, False)
 
     def test_unsupported_verilator_modes_fail_explicitly(self) -> None:
@@ -199,20 +201,34 @@ class VerilatorTestHarnessSafetyTest(unittest.TestCase):
             tohost="80001000",
             seed="17",
             trace_mode=TraceMode.fast,
-            run_options=["+max-cycles=2000000", "+UVM_VERBOSITY=UVM_LOW"],
+            emulator_options=["--max-cycles=2000000"],
+            run_options=["+UVM_VERBOSITY=UVM_LOW"],
         )
 
         self.assertEqual(command[0], str(binary))
         self.assertIn("--vcd", command)
         self.assertIn(str(elf), command)
         self.assertIn("+tohost_addr=80001000", command)
-        self.assertIn("+max-cycles=2000000", command)
-        self.assertLess(command.index("+max-cycles=2000000"), command.index(str(elf)))
+        self.assertIn("--max-cycles=2000000", command)
+        self.assertLess(command.index("--max-cycles=2000000"), command.index(str(elf)))
         self.assertGreater(
             command.index("+UVM_VERBOSITY=UVM_LOW"), command.index(str(elf))
         )
         self.assertNotIn("make", command)
         self.assertFalse(any("cva6.py" in argument for argument in command))
+
+    def test_emulator_options_are_explicit_and_trace_aware(self) -> None:
+        RUNNER.validate_emulator_options(
+            ["--max-cycles=2000000", "-p"], TraceMode.notrace
+        )
+        with self.assertRaisesRegex(ValueError, "complete emulator option"):
+            RUNNER.validate_emulator_options(["2000000"], TraceMode.notrace)
+        with self.assertRaisesRegex(ValueError, "value in the same"):
+            RUNNER.validate_emulator_options(["--max-cycles"], TraceMode.notrace)
+        with self.assertRaisesRegex(ValueError, "require fast or compact"):
+            RUNNER.validate_emulator_options(
+                ["--dump-start=100"], TraceMode.notrace
+            )
 
     def test_single_test_cli_accepts_the_proposed_interface(self) -> None:
         result = COMMON.TestHarnessResult(
@@ -246,6 +262,8 @@ class VerilatorTestHarnessSafetyTest(unittest.TestCase):
                         "notrace",
                         "--tandem-enabled",
                         "--iss-enabled",
+                        "--emulator-opt=--max-cycles=2000000",
+                        "--run-opt=+UVM_VERBOSITY=UVM_LOW",
                     ],
                 )
 
@@ -254,6 +272,14 @@ class VerilatorTestHarnessSafetyTest(unittest.TestCase):
         self.assertEqual(run_test.call_args.kwargs["trace_mode"], TraceMode.notrace)
         self.assertTrue(run_test.call_args.kwargs["iss_enabled"])
         self.assertTrue(run_test.call_args.kwargs["tandem_enabled"])
+        self.assertEqual(
+            run_test.call_args.kwargs["emulator_options"],
+            ["--max-cycles=2000000"],
+        )
+        self.assertEqual(
+            run_test.call_args.kwargs["run_options"],
+            ["+UVM_VERBOSITY=UVM_LOW"],
+        )
 
     def test_tier1_exercises_the_single_test_recipe(self) -> None:
         workflow = (
@@ -264,11 +290,30 @@ class VerilatorTestHarnessSafetyTest(unittest.TestCase):
         ).read_text(encoding="utf-8")
 
         self.assertEqual(workflow.count("single_test_smoke: hello-world"), 1)
+        self.assertEqual(workflow.count("non_tandem_smoke: true"), 1)
         self.assertIn("TIER_SINGLE_TEST_SMOKE", workflow)
+        self.assertIn("TIER_NON_TANDEM_SMOKE", workflow)
         self.assertEqual(runner.count('./cook.py "${TIER_SINGLE_TEST_SMOKE}"'), 1)
         self.assertEqual(
-            runner.count("./cook.py verilator-testharness-run"), 1
+            runner.count("./cook.py verilator-testharness-run"), 3
         )
+        self.assertIn("--no-tandem", runner)
+        self.assertIn("--no-iss", runner)
+
+    def test_workflows_upload_diagnostics_not_elaboration_trees(self) -> None:
+        for name in (
+            "openhw-cva6-ci-tier1.yml",
+            "openhw-cva6-ci-tier2.yml",
+        ):
+            workflow = (REPO_ROOT / ".github/workflows" / name).read_text(
+                encoding="utf-8"
+            )
+            self.assertIn("testharness-build.json", workflow)
+            self.assertIn("compile.log", workflow)
+            self.assertNotIn(
+                "elab/sim_rtl_verilator_testharness_tandem/\n", workflow
+            )
+            self.assertNotIn("build/${{ matrix.config }}/compile/\n", workflow)
 
     def test_nonzero_child_is_failure(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -308,14 +353,30 @@ class VerilatorTestHarnessSafetyTest(unittest.TestCase):
             self.assertFalse(passed)
             self.assertIn("missing live Spike tandem markers", detail)
 
-    def test_tandem_mismatch_overrides_tohost_success(self) -> None:
+    def test_tandem_warning_does_not_override_tohost_success(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             log = Path(directory) / "testharness.log"
             log.write_text(
                 "Running binary in tandem mode\n"
                 "[SPIKE] Starting 'spike_create'...\n"
-                "UVM_INFO [spike_tandem] PC Mismatch [REF]: 0x1 [CORE]: 0x2\n"
-                "UVM_WARNING [spike_tandem] continuing after mismatch\n"
+                "UVM_WARNING @ 10: reporter [spike_tandem] "
+                "PC Mismatch [REF]: 0x1 [CORE]: 0x2\n"
+                "example.elf *** SUCCESS *** (tohost = 0) after 10 cycles\n",
+                encoding="utf-8",
+            )
+            passed, detail = RUNNER.testharness_log_passed(
+                log, tandem_enabled=True
+            )
+            self.assertTrue(passed)
+            self.assertEqual(detail, "live Spike tandem completed")
+
+    def test_tandem_fatal_overrides_tohost_success(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            log = Path(directory) / "testharness.log"
+            log.write_text(
+                "Running binary in tandem mode\n"
+                "[SPIKE] Starting 'spike_create'...\n"
+                "UVM_FATAL @ 50: reporter [spike_tandem] mismatch limit reached\n"
                 "example.elf *** SUCCESS *** (tohost = 0) after 10 cycles\n",
                 encoding="utf-8",
             )
@@ -323,7 +384,7 @@ class VerilatorTestHarnessSafetyTest(unittest.TestCase):
                 log, tandem_enabled=True
             )
             self.assertFalse(passed)
-            self.assertIn("tandem mismatch", detail)
+            self.assertIn("UVM_FATAL", detail)
 
     def test_unrelated_uvm_warning_does_not_override_success(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -397,6 +458,7 @@ class VerilatorTestHarnessSafetyTest(unittest.TestCase):
                     iss_enabled=True,
                     iss_timeout=500,
                     seed="1",
+                    emulator_options=[],
                     run_options=[],
                 )
 
@@ -424,6 +486,7 @@ class VerilatorTestHarnessSafetyTest(unittest.TestCase):
                     iss_enabled=True,
                     iss_timeout=500,
                     seed="1",
+                    emulator_options=[],
                     run_options=[],
                 )
 
@@ -468,6 +531,7 @@ class VerilatorTestHarnessSafetyTest(unittest.TestCase):
                     iss_enabled=True,
                     iss_timeout=500,
                     seed="1",
+                    emulator_options=[],
                     run_options=[],
                     quiet=True,
                 )
@@ -547,11 +611,95 @@ class VerilatorTestHarnessSafetyTest(unittest.TestCase):
                     iss_enabled=True,
                     iss_timeout=37,
                     seed="1",
+                    emulator_options=[],
                     run_options=[],
                 )
 
             self.assertFalse(result.passed)
             self.assertEqual(run_spike.call_args.kwargs["timeout"], 37)
+
+    def test_success_detail_retains_each_validation_stage(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            target = "cv32a60x_axi"
+            test_name = "example"
+            target_dir = root / "config" / "target" / target
+            target_dir.mkdir(parents=True)
+            (target_dir / "isa.yml").write_text("mabi: ilp32\n", encoding="utf-8")
+            (target_dir / "spike.yaml").write_text(
+                "spike_param_tree:\n  priv: MSU\n", encoding="utf-8"
+            )
+            compile_dir = root / "build" / target / "compile" / test_name
+            compile_dir.mkdir(parents=True)
+            (compile_dir / f"{test_name}.elf").touch()
+            (compile_dir / "isa_string").write_text("rv32imc\n", encoding="utf-8")
+            (compile_dir / f"{test_name}.add_tohost").write_text(
+                "80001000\n", encoding="utf-8"
+            )
+            binary = RUNNER.verilator_binary(root, target, CompMode.rtl, False)
+            binary.parent.mkdir(parents=True)
+            binary.touch()
+            COMMON.write_build_manifest(
+                binary.parent,
+                target=target,
+                comp_mode=CompMode.rtl,
+                trace_mode=TraceMode.notrace,
+                tandem_enabled=False,
+            )
+
+            with (
+                working_directory(root),
+                patch.object(
+                    RUNNER,
+                    "_runtime_environment",
+                    return_value=(os.environ.copy(), root / "riscv", root / "spike"),
+                ),
+                patch.object(RUNNER, "run_logged_process", return_value=(0, False)),
+                patch.object(
+                    RUNNER,
+                    "testharness_log_passed",
+                    return_value=(True, "TestHarness completed"),
+                ),
+                patch.object(RUNNER, "_run_spike_dasm", return_value=True),
+                patch.object(
+                    RUNNER,
+                    "boot_pc_reached",
+                    return_value=(
+                        True,
+                        "TestHarness trace reached boot PC 0x80000000",
+                    ),
+                ),
+                patch.object(
+                    RUNNER,
+                    "_run_standalone_spike",
+                    return_value=(True, "Spike completed"),
+                ),
+                patch.object(
+                    RUNNER,
+                    "_postprocess_and_compare",
+                    return_value=(True, "24 matched instruction(s)"),
+                ),
+            ):
+                result = RUNNER.run_test(
+                    target=target,
+                    test_name=test_name,
+                    comp_mode=CompMode.rtl,
+                    trace_mode=TraceMode.notrace,
+                    tandem_enabled=False,
+                    iss_enabled=True,
+                    iss_timeout=37,
+                    seed="1",
+                    emulator_options=[],
+                    run_options=[],
+                )
+
+            self.assertTrue(result.passed)
+            self.assertEqual(
+                result.detail,
+                "TestHarness completed; "
+                "TestHarness trace reached boot PC 0x80000000; "
+                "Spike completed; 24 matched instruction(s)",
+            )
 
     def test_zero_match_is_failure(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -601,6 +749,7 @@ class VerilatorTestHarnessSafetyTest(unittest.TestCase):
                     iss_enabled=True,
                     iss_timeout=500,
                     seed="1",
+                    emulator_options=[],
                     run_options=[],
                     quiet=True,
                 )

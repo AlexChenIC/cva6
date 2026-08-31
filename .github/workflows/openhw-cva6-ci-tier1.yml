@@ -19,7 +19,6 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  SPIKE_TANDEM: 1
   NUM_JOBS: 8
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
@@ -45,7 +44,7 @@ jobs:
   execute-rv32-tier1:
     name: RV32 Tier1 ${{ matrix.config }} / ${{ matrix.testcase }}
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    timeout-minutes: 90
     needs: setup-tools
     strategy:
       fail-fast: false
@@ -57,6 +56,7 @@ jobs:
             testlist: verif/tests/base_rv32_p.yaml
             compiler_march: rv32imc_zicsr_zba_zbb_zbs_zbc
             single_test_smoke: hello-world
+            non_tandem_smoke: true
 
           - config: cv32a65x_axi
             testcase: base-rv32-p
@@ -64,6 +64,7 @@ jobs:
             testlist: verif/tests/base_rv32_p.yaml
             compiler_march: rv32imc_zicsr_zba_zbb_zbs_zbc_zifencei
             single_test_smoke: ""
+            non_tandem_smoke: false
 
     steps:
       - uses: actions/checkout@v7
@@ -88,6 +89,7 @@ jobs:
           TIER_TESTLIST: ${{ matrix.testlist }}
           TIER_COMPILER_MARCH: ${{ matrix.compiler_march }}
           TIER_SINGLE_TEST_SMOKE: ${{ matrix.single_test_smoke }}
+          TIER_NON_TANDEM_SMOKE: ${{ matrix.non_tandem_smoke }}
           TIER_EVENT_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
           TIER_EVENT_BASE_SHA: ${{ github.event.pull_request.base.sha || '' }}
         run: bash .github/scripts/run-tier-regression.sh
@@ -100,9 +102,11 @@ jobs:
           path: |
             ci-results/
             artifacts/reports/
-            build/${{ matrix.config }}/compile/
-            build/${{ matrix.config }}/elab/sim_rtl_verilator_testharness_tandem/
+            build/${{ matrix.config }}/elab/sim_rtl_verilator_testharness_tandem/compile.log
+            build/${{ matrix.config }}/elab/sim_rtl_verilator_testharness_tandem/testharness-build.json
             build/${{ matrix.config }}/simulation/sim_rtl_verilator_testharness_tandem/
-            build/${{ matrix.config }}/config/
+            build/${{ matrix.config }}/elab/sim_rtl_verilator_testharness/compile.log
+            build/${{ matrix.config }}/elab/sim_rtl_verilator_testharness/testharness-build.json
+            build/${{ matrix.config }}/simulation/sim_rtl_verilator_testharness/
           if-no-files-found: error
           retention-days: 14

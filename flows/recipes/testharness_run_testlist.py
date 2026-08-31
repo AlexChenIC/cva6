@@ -122,14 +122,21 @@ def testharness_run_testlist(
     iss_enabled: bool = typer.Option(
         False,
         "--iss-enabled/--no-iss",
-        help="Enable reference-model comparison",
+        help="Enable ISS (required for tandem; standalone comparison otherwise)",
     ),
     iss_timeout: int = typer.Option(
         500, min=1, help="Timeout in seconds for each simulator process"
     ),
     seed: str = typer.Option("1", "--seed", help="TestHarness random seed"),
+    emulator_options: list[str] = typer.Option(
+        [],
+        "--emulator-opt",
+        help="Backend emulator option placed before the ELF",
+    ),
     run_options: list[str] = typer.Option(
-        [], "--run-opt", help="Additional TestHarness or SystemVerilog argument"
+        [],
+        "--run-opt",
+        help="Verilog plusarg or HTIF/host argument placed after the ELF",
     ),
     quiet: bool = typer.Option(
         False, "--quiet", "-q", help="Suppress command output and summaries"
@@ -169,7 +176,7 @@ def testharness_run_testlist(
             "Compilation mode": comp_mode.value,
             "Trace mode": trace_mode.value,
             "Tandem enabled": tandem_enabled,
-            "ISS enabled": iss_enabled,
+            "Standalone ISS enabled": iss_enabled and not tandem_enabled,
             "Timeout (seconds)": iss_timeout,
             "Seed": seed,
         },
@@ -209,6 +216,7 @@ def testharness_run_testlist(
                 iss_enabled=iss_enabled,
                 iss_timeout=iss_timeout,
                 seed=seed,
+                emulator_options=emulator_options,
                 run_options=run_options,
             )
             row = (
