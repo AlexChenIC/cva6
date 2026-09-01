@@ -621,6 +621,34 @@ requested target and compilation options.
 **Output:**
 `build/<target>/simulation/sim_rtl_verilator_testharness/<testname>`
 
+#### `testharness-run-testlist`
+
+Run every enabled entry in a Cook software testlist through the selected
+TestHarness simulator. The initial implementation supports Verilator.
+
+```bash
+./cook.py testharness-run-testlist \
+  --simulator verilator \
+  -t cv32a60x \
+  -l verif/tests/custom/smoke.yml \
+  --iss-enabled
+```
+
+Compile the matching software testlist and TestHarness before running this
+recipe. Entries with `iterations: 0` are skipped; any failed iteration makes
+the recipe return a nonzero exit status.
+
+**Required Options:**
+- `--simulator [verilator]` - TestHarness simulator
+- `-t, --target TEXT` - CVA6 user configuration
+- `-l, --testlist TEXT` - Testlist YAML file
+
+**Optional:**
+- `--comp-mode [rtl|gate_wc_power|gate_wc_timing|coverage]` - Hardware
+  compilation mode (only `rtl` is currently supported by Verilator)
+- `--trace-mode [gui|fast|compact|notrace]` - Waveform trace mode
+- `--iss-enabled / --no-iss-enabled` - Enable standalone Spike comparison
+
 #### `vcs-uvm-comp`
 
 Compile and elaborate the VCS UVM simulation.
