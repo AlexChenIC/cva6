@@ -174,6 +174,38 @@ class VerilatorTestHarnessRunTest(unittest.TestCase):
         self.assertEqual(return_code, 7)
         self.assertFalse(timed_out)
 
+    def test_standalone_spike_uses_target_configuration_without_dtb_override(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            spike_yaml = root / "spike.yaml"
+            spike_yaml.touch()
+            with (
+                patch.object(
+                    RECIPE,
+                    "run_logged_process",
+                    return_value=(0, False),
+                ) as run_process,
+                patch.object(RECIPE, "filter_spike_log"),
+            ):
+                passed, detail = RECIPE.run_standalone_spike(
+                    spike=root / "spike",
+                    elf=root / "hello-world.elf",
+                    compiler_isa="rv32imc",
+                    privilege="msu",
+                    spike_yaml=spike_yaml,
+                    simulation_dir=root,
+                    env=os.environ.copy(),
+                    timeout=10,
+                )
+
+        command = run_process.call_args.args[0]
+        self.assertTrue(passed)
+        self.assertEqual(detail, "Spike completed")
+        self.assertIn("--disable-dtb", command)
+        self.assertEqual(command[command.index("--param-file") + 1], str(spike_yaml))
+
     def test_manifest_mismatch_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
