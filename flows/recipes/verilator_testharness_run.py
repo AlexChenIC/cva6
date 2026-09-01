@@ -298,6 +298,9 @@ def run_standalone_spike(
         "--log-commits",
         f"--isa={compiler_isa}",
         f"--priv={privilege}",
+        # Spike's generated DTB hardcodes generic PMP settings. Keep the
+        # target-specific spike.yaml parameters authoritative instead.
+        "--disable-dtb",
         "--param-file",
         str(spike_yaml),
         "-l",
