@@ -567,7 +567,30 @@ Build tests from a YAML testlist file.
 
 ### RTL Simulation
 
-RTL simulation with UVM testbench. Supports multiple simulators: VCS (Synopsys), Xcelium (Cadence), and Questa (Siemens).
+RTL simulation recipes support the UVM testbench with VCS (Synopsys), Xcelium
+(Cadence), and Questa (Siemens). The Verilator recipe below compiles the
+lightweight TestHarness testbench directly.
+
+#### `verilator-testharness-comp`
+
+Compile the RTL and TestHarness executable directly with Verilator.
+
+```bash
+./cook.py verilator-testharness-comp -t cv32a60x
+```
+
+**Required Options:**
+- `-t, --target TEXT` - CVA6 user configuration
+
+**Optional:**
+- `--comp-mode [rtl|gate_wc_power|gate_wc_timing|coverage]` - Hardware
+  compilation mode (only `rtl` is currently supported)
+- `--trace-mode [gui|fast|compact|notrace]` - Waveform trace mode (`gui` is
+  not currently supported; default: `notrace`)
+- `--stats / --no-stats` - RTL performance tracer (not currently supported)
+
+**Output:**
+`build/<target>/elab/sim_rtl_verilator_testharness/Variane_testharness`
 
 #### `vcs-uvm-comp`
 
