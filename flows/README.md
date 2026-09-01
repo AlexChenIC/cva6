@@ -592,6 +592,35 @@ Compile the RTL and TestHarness executable directly with Verilator.
 **Output:**
 `build/<target>/elab/sim_rtl_verilator_testharness/Variane_testharness`
 
+#### `verilator-testharness-run`
+
+Run one Cook-compiled ELF directly with the compiled Verilator TestHarness.
+
+```bash
+./cook.py verilator-testharness-run -t cv32a60x -n riscv-tests-rv32ui-p-add_0
+```
+
+Run `sw-compile` or `sw-compile-testlist` and `verilator-testharness-comp`
+before this recipe. The software and TestHarness manifests must match the
+requested target and compilation options.
+
+**Required Options:**
+- `-t, --target TEXT` - CVA6 user configuration
+- `-n, --testname TEXT` - Name of a Cook-compiled test
+
+**Optional:**
+- `--comp-mode [rtl|gate_wc_power|gate_wc_timing|coverage]` - Hardware
+  compilation mode (only `rtl` is currently supported)
+- `--trace-mode [gui|fast|compact|notrace]` - Waveform trace mode (`gui` is
+  not currently supported; default: `notrace`)
+- `--iss-enabled / --no-iss-enabled` - Compare the TestHarness instruction
+  trace against a standalone Spike run (default: disabled)
+- `--interactive-gui / --no-interactive-gui` - Interactive mode (not currently
+  supported)
+
+**Output:**
+`build/<target>/simulation/sim_rtl_verilator_testharness/<testname>`
+
 #### `vcs-uvm-comp`
 
 Compile and elaborate the VCS UVM simulation.
