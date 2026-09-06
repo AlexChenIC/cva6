@@ -330,8 +330,9 @@ class VerilatorTestHarnessCompTest(unittest.TestCase):
         )
         self.assertEqual(result.exit_code, 0)
         text = " ".join(Text.from_ansi(result.output).plain.replace("│", " ").split())
-        self.assertIn("only rtl is supported", text)
-        self.assertIn("gui is unsupported", text)
+        # Narrow Rich tables interleave wrapped option and help columns.
+        self.assertRegex(text, r"only rtl is\b.{0,80}\bsupported\b")
+        self.assertRegex(text, r"gui is\b.{0,80}\bunsupported\b")
 
     def test_failed_or_incomplete_build_cannot_report_success(self) -> None:
         for failure in ("returncode", "timeout", "binary", "manifest"):
