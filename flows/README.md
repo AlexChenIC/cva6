@@ -49,14 +49,14 @@ A modular command runner to automate and simplify RTL flow execution for the CVA
 
 The command runner provides UVM simulation recipes for VCS, Xcelium, and
 Questa, alongside synthesis and analysis tools. Verilator TestHarness RTL
-compilation is available as an independent recipe. Single-test execution and
-testlist integration for this TestHarness are separate follow-up steps.
+compilation and single-test execution are available as independent recipes.
+Testlist integration for this TestHarness is a separate follow-up step.
 
 ### Roadmap
 
 Future developments are planned to include:
 
-- TestHarness single-test execution and testlist integration.
+- TestHarness testlist integration.
 - FPGA builds
 - Documentation generation
 - Dependency installation
@@ -619,6 +619,66 @@ and a readable `cook_manifest.yml`. `compilation.command` and
 wall-clock timeout; failure and log details remain visible with `--quiet`.
 Verilator's `--build` invokes the host build tool internally, so GNU Make and
 a C++17 compiler are required; the CVA6 project Makefile is not invoked.
+
+#### `verilator-testharness-run`
+
+Run one Cook-compiled ELF directly with the compiled Verilator TestHarness.
+
+```bash
+./cook.py verilator-testharness-run -t cv32a60x_axi -n riscv-tests-rv32ui-p-add_0
+```
+
+Run `sw-compile` or `sw-compile-testlist` and `verilator-testharness-comp`
+before this recipe. The software and TestHarness manifests must match the
+requested target and compilation options.
+
+**Required Options:**
+- `-t, --target TEXT` - CVA6 user configuration
+- `-n, --testname TEXT` - Name of a Cook-compiled test
+
+**Optional:**
+- `--comp-mode [rtl|gate_wc_power|gate_wc_timing|coverage]` - Hardware
+  compilation mode (only `rtl` is currently supported)
+- `--trace-mode [gui|fast|compact|notrace]` - Waveform trace mode (`gui` is
+  not currently supported; default: `notrace`)
+- `--iss-enabled / --no-iss-enabled` - Compare the TestHarness instruction
+  trace against a standalone Spike run (default: disabled)
+- `--interactive-gui / --no-interactive-gui` - Interactive mode (not currently
+  supported)
+
+**Output:**
+`build/<target>/simulation/sim_rtl_verilator_testharness/<testname>`
+
+The recipe consumes the existing Cook software outputs (`.elf`, `isa_string`,
+`.add_tohost`, and manifest) and the compilation recipe's executable and
+manifest. A missing or incompatible manifest fails before simulation. VCD
+and FST runs require a binary built with the matching trace format.
+
+Success requires a zero simulator exit, an explicit successful `tohost`
+message, and an instruction trace reaching the bare-metal boot PC
+`0x80000000`. Each external tool has a bounded runtime; a simulation timeout
+is a failure. Logs and `result.yml` remain under the per-test output directory.
+`--quiet` suppresses routine messages but leaves failure diagnostics visible.
+
+With `--iss-enabled`, the same ELF also runs in standalone CVA6 Spike.
+The target must provide `spike.yaml`; RTL-only runs do not require that file.
+Spike uses `--disable-dtb` so its generated generic DTB does not overwrite
+the target's PMP configuration. The existing CVA6/riscv-dv trace conversion
+and comparison functions are reused as Python libraries, without invoking
+`cva6.py` or a legacy orchestration script. Comparison checks architectural
+register updates and requires a nonzero match count; it is not live tandem
+checking or complete memory/CSR equivalence. Warning severity is unchanged.
+
+For example, after compiling software and hardware:
+
+```bash
+./cook.py verilator-testharness-run -t cv32a60x_axi -n hello-world
+./cook.py verilator-testharness-run -t cv32a60x_axi -n riscv-tests-rv32ui-p-add_0 --iss-enabled
+```
+
+The CLI keeps the proposed seven-parameter interface. GUI, coverage, gate
+simulation, performance tracing, arbitrary simulator options, custom reset
+addresses, and testlist aggregation are outside this first run implementation.
 
 #### `vcs-uvm-comp`
 
