@@ -1,0 +1,107 @@
+name: Cook atomic recipes validation
+on:
+  push:
+    branches: [jchen/master-candidate-cook-validation-20260906]
+  workflow_dispatch:
+permissions:
+  contents: read
+env:
+  NUM_JOBS: 4
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+jobs:
+  tools:
+    if: github.repository == 'AlexChenIC/cva6'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+      - uses: ./.github/actions/setup-cva6-env
+        with:
+          install-cook-dependencies: "true"
+      - uses: actions/cache@v6
+        id: verilator
+        with:
+          path: tools/verilator-5.050
+          key: ubuntu24-cook-atomic-verilator-5.050-v1
+      - name: Build Verilator 5.050
+        if: steps.verilator.outputs.cache-hit != 'true'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y autoconf flex bison help2man
+          git clone --depth 1 --branch v5.050 https://github.com/verilator/verilator.git "$RUNNER_TEMP/verilator-5.050"
+          cd "$RUNNER_TEMP/verilator-5.050"
+          autoconf
+          ./configure --prefix="$GITHUB_WORKSPACE/tools/verilator-5.050"
+          make -j4
+          make install
+      - name: Unit tests
+        run: |
+          python3 .github/tests/test_logged_process.py -v
+          python3 .github/tests/test_verilator_testharness_comp.py -v
+          python3 .github/tests/test_verilator_testharness_run.py -v
+  native:
+    needs: tools
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        include:
+          - target: cv32a60x_axi
+            trace: notrace
+            suite: rv32
+          - target: cv32a60x_axi
+            trace: fast
+            suite: rv32
+          - target: cv32a60x_axi
+            trace: compact
+            suite: rv32
+          - target: cv32a65x_axi
+            trace: notrace
+            suite: pmp
+          - target: cv64a6_imafdc_sv39_hpdcache_pmp_mmu_axi
+            trace: notrace
+            suite: compile
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+      - uses: ./.github/actions/setup-cva6-env
+        with:
+          install-tools: "false"
+          install-cook-dependencies: "true"
+      - uses: actions/cache/restore@v6
+        with:
+          path: tools/verilator-5.050
+          key: ubuntu24-cook-atomic-verilator-5.050-v1
+          fail-on-cache-miss: true
+      - name: Prerequisites and direct recipe validation
+        env:
+          TEST_TARGET: ${{ matrix.target }}
+          TEST_TRACE: ${{ matrix.trace }}
+          TEST_SUITE: ${{ matrix.suite }}
+        run: |
+          source ci/install-prereq.sh
+          source verif/sim/setup-env.sh
+          export VERILATOR_INSTALL_DIR="$GITHUB_WORKSPACE/tools/verilator-5.050"
+          export PATH="$VERILATOR_INSTALL_DIR/bin:$PATH"
+          export CONFIG_DIR="$RUNNER_TEMP/cook-config"
+          python3 .github/scripts/prepare-cook-toolchains.py --output-dir "$CONFIG_DIR"
+          if [ "$TEST_SUITE" = rv32 ]; then
+            source verif/regress/install-riscv-tests.sh
+          fi
+          python3 .github/scripts/validate-atomic-recipes.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: native-${{ matrix.target }}-${{ matrix.trace }}
+          retention-days: 14
+          path: |
+            validation-results/
+            build/${{ matrix.target }}/elab/sim_rtl_verilator_testharness/compilation.*
+            build/${{ matrix.target }}/elab/sim_rtl_verilator_testharness/verilator.version
+            build/${{ matrix.target }}/elab/sim_rtl_verilator_testharness/cook_manifest.yml
+            build/${{ matrix.target }}/simulation/
