@@ -94,6 +94,14 @@ def prepare_run_tree(root: Path, test_name: str = "hello-world") -> tuple[Path, 
 
 
 class VerilatorTestHarnessRunTest(unittest.TestCase):
+    def test_simulation_directory_rejects_linked_parent(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "outside").mkdir()
+            (root / "build").symlink_to(root / "outside", target_is_directory=True)
+            with self.assertRaisesRegex(ValueError, "symbolic link"):
+                RECIPE.simulation_directory(root, "cv32a60x_axi", "test", CompMode.rtl)
+
     def test_public_interface_matches_the_proposed_run_recipe(self) -> None:
         parameters = inspect.signature(RECIPE.verilator_testharness_run).parameters
         self.assertEqual(

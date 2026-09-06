@@ -20,6 +20,7 @@ import typer
 import yaml
 
 from flows.recipes.verilator_testharness_comp import (
+    build_directory,
     elaboration_directory,
     testharness_binary,
     target_directory,
@@ -77,13 +78,12 @@ def simulation_directory(
 ) -> Path:
     target = validate_path_component(target, "target name")
     test_name = validate_path_component(test_name, "test name")
-    return (
-        repo_dir
-        / "build"
-        / target
-        / "simulation"
-        / f"sim_{comp_mode.value}_verilator_testharness"
-        / test_name
+    return build_directory(
+        repo_dir,
+        target,
+        "simulation",
+        f"sim_{comp_mode.value}_verilator_testharness",
+        test_name,
     )
 
 

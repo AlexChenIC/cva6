@@ -109,13 +109,26 @@ def target_directory(repo_dir: Path, target: str) -> Path:
     return directory
 
 
+def build_directory(repo_dir: Path, *parts: str) -> Path:
+    repo_dir = repo_dir.resolve()
+    directory = repo_dir / "build"
+    for part in parts:
+        if part in {"", ".", ".."} or Path(part).name != part:
+            raise ValueError(f"Invalid build path component: {part}")
+        directory /= part
+    for parent in (directory, *directory.parents):
+        if parent == repo_dir:
+            break
+        if parent.is_symlink():
+            raise ValueError(
+                f"Build output must not traverse a symbolic link: {parent}"
+            )
+    return directory
+
+
 def elaboration_directory(repo_dir: Path, target: str, comp_mode: CompMode) -> Path:
-    return (
-        repo_dir
-        / "build"
-        / target
-        / "elab"
-        / f"sim_{comp_mode.value}_verilator_testharness"
+    return build_directory(
+        repo_dir, target, "elab", f"sim_{comp_mode.value}_verilator_testharness"
     )
 
 

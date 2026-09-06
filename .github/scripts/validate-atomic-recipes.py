@@ -14,6 +14,17 @@ target = os.environ["TEST_TARGET"]
 trace = os.environ["TEST_TRACE"]
 suite = os.environ["TEST_SUITE"]
 results = []
+paths = ["flows/recipes/verilator_testharness_comp.py", "flows/recipes/verilator_testharness_run.py", "flows/utils/logged_process.py", "verif/tb/core/Flist.verilator_testharness"]
+provenance = {
+    "head": subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip(),
+    "target": target, "trace": trace, "suite": suite,
+    "source_blobs": {p: subprocess.check_output(["git", "hash-object", p], text=True).strip() for p in paths},
+    "submodules": subprocess.check_output(["git", "submodule", "status", "--recursive"], text=True),
+}
+(out / "provenance.json").write_text(json.dumps(provenance, indent=2))
+metadata = Path(os.environ["CONFIG_DIR"]) / "environment.yml"
+if metadata.is_file():
+    shutil.copy2(metadata, out / "toolchain-environment.yml")
 
 
 def run(command):

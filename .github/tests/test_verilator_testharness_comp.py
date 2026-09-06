@@ -59,6 +59,19 @@ def make_target(root: Path, target: str = "cv32a60x") -> None:
 
 
 class VerilatorTestHarnessCompTest(unittest.TestCase):
+    def test_build_directory_rejects_symlinked_parent(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            repo = root / "repo"
+            outside = root / "outside"
+            repo.mkdir()
+            outside.mkdir()
+            (outside / "sentinel").write_text("keep")
+            (repo / "build").symlink_to(outside, target_is_directory=True)
+            with self.assertRaisesRegex(ValueError, "symbolic link"):
+                RECIPE.elaboration_directory(repo, "cv32a60x_axi", CompMode.rtl)
+            self.assertEqual((outside / "sentinel").read_text(), "keep")
+
     def test_public_interface_matches_the_proposed_compile_recipe(self) -> None:
         parameters = inspect.signature(RECIPE.verilator_testharness_comp).parameters
         self.assertEqual(
