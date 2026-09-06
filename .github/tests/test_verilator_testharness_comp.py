@@ -11,6 +11,7 @@ from pathlib import Path
 import sys
 import tempfile
 import unittest
+from rich.text import Text
 from typer.testing import CliRunner
 from unittest.mock import Mock, patch
 
@@ -328,7 +329,7 @@ class VerilatorTestHarnessCompTest(unittest.TestCase):
             RECIPE.app, ["--help"], color=False, terminal_width=200
         )
         self.assertEqual(result.exit_code, 0)
-        text = " ".join(result.output.replace("│", "").split())
+        text = " ".join(Text.from_ansi(result.output).plain.replace("│", " ").split())
         self.assertIn("only rtl is supported", text)
         self.assertIn("gui is unsupported", text)
 
