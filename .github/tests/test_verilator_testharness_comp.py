@@ -11,6 +11,7 @@ from pathlib import Path
 import sys
 import tempfile
 import unittest
+from rich.text import Text
 from typer.testing import CliRunner
 from unittest.mock import Mock, patch
 
@@ -328,9 +329,10 @@ class VerilatorTestHarnessCompTest(unittest.TestCase):
             RECIPE.app, ["--help"], color=False, terminal_width=200
         )
         self.assertEqual(result.exit_code, 0)
-        text = " ".join(result.output.replace("│", "").split())
-        self.assertIn("only rtl is supported", text)
-        self.assertIn("gui is unsupported", text)
+        text = " ".join(Text.from_ansi(result.output).plain.replace("│", " ").split())
+        # Narrow Rich tables interleave wrapped option and help columns.
+        self.assertRegex(text, r"only rtl is\b.{0,80}\bsupported\b")
+        self.assertRegex(text, r"gui is\b.{0,80}\bunsupported\b")
 
     def test_failed_or_incomplete_build_cannot_report_success(self) -> None:
         for failure in ("returncode", "timeout", "binary", "manifest"):

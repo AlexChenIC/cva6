@@ -17,9 +17,16 @@ jobs:
       - uses: actions/checkout@v7
         with:
           submodules: recursive
-      - uses: ./.github/actions/setup-cva6-env
+      - uses: actions/setup-python@v6
         with:
-          install-cook-dependencies: "true"
+          python-version: "3.11"
+      - name: Dependencies and unit tests
+        run: |
+          python3 -m pip install -c .github/requirements/cook-tier-ci-constraints.txt -r flows/requirements.txt
+          python3 .github/tests/test_logged_process.py -v
+          python3 .github/tests/test_verilator_testharness_comp.py -v
+          python3 .github/tests/test_verilator_testharness_run.py -v
+      - uses: ./.github/actions/setup-cva6-env
       - uses: actions/cache@v6
         id: verilator
         with:
@@ -36,11 +43,6 @@ jobs:
           ./configure --prefix="$GITHUB_WORKSPACE/tools/verilator-5.050"
           make -j4
           make install
-      - name: Unit tests
-        run: |
-          python3 .github/tests/test_logged_process.py -v
-          python3 .github/tests/test_verilator_testharness_comp.py -v
-          python3 .github/tests/test_verilator_testharness_run.py -v
   native:
     needs: tools
     runs-on: ubuntu-24.04
