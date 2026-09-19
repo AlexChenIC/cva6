@@ -47,14 +47,16 @@ A modular command runner to automate and simplify RTL flow execution for the CVA
 
 ## Current Status
 
-At the moment, the command runner only provides recipes for the Synopsys tools (VCS, DC_shell, and SpyGlass). Only the UVM testbench is currently supported, with an optional tandem comparison mode against the SPIKE reference model.
+The command runner provides UVM simulation recipes for VCS, Xcelium, and
+Questa, alongside synthesis and analysis tools. Verilator TestHarness RTL
+compilation is available as an independent recipe. Single-test execution and
+testlist integration for this TestHarness are separate follow-up steps.
 
 ### Roadmap
 
 Future developments are planned to include:
 
-- Support for the Questa and Verilator ISSs (MustHave).
-- Support for the TestHarness testbench (MustHave).
+- TestHarness single-test execution and testlist integration.
 - FPGA builds
 - Documentation generation
 - Dependency installation
@@ -71,7 +73,10 @@ Each recipe should execute with the fewest possible dependencies. In particular,
 
 ### CAD Tools
 
-The following Synopsys tools must be installed with binaries accessible in `$PATH`:
+Install the tools required by the recipes you intend to run. The following
+Synopsys tools are used by their corresponding recipes, with binaries
+accessible in `$PATH`. They are not required for
+`verilator-testharness-comp`.
 
 - **VCS** - RTL simulation
 - **Verdi** - Waveform debugging and trace analysis
@@ -567,7 +572,57 @@ Build tests from a YAML testlist file.
 
 ### RTL Simulation
 
-RTL simulation with UVM testbench. Supports multiple simulators: VCS (Synopsys), Xcelium (Cadence), and Questa (Siemens).
+RTL simulation recipes support the UVM testbench with VCS (Synopsys), Xcelium
+(Cadence), and Questa (Siemens). The Verilator recipe below compiles the
+lightweight TestHarness testbench directly.
+
+#### `verilator-testharness-comp`
+
+Compile the RTL and TestHarness executable directly with Verilator.
+
+```bash
+./cook.py verilator-testharness-comp -t cv32a60x_axi
+```
+
+**Required Options:**
+- `-t, --target TEXT` - CVA6 user configuration
+
+**Optional:**
+- `--comp-mode [rtl|gate_wc_power|gate_wc_timing|coverage]` - Hardware
+  compilation mode (only `rtl` is currently supported)
+- `--trace-mode [gui|fast|compact|notrace]` - Waveform trace mode (`gui` is
+  not currently supported; default: `notrace`)
+- `--stats / --no-stats` - RTL performance tracer (not currently supported)
+- `-q, --quiet` - Suppress informational output; failures remain visible
+
+**Output:**
+`build/<target>/elab/sim_rtl_verilator_testharness/Variane_testharness`
+
+Run from the repository root with the required submodules initialized. Set
+`RISCV` to the installed RISC-V toolchain, and `SPIKE_INSTALL_DIR` to the
+matching CVA6 Spike installation (default: `tools/spike`). The TestHarness
+links Spike/FESVR libraries even without live tandem comparison. Select
+Verilator through `VERILATOR_INSTALL_DIR` or `PATH`; its own installation
+supplies the include root. The recipe does not pin a specific 5.x release.
+`NUM_JOBS` controls build parallelism (default: 1).
+
+This TestHarness has an AXI interface. The target's `testbench_cfg.yml` must
+declare `hier: axi`; an OBI target such as `cv32a60x` is not interchangeable
+with `cv32a60x_axi` and is rejected before the build directory is cleaned.
+
+`fast` builds VCD support; `compact` builds FST support and needs zlib.
+Waveform generation happens when the binary is run. The shared Cook enums
+retain the other mode names, but unsupported modes fail before cleaning any
+build output. RTL performance tracing and live Spike tandem are not enabled.
+SystemVerilog assertions are not enabled by this recipe.
+
+Each invocation rebuilds this target's TestHarness output directory. Success
+requires a zero tool exit status, an executable binary, a compilation log,
+and a readable `cook_manifest.yml`. `compilation.command` and
+`verilator.version` record the tool invocation. Compilation has a 30-minute
+wall-clock timeout; failure and log details remain visible with `--quiet`.
+Verilator's `--build` invokes the host build tool internally, so GNU Make and
+a C++17 compiler are required; the CVA6 project Makefile is not invoked.
 
 #### `vcs-uvm-comp`
 
