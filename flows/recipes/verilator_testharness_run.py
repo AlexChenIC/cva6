@@ -103,7 +103,7 @@ def comparison_report_passed(report: Path) -> tuple[bool, str]:
         int(value) for value in re.findall(r"\[PASSED\]:\s*([0-9]+)\s+matched\b", text)
     ]
     if matched and all(count > 0 for count in matched):
-        return True, f"{sum(matched)} matched instruction(s)"
+        return True, f"{sum(matched)} matched register update(s)"
     if matched:
         return False, "comparison contains a zero-match result"
     return False, "comparison report contains no result"
@@ -288,6 +288,7 @@ def postprocess_and_compare(repo_dir: Path, simulation_dir: Path) -> tuple[bool,
     verilator_csv = simulation_dir / "verilator.csv"
     spike_csv = simulation_dir / "spike.csv"
     report = simulation_dir / "iss_regr.log"
+    reverse_report = simulation_dir / "iss_regr_reverse.log"
     # Reuse the repository's trace parsers as libraries, as the UVM recipes
     # do with report utilities. Their historical imports need this search path.
     original_path = sys.path.copy()
@@ -306,6 +307,7 @@ def postprocess_and_compare(repo_dir: Path, simulation_dir: Path) -> tuple[bool,
             spec.loader.exec_module(module)
             modules.append(module)
         report.unlink(missing_ok=True)
+        reverse_report.unlink(missing_ok=True)
         with (
             (simulation_dir / "postprocess.log").open("w", encoding="utf-8") as log,
             redirect_stdout(log),
@@ -327,11 +329,27 @@ def postprocess_and_compare(repo_dir: Path, simulation_dir: Path) -> tuple[bool,
                 str(report),
                 coalescing_limit=0,
             )
+            # The shared comparator stops when its second trace ends. Check
+            # both directions so a matching prefix cannot hide a missing tail.
+            modules[2].compare_trace_csv(
+                str(verilator_csv),
+                str(spike_csv),
+                "verilator",
+                "spike",
+                str(reverse_report),
+                coalescing_limit=0,
+            )
     except (OSError, ImportError, ValueError, IndexError) as error:
         return False, f"trace post-processing failed: {error}"
     finally:
         sys.path[:] = original_path
-    return comparison_report_passed(report)
+    passed, detail = comparison_report_passed(report)
+    if not passed:
+        return False, detail
+    reverse_passed, reverse_detail = comparison_report_passed(reverse_report)
+    if not reverse_passed:
+        return False, f"reverse trace comparison: {reverse_detail}"
+    return True, detail
 
 
 def target_configuration(

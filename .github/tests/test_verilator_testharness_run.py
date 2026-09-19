@@ -424,6 +424,32 @@ class VerilatorTestHarnessRunTest(unittest.TestCase):
             spike.write_text("\n")
             self.assertFalse(RECIPE.postprocess_and_compare(REPO_ROOT, root)[0])
 
+    def test_truncated_trace_is_rejected_in_either_direction(self):
+        rtl = [
+            " 4 | core 0: 0x0000000080000000 (0x00100093) li ra,1\n"
+            "3 0x0000000080000000 (0x00100093) x1 0x0000000000000001\n",
+            " 8 | core 0: 0x0000000080000004 (0x00200113) li sp,2\n"
+            "3 0x0000000080000004 (0x00200113) x2 0x0000000000000002\n",
+        ]
+        spike = [
+            line.replace(" 4 | ", "")
+            .replace(" 8 | ", "")
+            .replace("\n3 ", "\ncore 0: 3 ")
+            for line in rtl
+        ]
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for rtl_count, spike_count, expected in (
+                (1, 2, False),
+                (2, 1, False),
+                (2, 2, True),
+            ):
+                with self.subTest(rtl=rtl_count, spike=spike_count):
+                    (root / "verilator.log").write_text("".join(rtl[:rtl_count]))
+                    (root / "spike.log").write_text("".join(spike[:spike_count]))
+                    passed, detail = RECIPE.postprocess_and_compare(REPO_ROOT, root)
+                    self.assertEqual(passed, expected, detail)
+
     def test_quiet_run_failure_remains_visible(self):
         result = CliRunner().invoke(
             RECIPE.app, ["-t", "../outside", "-n", "hello", "--quiet"]
