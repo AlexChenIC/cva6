@@ -47,7 +47,11 @@ def enabled_tests(testlist: Path) -> list[str]:
             raise ValueError("Each testlist entry needs a string 'test' name")
         name = validate_path_component(entry["test"], "test name")
         iterations = entry.get("iterations", 1)
-        if type(iterations) is not int or iterations < 0:
+        if (
+            not isinstance(iterations, int)
+            or isinstance(iterations, bool)
+            or iterations < 0
+        ):
             raise ValueError(f"{name}: iterations must be a nonnegative integer")
         for iteration in range(iterations):
             compiled = f"{name}_{iteration}"
