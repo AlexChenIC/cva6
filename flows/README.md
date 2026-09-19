@@ -670,8 +670,12 @@ Spike uses `--disable-dtb` so its generated generic DTB does not overwrite
 the target's PMP configuration. The existing CVA6/riscv-dv trace conversion
 and comparison functions are reused as Python libraries, without invoking
 `cva6.py` or a legacy orchestration script. Comparison checks architectural
-register updates and requires a nonzero match count; it is not live tandem
-checking or complete memory/CSR equivalence. Warning severity is unchanged.
+register updates in both directions and requires a nonzero match count.
+Both directions are checked because the shared comparator can stop when
+its second trace ends; a matching prefix must not hide an unmatched tail.
+Reports are saved as `iss_regr.log` and `iss_regr_reverse.log`. This is not
+live tandem checking or complete memory/CSR equivalence. Warning severity
+is unchanged.
 
 For example, after compiling software and hardware:
 
