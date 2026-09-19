@@ -64,7 +64,7 @@ runs:
           echo 'Exact tool cache missing; rerun the setup job'; exit 1
         fi
         sudo apt-get update
-        sudo apt-get install -y autoconf automake autotools-dev curl git libmpc-dev libmpfr-dev libgmp-dev gawk build-essential bison flex texinfo gperf libtool patchutils bc zlib1g-dev device-tree-compiler libboost-regex-dev libboost-system-dev help2man
+        sudo apt-get install -y autoconf automake autotools-dev curl git libmpc-dev libmpfr-dev libgmp-dev gawk build-essential bison flex libfl-dev texinfo gperf libtool patchutils bc zlib1g-dev device-tree-compiler libboost-regex-dev libboost-system-dev help2man
         if [ "$GCC_HIT" != true ]; then
           mkdir -p "$RISCV"
           curl --fail --location --retry 3 --max-time 600 \
