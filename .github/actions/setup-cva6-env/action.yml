@@ -1,0 +1,92 @@
+name: Setup CVA6 Cook environment
+description: Pinned GCC, vendor Spike and Verilator for Cook TestHarness jobs
+inputs:
+  verilator-version:
+    description: Verilator release to build
+    default: '5.050'
+  install-tools:
+    description: Build missing tools instead of requiring an exact cache hit
+    default: 'true'
+  install-cook-dependencies:
+    description: Install pinned Cook Python dependencies
+    default: 'true'
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-python@v6
+      with:
+        python-version: '3.11'
+    - name: Cook dependencies
+      if: inputs.install-cook-dependencies == 'true'
+      shell: bash
+      run: python3 -m pip install -c .github/requirements/cook-tier-ci-constraints.txt -r flows/requirements.txt
+    - name: Resolve tools
+      id: tools
+      shell: bash
+      env:
+        VERSION: ${{ inputs.verilator-version }}
+      run: |
+        set -euo pipefail
+        case "$VERSION" in 5.048|5.050) ;; *) echo 'Unsupported Verilator release'; exit 1 ;; esac
+        echo "corev=$(git -C verif/core-v-verif rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+        echo "RISCV=$GITHUB_WORKSPACE/tools/riscv-toolchain" >> "$GITHUB_ENV"
+        echo "SPIKE_INSTALL_DIR=$GITHUB_WORKSPACE/tools/spike" >> "$GITHUB_ENV"
+        echo "VERILATOR_INSTALL_DIR=$GITHUB_WORKSPACE/tools/verilator-$VERSION" >> "$GITHUB_ENV"
+        echo "CV_SW_PREFIX=riscv32-unknown-elf-" >> "$GITHUB_ENV"
+        echo "$GITHUB_WORKSPACE/tools/verilator-$VERSION/bin" >> "$GITHUB_PATH"
+        echo "$GITHUB_WORKSPACE/tools/spike/bin" >> "$GITHUB_PATH"
+    - uses: actions/cache@v6
+      id: gcc
+      with:
+        path: tools/riscv-toolchain
+        key: ${{ runner.os }}-toolchain-${{ hashFiles('ci/install-toolchain.sh') }}
+    - uses: actions/cache@v6
+      id: spike
+      with:
+        path: tools/spike
+        key: ${{ runner.os }}-spike-${{ hashFiles('verif/regress/install-spike.sh') }}-${{ steps.tools.outputs.corev }}
+    - uses: actions/cache@v6
+      id: verilator
+      with:
+        path: tools/verilator-${{ inputs.verilator-version }}
+        key: ubuntu24-cook-verilator-${{ inputs.verilator-version }}-v1
+    - name: Require tools or install missing entries
+      shell: bash
+      env:
+        INSTALL: ${{ inputs.install-tools }}
+        GCC_HIT: ${{ steps.gcc.outputs.cache-hit }}
+        SPIKE_HIT: ${{ steps.spike.outputs.cache-hit }}
+        VERILATOR_HIT: ${{ steps.verilator.outputs.cache-hit }}
+        VERSION: ${{ inputs.verilator-version }}
+      run: |
+        set -eo pipefail
+        if [ "$INSTALL" != true ] && { [ "$GCC_HIT" != true ] || [ "$SPIKE_HIT" != true ] || [ "$VERILATOR_HIT" != true ]; }; then
+          echo 'Exact tool cache missing; rerun the setup job'; exit 1
+        fi
+        sudo apt-get update
+        sudo apt-get install -y autoconf automake autotools-dev curl git libmpc-dev libmpfr-dev libgmp-dev gawk build-essential bison flex texinfo gperf libtool patchutils bc zlib1g-dev device-tree-compiler libboost-regex-dev libboost-system-dev help2man
+        if [ "$GCC_HIT" != true ]; then
+          mkdir -p "$RISCV"
+          curl --fail --location --retry 3 --max-time 600 \
+            https://buildbot.embecosm.com/job/riscv32-gcc-ubuntu2204-release/10/artifact/riscv32-embecosm-ubuntu2204-gcc13.2.0.tar.gz \
+            -o "$RUNNER_TEMP/riscv-gcc.tar.gz"
+          sha256sum "$RUNNER_TEMP/riscv-gcc.tar.gz"
+          tar -xf "$RUNNER_TEMP/riscv-gcc.tar.gz" --strip-components=1 -C "$RISCV"
+        fi
+        "$RISCV/bin/${CV_SW_PREFIX}gcc" --version
+        if [ "$SPIKE_HIT" != true ]; then
+          source verif/regress/install-spike.sh
+        fi
+        if [ "$VERILATOR_HIT" != true ]; then
+          unset VERILATOR_ROOT
+          git clone --depth 1 --branch "v$VERSION" https://github.com/verilator/verilator.git "$RUNNER_TEMP/verilator-$VERSION"
+          (
+            cd "$RUNNER_TEMP/verilator-$VERSION"
+            autoconf
+            ./configure --prefix="$VERILATOR_INSTALL_DIR"
+            make -j"${NUM_JOBS:-2}"
+            make install
+          )
+        fi
+        "$VERILATOR_INSTALL_DIR/bin/verilator" --version
+        "$SPIKE_INSTALL_DIR/bin/spike" --version

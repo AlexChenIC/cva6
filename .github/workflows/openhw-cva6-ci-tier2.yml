@@ -1,0 +1,154 @@
+# SPDX-License-Identifier: Apache-2.0
+name: openhw-cva6-ci-tier2
+on:
+  workflow_dispatch:
+    inputs:
+      verilator_version:
+        description: Verilator release
+        type: choice
+        options: ['5.050', '5.048']
+        default: '5.050'
+      conformance:
+        description: Also check standalone recipes, traces and RV64 compilation
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ inputs.verilator_version || '5.050' }}
+  cancel-in-progress: false
+env:
+  NUM_JOBS: '2'
+jobs:
+  setup-tools:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+          persist-credentials: false
+      - uses: ./.github/actions/setup-cva6-env
+        with:
+          verilator-version: ${{ inputs.verilator_version || '5.050' }}
+      - name: Unit tests
+        run: |
+          python3 .github/tests/test_logged_process.py -v
+          python3 .github/tests/test_verilator_testharness_comp.py -v
+          python3 .github/tests/test_verilator_testharness_run.py -v
+          python3 .github/tests/test_testharness_run_testlist.py -v
+          python3 .github/tests/test_cook_tier.py -v
+  regression:
+    name: RV32 Tier2 ${{ matrix.config }} / ${{ matrix.testcase }}
+    needs: setup-tools
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        include:
+          - config: cv32a60x_axi
+            testcase: base-rv32-p
+            install_script: 'install-riscv-tests'
+            testlist: verif/tests/base_rv32_p.yaml
+            march: rv32imc_zicsr_zba_zbb_zbs_zbc
+          - config: cv32a65x_axi
+            testcase: base-rv32-p
+            install_script: 'install-riscv-tests'
+            testlist: verif/tests/base_rv32_p.yaml
+            march: rv32imc_zicsr_zba_zbb_zbs_zbc_zifencei
+          - config: cv32a65x_axi
+            testcase: base-pmp
+            install_script: ''
+            testlist: verif/tests/base_pmp.yaml
+            march: rv32imc_zicsr_zba_zbb_zbs_zbc_zifencei
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+          persist-credentials: false
+      - uses: ./.github/actions/setup-cva6-env
+        with:
+          verilator-version: ${{ inputs.verilator_version || '5.050' }}
+          install-tools: 'false'
+      - name: Cook Tier 2
+        env:
+          TIER_NAME: Tier 2
+          TIER_CONFIG: ${{ matrix.config }}
+          TIER_TESTCASE: ${{ matrix.testcase }}
+          TIER_INSTALL_SCRIPT: ${{ matrix.install_script }}
+          TIER_TESTLIST: ${{ matrix.testlist }}
+          TIER_COMPILER_MARCH: ${{ matrix.march }}
+          TIER_EVENT_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          TIER_EVENT_BASE_SHA: ${{ github.event.pull_request.base.sha || '' }}
+        run: bash .github/scripts/run-tier-regression.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: tier2-rv32-${{ matrix.config }}-${{ matrix.testcase }}
+          retention-days: 14
+          if-no-files-found: error
+          path: |
+            ci-results/
+            build/${{ matrix.config }}/simulation/
+            build/${{ matrix.config }}/elab/sim_rtl_verilator_testharness/compilation.*
+            build/${{ matrix.config }}/elab/sim_rtl_verilator_testharness/cook_manifest.yml
+            build/${{ matrix.config }}/elab/sim_rtl_verilator_testharness/verilator.version
+  conformance:
+    if: inputs.conformance
+    needs: setup-tools
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        include:
+          - target: cv32a60x_axi
+            trace: notrace
+            suite: rv32
+          - target: cv32a60x_axi
+            trace: fast
+            suite: rv32
+          - target: cv32a60x_axi
+            trace: compact
+            suite: rv32
+          - target: cv32a65x_axi
+            trace: notrace
+            suite: pmp
+          - target: cv64a6_imafdc_sv39_hpdcache_pmp_mmu_axi
+            trace: notrace
+            suite: compile
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+          persist-credentials: false
+      - uses: ./.github/actions/setup-cva6-env
+        with:
+          verilator-version: ${{ inputs.verilator_version || '5.050' }}
+          install-tools: 'false'
+      - name: Atomic recipe conformance
+        env:
+          TEST_TARGET: ${{ matrix.target }}
+          TEST_TRACE: ${{ matrix.trace }}
+          TEST_SUITE: ${{ matrix.suite }}
+        run: |
+          source verif/sim/setup-env.sh
+          export CONFIG_DIR="$RUNNER_TEMP/cook-config"
+          python3 .github/scripts/prepare-cook-toolchains.py --output-dir "$CONFIG_DIR"
+          if [ "$TEST_SUITE" = rv32 ]; then
+            source verif/regress/install-riscv-tests.sh
+          fi
+          python3 .github/scripts/validate-atomic-recipes.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: conformance-${{ matrix.target }}-${{ matrix.trace }}
+          retention-days: 14
+          path: |
+            validation-results/
+            build/${{ matrix.target }}/elab/sim_rtl_verilator_testharness/compilation.*
+            build/${{ matrix.target }}/elab/sim_rtl_verilator_testharness/cook_manifest.yml
