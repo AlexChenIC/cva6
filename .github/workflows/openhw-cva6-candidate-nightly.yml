@@ -1,0 +1,43 @@
+# SPDX-License-Identifier: Apache-2.0
+name: openhw-cva6-candidate-nightly
+on:
+  schedule:
+    - cron: '17 23 * * *'
+  workflow_dispatch:
+    inputs:
+      target_branch:
+        description: Same-repository Cook candidate branch
+        type: string
+        default: master_candidate
+      dry_run:
+        description: Check prerequisites without dispatching
+        type: boolean
+        default: true
+permissions:
+  contents: read
+concurrency:
+  group: openhw-cva6-candidate-nightly
+  cancel-in-progress: false
+jobs:
+  dispatch:
+    if: github.event_name == 'workflow_dispatch' || vars.CVA6_CANDIDATE_NIGHTLY_ENABLED == 'true'
+    permissions:
+      contents: read
+      actions: write
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Validate dispatcher
+        run: python3 .github/tests/test_candidate_nightly.py -v
+      - name: Dispatch candidate Tier 2
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TARGET_BRANCH: ${{ inputs.target_branch || vars.CVA6_CANDIDATE_BRANCH || 'master_candidate' }}
+          EXECUTE: ${{ github.event_name == 'schedule' || !inputs.dry_run }}
+        run: |
+          args=(--repo "$GITHUB_REPOSITORY" --ref "$TARGET_BRANCH")
+          if [ "$EXECUTE" = true ]; then args+=(--execute); fi
+          python3 .github/scripts/dispatch-candidate-tier2.py "${args[@]}"
