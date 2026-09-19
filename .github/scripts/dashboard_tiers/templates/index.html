@@ -332,9 +332,15 @@
 // ============================================================
 // Matrix data (all workflows combined) - injected by Jinja2
 // ============================================================
-const matrixData   = {{ matrix_data_json|safe }};
-const matrixConfigs = {{ matrix_configs_json|safe }};
-const matrixSuites  = {{ matrix_suites_json|safe }};
+const matrixData   = {{ matrix_data|tojson }};
+const matrixConfigs = {{ matrix_configs|tojson }};
+const matrixSuites  = {{ matrix_suites|tojson }};
+
+function escapeHtml(value) {
+  return String(value).replace(/[&<>"']/g, character => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;'
+  })[character]);
+}
 
 /**
  * Render the test matrix table for a given workflow.
@@ -366,7 +372,7 @@ function renderMatrix(wfKey) {
   // Build header
   let headHtml = '<tr><th style="writing-mode:horizontal-tb; min-width:200px; font-size:0.8rem">Config</th>';
   activeSuites.forEach(s => {
-    headHtml += '<th class="suite-header">' + s + '</th>';
+    headHtml += '<th class="suite-header">' + escapeHtml(s) + '</th>';
   });
   headHtml += '</tr>';
   thead.innerHTML = headHtml;
@@ -374,24 +380,27 @@ function renderMatrix(wfKey) {
   // Build body
   let bodyHtml = '';
   activeConfigs.forEach(cfg => {
+    const configLabel = escapeHtml(cfg);
     bodyHtml += '<tr>';
-    bodyHtml += '<td class="text-nowrap fw-medium" style="font-size:0.78rem; padding:6px 8px; vertical-align:middle">' + cfg + '</td>';
+    bodyHtml += '<td class="text-nowrap fw-medium" style="font-size:0.78rem; padding:6px 8px; vertical-align:middle">' + configLabel + '</td>';
     activeSuites.forEach(suite => {
       const cell = matrixData[cfg] && matrixData[cfg][suite] && matrixData[cfg][suite][wfKey];
+      const label = escapeHtml(cfg + ' / ' + suite);
       if (cell) {
         total++;
         const c = cell.conclusion;
+        const url = String(cell.html_url).startsWith('https://github.com/') ? escapeHtml(cell.html_url) : '#';
         if (c === 'success') {
           pass++;
-          bodyHtml += '<td class="matrix-td"><a href="' + cell.html_url + '" target="_blank" rel="noopener" class="matrix-icon pass" title="' + cfg + ' / ' + suite + ': PASS">&#10003;</a></td>';
+          bodyHtml += '<td class="matrix-td"><a href="' + url + '" target="_blank" rel="noopener" class="matrix-icon pass" title="' + label + ': PASS">&#10003;</a></td>';
         } else if (c === 'failure') {
           fail++;
-          bodyHtml += '<td class="matrix-td"><a href="' + cell.html_url + '" target="_blank" rel="noopener" class="matrix-icon fail" title="' + cfg + ' / ' + suite + ': FAIL">&#10007;</a></td>';
+          bodyHtml += '<td class="matrix-td"><a href="' + url + '" target="_blank" rel="noopener" class="matrix-icon fail" title="' + label + ': FAIL">&#10007;</a></td>';
         } else {
-          bodyHtml += '<td class="matrix-td"><span class="matrix-icon na" title="' + cfg + ' / ' + suite + ': ' + c + '">?</span></td>';
+          bodyHtml += '<td class="matrix-td"><span class="matrix-icon na" title="' + label + ': ' + escapeHtml(c) + '">?</span></td>';
         }
       } else {
-        bodyHtml += '<td class="matrix-td"><span class="matrix-icon na" title="' + cfg + ' / ' + suite + ': not in matrix">&ndash;</span></td>';
+        bodyHtml += '<td class="matrix-td"><span class="matrix-icon na" title="' + label + ': not in matrix">&ndash;</span></td>';
       }
     });
     bodyHtml += '</tr>';
@@ -411,7 +420,7 @@ renderMatrix('{{ default_matrix_wf }}');
 // ============================================================
 // Chart.js Trend Charts
 // ============================================================
-const chartData = {{ chart_data_json|safe }};
+const chartData = {{ chart_data|tojson }};
 
 Object.keys(chartData).forEach(key => {
   const wf = chartData[key];

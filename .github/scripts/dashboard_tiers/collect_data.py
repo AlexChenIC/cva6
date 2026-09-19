@@ -31,14 +31,18 @@ def gh_api(endpoint: str, repo: str) -> dict:
     """Call GitHub API via `gh api` and return parsed JSON."""
     url = f"/repos/{repo}/actions/{endpoint}"
     result = subprocess.run(
-        ["gh", "api", url, "--paginate"],
+        ["gh", "api", url, "--paginate", "--slurp"],
         capture_output=True,
         text=True,
+        timeout=120,
     )
     if result.returncode != 0:
         print(f"ERROR: gh api {url} failed: {result.stderr}", file=sys.stderr)
         sys.exit(1)
-    return json.loads(result.stdout)
+    pages = json.loads(result.stdout)
+    if isinstance(pages, list):
+        return {"jobs": [job for page in pages for job in page.get("jobs", [])]}
+    return pages
 
 
 def gh_api_list(endpoint: str, repo: str, per_page: int = 100) -> dict:
@@ -49,6 +53,7 @@ def gh_api_list(endpoint: str, repo: str, per_page: int = 100) -> dict:
         ["gh", "api", f"{url}{sep}per_page={per_page}"],
         capture_output=True,
         text=True,
+        timeout=60,
     )
     if result.returncode != 0:
         print(f"ERROR: gh api {url} failed: {result.stderr}", file=sys.stderr)
@@ -59,11 +64,17 @@ def gh_api_list(endpoint: str, repo: str, per_page: int = 100) -> dict:
 def fetch_runs(repo: str, workflow_file: str, count: int) -> list:
     """Fetch the latest `count` completed workflow runs."""
     data = gh_api_list(
-        f"workflows/{workflow_file}/runs?status=completed&per_page={count}",
+        f"workflows/{workflow_file}/runs?status=completed",
         repo,
     )
     runs = data.get("workflow_runs", [])
-    return runs[:count]
+    return [run for run in runs if is_master_run(run)][:count]
+
+
+def is_master_run(run):
+    return run.get("head_branch") == "master" or any(
+        pr.get("base", {}).get("ref") == "master" for pr in run.get("pull_requests", [])
+    ) or "master" in run.get("base_branches", [])
 
 
 def fetch_jobs(repo: str, run_id: int) -> list:
@@ -134,6 +145,7 @@ def process_run(repo: str, run: dict, workflow_name: str) -> dict:
         "conclusion": run.get("conclusion", "unknown"),
         "html_url": run.get("html_url", ""),
         "head_branch": run.get("head_branch", ""),
+        "base_branches": [pr.get("base", {}).get("ref") for pr in run.get("pull_requests", [])],
         "head_sha": run.get("head_sha", "")[:8],
         "event": run.get("event", ""),
         "created_at": run.get("created_at", ""),
@@ -161,13 +173,9 @@ def load_existing(path: Path) -> list:
 
 def merge_runs(existing: list, new_runs: list) -> list:
     """Merge new runs into existing data, deduplicating by run_id."""
-    existing_ids = {r["id"] for r in existing}
-    merged = list(existing)
-
-    for run in new_runs:
-        if run["id"] not in existing_ids:
-            merged.append(run)
-            existing_ids.add(run["id"])
+    by_id = {r["id"]: r for r in existing if is_master_run(r)}
+    by_id.update({r["id"]: r for r in new_runs})
+    merged = list(by_id.values())
 
     # Sort by created_at descending (newest first)
     merged.sort(key=lambda r: r.get("created_at", ""), reverse=True)
@@ -205,8 +213,7 @@ def main():
         print(f"{'='*60}")
 
         json_path = data_dir / f"runs_{wf_name}.json"
-        existing = load_existing(json_path)
-        existing_ids = {r["id"] for r in existing}
+        existing = [run for run in load_existing(json_path) if is_master_run(run)]
 
         print(f"  Existing records: {len(existing)}")
 
@@ -217,10 +224,6 @@ def main():
         # Only process new runs (incremental update)
         new_runs = []
         for run in runs:
-            if run["id"] in existing_ids:
-                print(f"  Skipping run #{run['run_number']} (id={run['id']}) - already exists")
-                continue
-
             print(f"  Processing run #{run['run_number']} (id={run['id']})...")
             processed = process_run(args.repo, run, wf_name)
             new_runs.append(processed)

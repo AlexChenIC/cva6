@@ -297,6 +297,7 @@ def main():
         "matrix_suites_json": json.dumps(matrix_suites),
         "default_matrix_wf": default_matrix_wf,
         "chart_data_json": json.dumps(chart_data),
+        "chart_data": chart_data,
         "trend_count": TREND_COUNT,
     }
 
