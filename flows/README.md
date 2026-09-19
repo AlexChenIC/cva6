@@ -1637,6 +1637,35 @@ export SPYGLASS_HOME=/path/to/spyglass
 export PATH=$VCS_HOME/bin:$VERDI_HOME/bin:$PATH
 ```
 
+### Verilator TestHarness Testlists
+
+Compile software and hardware separately, then dispatch the compiled tests:
+
+```bash
+./cook.py sw-compile-testlist -t cv32a60x_axi -c <toolchain> -l verif/tests/base_rv32_p.yaml
+./cook.py verilator-testharness-comp -t cv32a60x_axi
+./cook.py testharness-run-testlist --simulator verilator -t cv32a60x_axi -l verif/tests/base_rv32_p.yaml --iss-enabled
+```
+
+The testlist recipe uses the existing Cook `testlist` sequence and names each
+compiled iteration `<test>_<index>`, as `sw-compile-testlist` does. Zero iterations
+disable an entry. Empty selections, malformed entries and duplicate compiled names
+fail. Only Verilator RTL is implemented; no implicit hardware/software build or
+legacy `cva6.py` invocation occurs.
+
+Each case must return normally and produce a matching successful `result.yml`.
+Old per-case results are invalidated before dispatch. Failed cases do not stop the
+remaining list, but any failure makes the command exit nonzero. Errors remain
+visible with `--quiet`. Warning severity is not changed.
+
+The existing `Report` / `TableStatusMetric` format is written to
+`build/<target>/simulation/testharness_verilator_<list-stem>_report.yml`.
+A companion `_summary.yml` records schema version 1, target, simulator, options,
+individual results, and passed/failed totals for machine consumers. This is a local
+TestHarness contract, not a replacement for the shared UVM reporting API. Sequential
+runs of lists with the same stem overwrite these reports; concurrent execution in
+the same target build tree is not supported.
+
 ### Debug Mode
 
 For debugging recipe execution:
