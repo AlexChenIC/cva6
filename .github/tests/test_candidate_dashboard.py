@@ -249,6 +249,8 @@ class DashboardTests(unittest.TestCase):
         self.assertNotIn("<script>alert(1)</script>", html)
         self.assertIn("&lt;script&gt;", html)
         self.assertNotIn("Latest testlist evidence", html)
+        self.assertIn("No matrix job results are available for the latest runs.", html)
+        self.assertNotIn("No CI run data available yet.", html)
 
 
 if __name__ == "__main__":
