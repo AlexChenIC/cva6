@@ -36,6 +36,17 @@ class TierContractTests(unittest.TestCase):
             install.index('if [ "$VERILATOR_HIT"'),
             install.index("source verif/regress/install-spike.sh"),
         )
+        self.assertIn("libfl-dev", install)
+        self.assertLess(
+            install.index(
+                'test -f "$VERILATOR_INSTALL_DIR/share/verilator/include/vltstd/svdpi.h"'
+            ),
+            install.index("source verif/regress/install-spike.sh"),
+        )
+        for step in action["runs"]["steps"]:
+            self.assertNotIn(
+                "INSTALL", step.get("env", {}), "INSTALL is reserved by Autoconf"
+            )
 
     def setUp(self):
         self.summary = {

@@ -53,14 +53,14 @@ runs:
     - name: Require tools or install missing entries
       shell: bash
       env:
-        INSTALL: ${{ inputs.install-tools }}
+        INSTALL_TOOLS: ${{ inputs.install-tools }}
         GCC_HIT: ${{ steps.gcc.outputs.cache-hit }}
         SPIKE_HIT: ${{ steps.spike.outputs.cache-hit }}
         VERILATOR_HIT: ${{ steps.verilator.outputs.cache-hit }}
         VERSION: ${{ inputs.verilator-version }}
       run: |
         set -eo pipefail
-        if [ "$INSTALL" != true ] && { [ "$GCC_HIT" != true ] || [ "$SPIKE_HIT" != true ] || [ "$VERILATOR_HIT" != true ]; }; then
+        if [ "$INSTALL_TOOLS" != true ] && { [ "$GCC_HIT" != true ] || [ "$SPIKE_HIT" != true ] || [ "$VERILATOR_HIT" != true ]; }; then
           echo 'Exact tool cache missing; rerun the setup job'; exit 1
         fi
         sudo apt-get update
@@ -85,6 +85,8 @@ runs:
             make install
           )
         fi
+        "$VERILATOR_INSTALL_DIR/bin/verilator" --version
+        test -f "$VERILATOR_INSTALL_DIR/share/verilator/include/vltstd/svdpi.h"
         if [ "$SPIKE_HIT" != true ]; then
           source verif/regress/install-spike.sh
         fi
