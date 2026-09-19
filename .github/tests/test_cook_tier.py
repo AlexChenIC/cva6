@@ -23,6 +23,20 @@ spec.loader.exec_module(tier)
 
 
 class TierContractTests(unittest.TestCase):
+    def test_verilator_installed_before_vendor_spike_dpi_build(self):
+        action = yaml.safe_load(
+            (ROOT / ".github/actions/setup-cva6-env/action.yml").read_text()
+        )
+        install = next(
+            step["run"]
+            for step in action["runs"]["steps"]
+            if step.get("name") == "Require tools or install missing entries"
+        )
+        self.assertLess(
+            install.index('if [ "$VERILATOR_HIT"'),
+            install.index("source verif/regress/install-spike.sh"),
+        )
+
     def setUp(self):
         self.summary = {
             "schema_version": 1,

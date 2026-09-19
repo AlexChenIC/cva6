@@ -74,9 +74,6 @@ runs:
           tar -xf "$RUNNER_TEMP/riscv-gcc.tar.gz" --strip-components=1 -C "$RISCV"
         fi
         "$RISCV/bin/${CV_SW_PREFIX}gcc" --version
-        if [ "$SPIKE_HIT" != true ]; then
-          source verif/regress/install-spike.sh
-        fi
         if [ "$VERILATOR_HIT" != true ]; then
           unset VERILATOR_ROOT
           git clone --depth 1 --branch "v$VERSION" https://github.com/verilator/verilator.git "$RUNNER_TEMP/verilator-$VERSION"
@@ -88,5 +85,10 @@ runs:
             make install
           )
         fi
+        if [ "$SPIKE_HIT" != true ]; then
+          source verif/regress/install-spike.sh
+        fi
+        export LD_LIBRARY_PATH="$SPIKE_INSTALL_DIR/lib:$RISCV/lib:${LD_LIBRARY_PATH:-}"
+        echo "LD_LIBRARY_PATH=$LD_LIBRARY_PATH" >> "$GITHUB_ENV"
         "$VERILATOR_INSTALL_DIR/bin/verilator" --version
         "$SPIKE_INSTALL_DIR/bin/spike" --version
