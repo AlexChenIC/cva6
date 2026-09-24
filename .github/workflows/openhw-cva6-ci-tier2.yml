@@ -1,0 +1,102 @@
+# SPDX-License-Identifier: Apache-2.0
+# Manual expanded RTL/tohost regression. Default-branch nightly is separate.
+name: openhw-cva6-ci-tier2
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+env:
+  NUM_JOBS: '2'
+jobs:
+  checks:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - name: Cook dependencies
+        run: python3 -m pip install -c .github/requirements/cook-tier-ci-constraints.txt -r flows/requirements.txt
+      - name: Recipe and CI contract tests (no RTL compilation)
+        run: |
+          python3 .github/tests/test_logged_process.py -v
+          python3 .github/tests/test_verilator_testharness_run.py -v
+          python3 .github/tests/test_testharness_run_testlist.py -v
+          python3 .github/tests/test_cook_tier.py -v
+          python3 .github/tests/test_cook_tier_matrix.py -v
+  setup-tools:
+    needs: checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+          persist-credentials: false
+      - uses: ./.github/actions/setup-cva6-env
+        with:
+          verilator-version: '5.050'
+  regression:
+    name: RTL-only Tier2 ${{ matrix.config }} / ${{ matrix.testcase }}
+    needs: setup-tools
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        include:
+          - config: cv32a60x_axi
+            testcase: base-rv32-p
+            install_script: 'install-riscv-tests'
+            testlist: verif/tests/base_rv32_p.yaml
+            march: rv32imc_zicsr_zba_zbb_zbs_zbc
+          - config: cv32a65x_axi
+            testcase: base-rv32-p
+            install_script: 'install-riscv-tests'
+            testlist: verif/tests/base_rv32_p.yaml
+            march: rv32imc_zicsr_zba_zbb_zbs_zbc_zifencei
+          - config: cv32a65x_axi
+            testcase: base-pmp
+            install_script: ''
+            testlist: verif/tests/base_pmp.yaml
+            march: rv32imc_zicsr_zba_zbb_zbs_zbc_zifencei
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+          persist-credentials: false
+      - uses: ./.github/actions/setup-cva6-env
+        with:
+          verilator-version: '5.050'
+          install-tools: 'false'
+      - name: Cook Tier 2
+        env:
+          TIER_NAME: Tier 2
+          TIER_CONFIG: ${{ matrix.config }}
+          TIER_TESTCASE: ${{ matrix.testcase }}
+          TIER_INSTALL_SCRIPT: ${{ matrix.install_script }}
+          TIER_TESTLIST: ${{ matrix.testlist }}
+          TIER_COMPILER_MARCH: ${{ matrix.march }}
+          TIER_EVENT_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          TIER_EVENT_BASE_SHA: ${{ github.event.pull_request.base.sha || '' }}
+        run: bash .github/scripts/run-tier-regression.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: tier2-rv32-${{ matrix.config }}-${{ matrix.testcase }}
+          retention-days: 14
+          if-no-files-found: error
+          path: |
+            ci-results/
+            build/${{ matrix.config }}/simulation/
+            build/${{ matrix.config }}/elab/sim_rtl_verilator_testharness/compilation.*
+            build/${{ matrix.config }}/elab/sim_rtl_verilator_testharness/cook_manifest.yml
+            build/${{ matrix.config }}/elab/sim_rtl_verilator_testharness/verilator.version
