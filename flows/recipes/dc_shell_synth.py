@@ -17,6 +17,7 @@ from functools import reduce
 import yaml
 import typer
 from flows.utils.config_loader import load_techno_config
+from flows.utils.manifest import write_manifest
 from flows.utils.utils import (
     Cva6Hier,
     TechnoOption,
@@ -66,7 +67,6 @@ def dc_shell_synth(
         False, "--quiet", "-q", help="Suppress output (errors only)"
     ),
 ):
-    TECHNO_DATA = load_techno_config()
     """
     DC Shell Synthesis flow
     """
@@ -101,6 +101,7 @@ def dc_shell_synth(
 
     # Get config
     #
+    TECHNO_DATA = load_techno_config()
     techno = TECHNO_DATA[techno.value]
 
     print_param_table(
@@ -330,6 +331,22 @@ def dc_shell_synth(
 
     # Write Flist.libverilog to help compile step
     (synth_dir / "Flist.libverilog").write_text(env_vars["LIB_VERILOG"])
+
+    # ==========================================================
+    # BUILD MANIFEST
+    # ==========================================================
+    write_manifest(
+        synth_dir,
+        "dc-shell-synth",
+        {
+            "target": target,
+            "techno": techno.get("TECH_NAME", None),
+            "period": period,
+            "script_file": script_file,
+            "preprocessor_defines": preprocessor_defines,
+        },
+        quiet=quiet,
+    )
 
     # ==========================================================
     # Reporting area

@@ -14,6 +14,7 @@ import shutil
 import typer
 import yaml
 from flows.utils.config_loader import load_compiler_config
+from flows.utils.manifest import write_manifest
 from flows.utils.utils import (
     ToolchainOption,
     autocompletion_target,
@@ -23,6 +24,7 @@ from flows.utils.utils import (
     print_info,
     print_success,
     print_error,
+    print_warning,
     print_param_table,
     run_cmd,
 )
@@ -206,6 +208,41 @@ def sw_compile(
             f"--target={target_toolchain}",
         ]
 
+        # Clang does not link any runtime library with -nostdlib, unlike GCC
+        # where -lgcc provides builtins (e.g. 64-bit division on RV32).
+        # Resolve the compiler-rt builtins archive and link it explicitly.
+        # march/mabi are passed so multilib toolchains return the right variant.
+        rtlib_query_cmd = [
+            f"{tools_path}/bin/{compiler}",
+            f"--target={target_toolchain}",
+            f"-march={march}",
+            f"-mabi={mabi}",
+            "--rtlib=compiler-rt",
+            "-print-libgcc-file-name",
+        ]
+        rtlib_path = run_cmd(
+            cmd=rtlib_query_cmd,
+            cwd=None,
+            env=None,
+            error_patterns=None,
+            warning_patterns=None,
+            highlight_patterns=None,
+            log_file=None,
+            timeout=30,
+            check=False,
+            capture_output=True,
+            quiet=True,
+        ).strip()
+        if rtlib_path and Path(rtlib_path).exists():
+            print_info(f"Link compiler-rt builtins: {rtlib_path}", quiet=quiet)
+            compile_cmd += [rtlib_path]
+        else:
+            print_warning(
+                f"compiler-rt builtins not found ({rtlib_path}), "
+                "link may fail on missing builtins (e.g. __umoddi3)",
+                quiet=quiet,
+            )
+
     run_cmd(
         cmd=compile_cmd,
         cwd=None,
@@ -325,6 +362,27 @@ def sw_compile(
     extract_symbol("tohost", add_tohost_file)
     extract_symbol("GLOBAL_PATTERN_start", add_GLOBAL_PATTERN_start_file)
     extract_symbol("GLOBAL_PATTERN_end", add_GLOBAL_PATTERN_end_file)
+
+    # ==========================================================
+    # BUILD MANIFEST
+    # ==========================================================
+    write_manifest(
+        compile_dir,
+        "sw-compile",
+        {
+            "target": target,
+            "toolchain": toolchain,
+            "test_name": test_name,
+            "src_files": src_files,
+            "inc_dirs": inc_dirs,
+            "linker_file": linker_file,
+            "options": options,
+            "march": march,
+            "mabi": mabi,
+            "preprocessor_directives": preprocessor_directives,
+        },
+        quiet=quiet,
+    )
 
     # ==========================================================
     # List
