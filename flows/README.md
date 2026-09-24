@@ -649,6 +649,54 @@ Focused local tests (no RTL simulator or submodule initialization required):
 python .github/tests/test_verilator_testharness_run.py -v
 ```
 
+#### TestHarness Testlists (RTL-only)
+
+`testharness-run-testlist` runs already compiled tests. Hardware compilation,
+software compilation, and simulation remain separate Cook recipes:
+
+```bash
+./cook.py verilator-testharness-comp -t cv32a60x_axi
+./cook.py sw-compile-testlist -t cv32a60x_axi -c <configured-toolchain> \
+  -l verif/tests/base_rv32_p.yaml
+./cook.py testharness-run-testlist --simulator verilator -t cv32a60x_axi \
+  -l verif/tests/base_rv32_p.yaml
+```
+
+Initialize the required submodules/test sources and configure the compiler
+first. Compiler ISA/ABI options must be appropriate for the target, just as
+when invoking the software compilation recipe independently.
+
+The runner uses the existing Cook `testlist` YAML sequence. Each enabled
+entry runs `<test>_0` through `<test>_<iterations-1>`, matching
+`sw-compile-testlist`. An omitted `iterations` defaults to one for this runner;
+zero disables the entry. Empty enabled lists, invalid iterations, duplicate
+compiled names and unsafe path components are rejected.
+
+The seven options are `--simulator / -s`, `--target / -t`, `--testlist / -l`,
+`--comp-mode`, `--trace-mode`, `--iss-enabled`, and `--quiet / -q`.
+Only Verilator and RTL mode are implemented. ISS is disabled by default;
+enabling it is rejected before cleanup or execution. No standalone Spike
+comparison or live tandem is performed. Waveform modes and optional raw-trace
+post-processing follow the single-test Run recipe above without extra trace
+content checks at the testlist layer.
+
+Each case calls `verilator-testharness-run` directly. A failed case does not
+prevent subsequent cases from running, but makes the final CLI exit nonzero.
+Missing, stale or inconsistent run results cannot count as PASS, and errors
+remain visible with `--quiet`. A valid result retains the Run diagnostic,
+including the distinction between simulation and post-processing failure.
+
+The Cook report and machine-readable summary are written to
+`build/<target>/simulation/testharness_verilator_<testlist-stem>_report.yml`
+and `..._summary.yml`. The summary records each case, totals, PASS/FAIL and
+`iss_enabled: false`. Previous reports at these paths are replaced; use
+separate checkouts for concurrent runs. Always check the current command's
+exit status, not merely the presence of a report from a previous invocation.
+
+```bash
+python .github/tests/test_testharness_run_testlist.py -v
+```
+
 RTL simulation with UVM testbench. Supports multiple simulators: VCS (Synopsys), Xcelium (Cadence), and Questa (Siemens).
 
 #### `vcs-uvm-comp`
