@@ -567,6 +567,78 @@ Build tests from a YAML testlist file.
 
 ### RTL Simulation
 
+#### Verilator TestHarness Run (RTL-only)
+
+`verilator-testharness-run` executes one Cook-compiled ELF with a simulator
+produced by `verilator-testharness-comp`. It invokes the executable directly,
+without delegating to `cva6.py` or the legacy CVA6 Makefile flow.
+
+From the repository root, with the Cook Python environment configured:
+
+```bash
+./cook.py verilator-testharness-comp -t cv32a60x_axi
+# Compile the software with an existing Cook software recipe first.
+./cook.py verilator-testharness-run -t cv32a60x_axi -n <compiled-test-name>
+```
+
+The software directory `build/<target>/compile/<test-name>/` must contain
+the ELF, `isa_string`, `<test-name>.add_tohost`, and its Cook manifest.
+The hardware manifest must identify the same target and compilation mode.
+An AXI TestHarness target is required; an OBI target is not interchangeable.
+
+Options follow the proposed single-test Run interface:
+
+- `--target / -t` and `--testname / -n`: required target and compiled test name.
+- `--comp-mode`: only `rtl` is supported.
+- `--trace-mode`: `notrace`, `fast` (VCD), or `compact` (FST); waveform modes
+  require a matching simulator build. `notrace` disables waveforms, not the
+  instruction log used for disassembly.
+- `--iss-enabled / --no-iss-enabled`: reserved, default disabled. Enabling ISS
+  fails explicitly before output cleanup or execution. This version implements
+  neither standalone Spike comparison nor live Spike tandem checking.
+- `--interactive-gui`: unsupported and rejected explicitly.
+- `--quiet / -q`: suppress normal console output, but not failure messages.
+
+Set `RISCV` to the toolchain installation. `SPIKE_INSTALL_DIR` selects the
+CVA6 Spike installation (default `tools/spike`). Spike/FESVR libraries remain
+dependencies of the compiled TestHarness, and `spike-dasm` is used for trace
+disassembly. The standalone `spike` executable and target `spike.yaml` are not
+required by this Run recipe. Removing reference comparison does not remove
+these build/runtime-library and disassembler dependencies.
+
+Simulation success requires a zero process exit, no timeout, the explicit
+`*** SUCCESS *** (tohost = 0)` marker, and no `*** FAILED ***`,
+`SIMULATION FAILED`, `[FAILED]`, `UVM_ERROR`, or `UVM_FATAL` marker. The
+simulation has a 500-second wall-clock timeout. Failure takes precedence over
+a success message. Warnings alone are not promoted to failures.
+
+After successful simulation, the raw `trace_rvfi_hart_00.dasm` is disassembled
+into `verilator.log`, with diagnostics in `spike_dasm.log`. Missing input,
+disassembler errors/timeouts, and output I/O errors fail the recipe as
+post-processing failures. The disassembly timeout is at most 120 seconds.
+Trace content, instruction counts, and any particular PC are **not** additional
+PASS criteria; an empty or unrecognized trace does not invalidate successful
+execution if disassembly itself succeeds. This does not add arbitrary ELF
+entry support: hardware boot, memory layout, software linking, and tohost
+conventions still apply.
+
+Outputs are written to
+`build/<target>/simulation/sim_rtl_verilator_testharness/<test-name>/`.
+That test's previous output directory is replaced when a validated run starts.
+Normal completion records a Cook manifest and `result.yml` with `status`,
+`iss_enabled: false`, and a diagnostic `detail`. PASS means the execution and
+artifact-processing requirements above were met, **not** ISA-reference
+equivalence. Failures return a nonzero CLI status, including manifest/result
+write failures; early prerequisite errors may occur before a new result file
+can be written. Do not use an old result file in place of checking the exit
+status of the current invocation.
+
+Focused local tests (no RTL simulator or submodule initialization required):
+
+```bash
+python .github/tests/test_verilator_testharness_run.py -v
+```
+
 RTL simulation with UVM testbench. Supports multiple simulators: VCS (Synopsys), Xcelium (Cadence), and Questa (Siemens).
 
 #### `vcs-uvm-comp`
