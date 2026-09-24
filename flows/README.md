@@ -612,10 +612,20 @@ Simulation success requires a zero process exit, no timeout, the explicit
 simulation has a 500-second wall-clock timeout. Failure takes precedence over
 a success message. Warnings alone are not promoted to failures.
 
-After successful simulation, the raw `trace_rvfi_hart_00.dasm` is disassembled
-into `verilator.log`, with diagnostics in `spike_dasm.log`. Missing input,
-disassembler errors/timeouts, and output I/O errors fail the recipe as
-post-processing failures. The disassembly timeout is at most 120 seconds.
+After successful simulation, if `trace_rvfi_hart_00.dasm` is absent, the recipe
+skips disassembly and records that fact in the result detail without failing
+the run. This does not establish why the trace was not produced. The main
+`testharness.log` and its successful tohost result remain mandatory.
+
+When the raw trace is present, it must be a regular file, not a directory,
+symbolic link, or other special file. It is disassembled into `verilator.log`,
+with diagnostics in `spike_dasm.log`. Inspection/read errors, tool launch
+errors, nonzero exits, timeouts, and output I/O errors still fail the recipe;
+the detail distinguishes successful RTL simulation from failed trace
+post-processing and retains the error reason. A file that disappears after
+inspection is an error, not a normal skip. The disassembly timeout is at most
+120 seconds.
+
 Trace content, instruction counts, and any particular PC are **not** additional
 PASS criteria; an empty or unrecognized trace does not invalidate successful
 execution if disassembly itself succeeds. This does not add arbitrary ELF

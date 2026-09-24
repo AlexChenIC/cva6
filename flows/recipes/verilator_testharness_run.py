@@ -13,6 +13,7 @@ import os
 from pathlib import Path
 import re
 import shutil
+import stat
 import subprocess
 
 import typer
@@ -169,9 +170,7 @@ def run_spike_dasm(
     timeout: int,
     *,
     env: dict[str, str],
-) -> bool:
-    if not raw_trace.is_file() or not spike_dasm.is_file():
-        return False
+) -> tuple[bool, str]:
     try:
         with (
             raw_trace.open("rb") as source,
@@ -187,9 +186,16 @@ def run_spike_dasm(
                 check=False,
                 env=env,
             )
-    except (OSError, subprocess.TimeoutExpired):
-        return False
-    return result.returncode == 0
+    except subprocess.TimeoutExpired:
+        return False, f"spike-dasm timed out after {timeout} seconds"
+    except OSError as error:
+        return False, f"trace disassembly I/O or launch error: {error}"
+    if result.returncode != 0:
+        return (
+            False,
+            f"spike-dasm exited with code {result.returncode}; see {error_log}",
+        )
+    return True, "trace disassembly completed"
 
 
 def check_manifests(
@@ -283,18 +289,33 @@ def run_testharness_and_trace(
     if not passed:
         return False, detail
 
-    verilator_log = output_dir / "verilator.log"
-    if not run_spike_dasm(
+    raw_trace = output_dir / "trace_rvfi_hart_00.dasm"
+    failure = "RTL simulation passed; trace post-processing failed"
+    # Only an absent path is optional; invalid trace paths must not be skipped.
+    try:
+        trace_stat = raw_trace.lstat()
+    except FileNotFoundError:
+        return (
+            True,
+            f"{detail}; trace disassembly skipped: raw trace not produced ({raw_trace.name})",
+        )
+    except OSError as error:
+        return False, f"{failure}: cannot inspect raw trace: {error}"
+    if not stat.S_ISREG(trace_stat.st_mode):
+        return False, f"{failure}: raw trace is not a regular file: {raw_trace}"
+
+    trace_passed, trace_detail = run_spike_dasm(
         spike_install / "bin" / "spike-dasm",
-        output_dir / "trace_rvfi_hart_00.dasm",
-        verilator_log,
+        raw_trace,
+        output_dir / "verilator.log",
         output_dir / "spike_dasm.log",
         compiler_isa,
         min(timeout, 120),
         env=env,
-    ):
-        return False, "TestHarness trace disassembly failed"
-    return True, f"{detail}; trace disassembly completed"
+    )
+    if not trace_passed:
+        return False, f"{failure}: {trace_detail}"
+    return True, f"{detail}; {trace_detail}"
 
 
 def run_test(

@@ -272,13 +272,15 @@ class VerilatorTestHarnessRunTest(unittest.TestCase):
             (0, True, "*** SUCCESS *** (tohost = 0)"),
             (0, False, "no success"),
             (0, False, "*** SUCCESS *** (tohost = 0)\nUVM_FATAL"),
+            (0, False, None),
         )
         for rc, timeout, text in cases:
             with self.subTest(
                 rc=rc, timeout=timeout, text=text
             ), tempfile.TemporaryDirectory() as directory:
                 root = Path(directory)
-                (root / "testharness.log").write_text(text)
+                if text is not None:
+                    (root / "testharness.log").write_text(text)
                 with patch.object(
                     RECIPE, "run_logged_process", return_value=(rc, timeout)
                 ), patch.object(RECIPE, "run_spike_dasm") as dasm:
@@ -346,31 +348,146 @@ class VerilatorTestHarnessRunTest(unittest.TestCase):
                 self.assertTrue(passed, detail)
                 self.assertEqual((output / "verilator.log").read_text(), trace)
 
-    def test_missing_raw_trace_remains_a_postprocessing_failure(self):
+    def test_missing_raw_trace_skips_disassembly_and_records_success(self):
+        for quiet in (False, True):
+            with self.subTest(quiet=quiet), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                _, _, binary, dasm, env = prepare_tree(root)
+                executable(binary, "print('*** SUCCESS *** (tohost = 0)')")
+                dasm.unlink()
+                args = ["-t", "cv32a60x_axi", "-n", "hello-world"]
+                if quiet:
+                    args.append("--quiet")
+                with working_directory(root), patch.dict(os.environ, env), patch.object(
+                    RECIPE, "run_spike_dasm"
+                ) as disassemble:
+                    result = CliRunner().invoke(RECIPE.app, args)
+                self.assertEqual(result.exit_code, 0, result.output)
+                disassemble.assert_not_called()
+                output = RECIPE.simulation_directory(
+                    root, "cv32a60x_axi", "hello-world", CompMode.rtl
+                )
+                record = yaml.safe_load((output / "result.yml").read_text())
+                self.assertEqual(record["status"], "PASS")
+                self.assertIs(record["iss_enabled"], False)
+                self.assertIn("trace disassembly skipped", record["detail"])
+                self.assertFalse((output / "verilator.log").exists())
+                if not quiet:
+                    self.assertIn("trace disassembly skipped", result.output)
+
+    def test_nonregular_trace_paths_are_not_treated_as_missing(self):
+        cases = {
+            "directory": "raw.mkdir()",
+            "dangling-link": "raw.symlink_to('absent')",
+            "file-link": "Path('other').touch(); raw.symlink_to('other')",
+        }
+        if hasattr(os, "mkfifo"):
+            cases["fifo"] = "import os; os.mkfifo(raw)"
+        for case, setup in cases.items():
+            with self.subTest(case=case), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                _, _, binary, _, env = prepare_tree(root)
+                executable(
+                    binary,
+                    "from pathlib import Path\n"
+                    "raw = Path('trace_rvfi_hart_00.dasm')\n"
+                    + setup
+                    + "\nprint('*** SUCCESS *** (tohost = 0)')",
+                )
+                with working_directory(root), patch.dict(os.environ, env), patch.object(
+                    RECIPE, "run_spike_dasm"
+                ) as disassemble:
+                    passed, detail, _ = RECIPE.run_test(**run_options())
+                self.assertFalse(passed)
+                self.assertIn(
+                    "RTL simulation passed; trace post-processing failed", detail
+                )
+                self.assertIn("not a regular file", detail)
+                disassemble.assert_not_called()
+
+    def test_trace_inspection_error_is_not_treated_as_missing(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            _, _, binary, _, env = prepare_tree(root)
-            executable(binary, "print('*** SUCCESS *** (tohost = 0)')")
-            with working_directory(root), patch.dict(os.environ, env):
+            _, _, _, _, env = prepare_tree(root)
+            original = Path.lstat
+
+            def denied(path, *args, **kwargs):
+                if path.name == "trace_rvfi_hart_00.dasm":
+                    raise PermissionError("trace metadata denied")
+                return original(path, *args, **kwargs)
+
+            with working_directory(root), patch.dict(os.environ, env), patch.object(
+                Path, "lstat", denied
+            ), patch.object(RECIPE, "run_spike_dasm") as disassemble:
                 passed, detail, _ = RECIPE.run_test(**run_options())
             self.assertFalse(passed)
-            self.assertIn("disassembly failed", detail)
+            self.assertIn("cannot inspect raw trace: trace metadata denied", detail)
+            disassemble.assert_not_called()
 
-    def test_disassembler_nonzero_and_missing_tool_fail(self):
-        for missing in (False, True):
+    def test_trace_io_errors_after_inspection_are_not_skipped(self):
+        cases = (
+            ("trace_rvfi_hart_00.dasm", PermissionError),
+            ("trace_rvfi_hart_00.dasm", FileNotFoundError),
+            ("verilator.log", PermissionError),
+            ("spike_dasm.log", PermissionError),
+        )
+        for name, error in cases:
             with self.subTest(
-                missing=missing
+                name=name, error=error
             ), tempfile.TemporaryDirectory() as directory:
                 root = Path(directory)
+                _, _, _, _, env = prepare_tree(root)
+                original = Path.open
+
+                def denied(path, *args, **kwargs):
+                    if path.name == name:
+                        raise error("fixture I/O denied")
+                    return original(path, *args, **kwargs)
+
+                with working_directory(root), patch.dict(os.environ, env), patch.object(
+                    Path, "open", denied
+                ):
+                    passed, detail, _ = RECIPE.run_test(**run_options())
+                self.assertFalse(passed)
+                self.assertIn(
+                    "RTL simulation passed; trace post-processing failed", detail
+                )
+                self.assertIn("fixture I/O denied", detail)
+
+    def test_disassembler_nonzero_and_missing_tool_fail(self):
+        for case in ("exit-7", "missing", "non-executable", "directory"):
+            with self.subTest(case=case), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
                 _, _, _, dasm, env = prepare_tree(root)
-                if missing:
+                if case == "missing":
                     dasm.unlink()
+                elif case == "non-executable":
+                    dasm.chmod(0o644)
+                elif case == "directory":
+                    dasm.unlink()
+                    dasm.mkdir()
                 else:
                     executable(dasm, "raise SystemExit(7)")
                 with working_directory(root), patch.dict(os.environ, env):
-                    passed, detail, _ = RECIPE.run_test(**run_options())
-                self.assertFalse(passed)
-                self.assertIn("disassembly failed", detail)
+                    result = CliRunner().invoke(
+                        RECIPE.app,
+                        ["-t", "cv32a60x_axi", "-n", "hello-world", "--quiet"],
+                    )
+                self.assertEqual(result.exit_code, 1, result.output)
+                output = RECIPE.simulation_directory(
+                    root, "cv32a60x_axi", "hello-world", CompMode.rtl
+                )
+                record = yaml.safe_load((output / "result.yml").read_text())
+                self.assertEqual(record["status"], "FAIL")
+                self.assertIn(
+                    "RTL simulation passed; trace post-processing failed",
+                    record["detail"],
+                )
+                if case == "exit-7":
+                    self.assertIn("spike-dasm exited with code 7", record["detail"])
+                else:
+                    self.assertIn("I/O or launch error", record["detail"])
+                    self.assertIn(str(dasm), record["detail"])
 
     def test_disassembler_timeout_and_write_error_fail(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -385,18 +502,46 @@ class VerilatorTestHarnessRunTest(unittest.TestCase):
                 "run",
                 side_effect=subprocess.TimeoutExpired("dasm", 1),
             ):
-                self.assertFalse(RECIPE.run_spike_dasm(*args, env={}))
+                passed, detail = RECIPE.run_spike_dasm(*args, env={})
+                self.assertFalse(passed)
+                self.assertIn("spike-dasm timed out after 1 seconds", detail)
             with patch.object(Path, "open", side_effect=PermissionError("fixture")):
-                self.assertFalse(RECIPE.run_spike_dasm(*args, env={}))
+                passed, detail = RECIPE.run_spike_dasm(*args, env={})
+                self.assertFalse(passed)
+                self.assertIn("I/O or launch error: fixture", detail)
+
+    def test_real_disassembler_timeout_is_reported(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            raw = root / "raw"
+            raw.touch()
+            dasm = root / "dasm"
+            executable(dasm, "import time; time.sleep(10)")
+            passed, detail = RECIPE.run_spike_dasm(
+                dasm,
+                raw,
+                root / "out",
+                root / "err",
+                "rv32imc",
+                0.2,
+                env=os.environ.copy(),
+            )
+            self.assertFalse(passed)
+            self.assertIn("spike-dasm timed out", detail)
 
     def test_disassembler_receives_prepared_environment(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             (root / "testharness.log").write_text("*** SUCCESS *** (tohost = 0)")
+            (root / "trace_rvfi_hart_00.dasm").touch()
             env = {"TARGET_CFG": "expected"}
             with patch.object(
                 RECIPE, "run_logged_process", return_value=(0, False)
-            ), patch.object(RECIPE, "run_spike_dasm", return_value=True) as dasm:
+            ), patch.object(
+                RECIPE,
+                "run_spike_dasm",
+                return_value=(True, "trace disassembly completed"),
+            ) as dasm:
                 passed, _ = RECIPE.run_testharness_and_trace(
                     command=["fixture"],
                     output_dir=root,
