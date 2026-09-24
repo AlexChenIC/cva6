@@ -5,7 +5,7 @@ testlist:
   - test: hello-world
     iterations: 1
     path_var: TESTS_PATH
-    asm_tests: <path_var>/custom/hello_world/hello_world.c
+    asm_tests: <path_var>/custom/hello_world/testharness_hello_world.c
     gcc_opts: >-
       -g -static -mcmodel=medany -fvisibility=hidden -nostartfiles
       <path_var>/custom/common/syscalls.c

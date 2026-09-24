@@ -35,17 +35,17 @@ runs:
         echo "CV_SW_PREFIX=riscv32-unknown-elf-" >> "$GITHUB_ENV"
         echo "$GITHUB_WORKSPACE/tools/verilator-$VERSION/bin" >> "$GITHUB_PATH"
         echo "$GITHUB_WORKSPACE/tools/spike/bin" >> "$GITHUB_PATH"
-    - uses: actions/cache@v6
+    - uses: actions/cache/restore@v6
       id: gcc
       with:
         path: tools/riscv-toolchain
         key: ${{ runner.os }}-toolchain-${{ hashFiles('ci/install-toolchain.sh') }}
-    - uses: actions/cache@v6
+    - uses: actions/cache/restore@v6
       id: spike
       with:
         path: tools/spike
         key: ${{ runner.os }}-spike-${{ hashFiles('verif/regress/install-spike.sh') }}-${{ steps.tools.outputs.corev }}
-    - uses: actions/cache@v6
+    - uses: actions/cache/restore@v6
       id: verilator
       with:
         path: tools/verilator-${{ inputs.verilator-version }}
@@ -94,3 +94,19 @@ runs:
         echo "LD_LIBRARY_PATH=$LD_LIBRARY_PATH" >> "$GITHUB_ENV"
         "$VERILATOR_INSTALL_DIR/bin/verilator" --version
         test -x "$SPIKE_INSTALL_DIR/bin/spike-dasm"
+    # Save only after successful setup, independently of later smoke failures.
+    - uses: actions/cache/save@v6
+      if: steps.gcc.outputs.cache-hit != 'true'
+      with:
+        path: tools/riscv-toolchain
+        key: ${{ steps.gcc.outputs.cache-primary-key }}
+    - uses: actions/cache/save@v6
+      if: steps.spike.outputs.cache-hit != 'true'
+      with:
+        path: tools/spike
+        key: ${{ steps.spike.outputs.cache-primary-key }}
+    - uses: actions/cache/save@v6
+      if: steps.verilator.outputs.cache-hit != 'true'
+      with:
+        path: tools/verilator-${{ inputs.verilator-version }}
+        key: ${{ steps.verilator.outputs.cache-primary-key }}

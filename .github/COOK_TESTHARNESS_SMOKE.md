@@ -8,7 +8,9 @@ This self-contained first stage composes three atomic recipes:
 ## Scope
 
 - One target: `cv32a65x_axi`.
-- One existing program: `verif/tests/custom/hello_world/hello_world.c`.
+- One small program: `verif/tests/custom/hello_world/testharness_hello_world.c`.
+  It prints through the existing TestHarness mock UART, then returns through
+  the existing startup/exit code. The original HTIF-based Hello World is unchanged.
 - One compiled ELF: `hello-world_0`, executed once directly and once through
   a single-entry testlist.
 - RTL-only, `notrace`, ISS disabled. No Spike comparison or live tandem.
@@ -78,6 +80,8 @@ A successful command exit is necessary but not sufficient. The driver also
 requires a successful TestHarness termination, the expected
 `0: Hello World !` output, matching per-test metadata, exactly one passing
 batch case, and agreement between the Cook report and YAML summary.
+The run receipt records the outcome; the run manifest records compilation
+and trace modes. Both are checked against their recipe-defined contracts.
 Timeouts, missing prerequisites, simulation failures, failed trace
 post-processing, missing output or inconsistent reports fail the job.
 

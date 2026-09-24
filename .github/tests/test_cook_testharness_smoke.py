@@ -63,17 +63,30 @@ def run_result(directory):
             {
                 "target": TARGET,
                 "test_name": TEST_NAME,
-                "comp_mode": "rtl",
-                "trace_mode": "notrace",
                 "iss_enabled": False,
                 "status": "PASS",
+                "detail": "fixture",
             }
         )
     )
     (directory / "testharness.log").write_text(
         "0: Hello World !\n*** SUCCESS *** (tohost = 0)\n"
     )
-    (directory / "cook_manifest.yml").write_text("recipe: verilator-testharness-run\n")
+    (directory / "cook_manifest.yml").write_text(
+        yaml.safe_dump(
+            {
+                "recipe": "verilator-testharness-run",
+                "options": {
+                    "target": TARGET,
+                    "test_name": TEST_NAME,
+                    "comp_mode": "rtl",
+                    "trace_mode": "notrace",
+                    "iss_enabled": False,
+                    "interactive_gui": False,
+                },
+            }
+        )
+    )
 
 
 class SmokeTests(unittest.TestCase):
@@ -124,6 +137,37 @@ class SmokeTests(unittest.TestCase):
             with self.assertRaises(OSError):
                 SMOKE["checked_run"](root)
 
+    def test_modes_are_checked_in_manifest_not_receipt(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            run_result(root)
+            result = SMOKE["checked_run"](root)
+            self.assertNotIn("comp_mode", result)
+            self.assertNotIn("trace_mode", result)
+            path = root / "cook_manifest.yml"
+            original = yaml.safe_load(path.read_text())
+            for key, value in (
+                ("target", "other"),
+                ("test_name", "other"),
+                ("comp_mode", "gate"),
+                ("trace_mode", "fast"),
+                ("iss_enabled", True),
+                ("iss_enabled", 0),
+                ("interactive_gui", True),
+            ):
+                data = copy.deepcopy(original)
+                data["options"][key] = value
+                path.write_text(yaml.safe_dump(data))
+                with self.subTest(key=key, value=value), self.assertRaises(ValueError):
+                    SMOKE["checked_run"](root)
+            for data in (None, {}, {**original, "recipe": "other"}):
+                path.write_text(yaml.safe_dump(data))
+                with self.subTest(data=data), self.assertRaises(ValueError):
+                    SMOKE["checked_run"](root)
+            path.unlink()
+            with self.assertRaises(OSError):
+                SMOKE["checked_run"](root)
+
     def test_direct_commands_do_not_use_legacy_or_iss(self):
         commands = SMOKE["cook_commands"]()
         self.assertEqual(
@@ -141,13 +185,15 @@ class SmokeTests(unittest.TestCase):
         self.assertNotIn("cva6.py", str(commands))
         self.assertNotIn("make", str(commands))
 
-    def test_repository_testlist_reuses_hello_world(self):
+    def test_repository_testlist_uses_testharness_hello_world(self):
         data = yaml.safe_load((REPO_ROOT / TESTLIST).read_text())
         self.assertEqual(len(data["testlist"]), 1)
         entry = data["testlist"][0]
         self.assertEqual((entry["test"], entry["iterations"]), ("hello-world", 1))
         source = REPO_ROOT / entry["asm_tests"].replace("<path_var>", "verif/tests")
         self.assertIn("Hello World !", source.read_text())
+        self.assertIn("testharness_hello_world.c", str(source))
+        self.assertNotIn("printf(", source.read_text())
         self.assertEqual(entry["mabi"], "ilp32")
         self.assertNotIn("zcmt", entry["march"])
 

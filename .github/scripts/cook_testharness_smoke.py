@@ -61,8 +61,6 @@ def checked_run(directory: Path) -> dict:
     expected = {
         "target": TARGET,
         "test_name": TEST_NAME,
-        "comp_mode": "rtl",
-        "trace_mode": "notrace",
         "status": "PASS",
     }
     if not isinstance(result, dict) or any(
@@ -71,6 +69,23 @@ def checked_run(directory: Path) -> dict:
         raise ValueError("Missing or inconsistent single-test result")
     if result.get("iss_enabled") is not False:
         raise ValueError("Single-test result unexpectedly enables ISS")
+    manifest = yaml.safe_load((directory / "cook_manifest.yml").read_text())
+    options = {
+        "target": TARGET,
+        "test_name": TEST_NAME,
+        "comp_mode": "rtl",
+        "trace_mode": "notrace",
+        "iss_enabled": False,
+        "interactive_gui": False,
+    }
+    if (
+        not isinstance(manifest, dict)
+        or manifest.get("recipe") != "verilator-testharness-run"
+        or manifest.get("options") != options
+        or manifest["options"].get("iss_enabled") is not False
+        or manifest["options"].get("interactive_gui") is not False
+    ):
+        raise ValueError("Missing or inconsistent single-test manifest")
     log = directory / "testharness.log"
     passed, detail = testharness_log_passed(log)
     if not passed:
