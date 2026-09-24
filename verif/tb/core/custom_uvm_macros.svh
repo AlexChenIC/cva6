@@ -29,9 +29,9 @@ typedef enum
         uvm_report_info(TOP, MSG, LVL, `uvm_file, `uvm_line); \
     end
 
-`define uvm_warning(TOP, MSG) \
+`define uvm_warning(TOP, MSG, LVL) \
     begin \
-        uvm_report_warning(TOP, MSG, UVM_NONE, `uvm_file, `uvm_line); \
+        uvm_report_warning(TOP, MSG, LVL, `uvm_file, `uvm_line); \
     end
 
 `define uvm_error(TOP, MSG) \

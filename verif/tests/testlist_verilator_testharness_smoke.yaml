@@ -1,0 +1,17 @@
+# SPDX-License-Identifier: Apache-2.0
+# Reuse the existing Hello World sources. No external ISA test suite is needed.
+# GCC 13 supports this subset; this smoke does not exercise Zcmt.
+testlist:
+  - test: hello-world
+    iterations: 1
+    path_var: TESTS_PATH
+    asm_tests: <path_var>/custom/hello_world/hello_world.c
+    gcc_opts: >-
+      -g -static -mcmodel=medany -fvisibility=hidden -nostartfiles
+      <path_var>/custom/common/syscalls.c
+      <path_var>/custom/common/crt.S
+      -I<path_var>/custom/env
+      -I<path_var>/custom/common
+      -Iverif/sim/user_extension
+    march: rv32imc_zicsr_zba_zbb_zbs_zbc_zifencei
+    mabi: ilp32

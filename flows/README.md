@@ -567,6 +567,18 @@ Build tests from a YAML testlist file.
 
 ### RTL Simulation
 
+#### Verilator TestHarness (RTL-only)
+
+The TestHarness flow provides independent `verilator-testharness-comp`,
+`verilator-testharness-run`, and `testharness-run-testlist --simulator verilator`
+recipes. Software compilation remains a separate Cook step.
+
+For a self-contained Hello World example, tool requirements, automated smoke
+verification and result interpretation, see
+[Cook Verilator TestHarness smoke](../.github/COOK_TESTHARNESS_SMOKE.md).
+The first-stage smoke uses `cv32a65x_axi`, no waveform and no ISS comparison.
+It does not replace the existing UVM or commercial-simulator recipes.
+
 RTL simulation with UVM testbench. Supports multiple simulators: VCS (Synopsys), Xcelium (Cadence), and Questa (Siemens).
 
 #### `vcs-uvm-comp`

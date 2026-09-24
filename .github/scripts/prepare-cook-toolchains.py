@@ -11,6 +11,7 @@ import argparse
 import hashlib
 import os
 from pathlib import Path
+import shutil
 import subprocess
 from typing import Any
 
@@ -33,8 +34,26 @@ def first_version_line(path: Path) -> str:
         check=True,
         capture_output=True,
         text=True,
+        timeout=30,
     )
     return (result.stdout or result.stderr).splitlines()[0]
+
+
+def find_tool(name: str, install_variable: str) -> Path:
+    install_dir = os.environ.get(install_variable)
+    if install_dir:
+        return require_executable(Path(install_dir) / "bin" / name)
+    path = shutil.which(name)
+    if path is None:
+        raise ValueError(f"Missing executable tool: {name}")
+    return require_executable(Path(path))
+
+
+def tool_metadata(path: Path) -> dict[str, Any]:
+    return {
+        "version": first_version_line(path),
+        "binary": {"path": str(path), "sha256": sha256(path)},
+    }
 
 
 def gcc_entry(riscv: Path, prefix: str) -> tuple[dict[str, Any], dict[str, Any]]:
@@ -80,6 +99,19 @@ def main() -> None:
             "schema_version": 1,
             "required_toolchain": toolchain_name,
             "toolchains": {toolchain_name: gcc_metadata},
+            "simulation_tools": {
+                "verilator": tool_metadata(
+                    find_tool("verilator", "VERILATOR_INSTALL_DIR")
+                ),
+            },
+            "trace_tools": {
+                "spike-dasm": {
+                    "path": str(find_tool("spike-dasm", "SPIKE_INSTALL_DIR")),
+                    "sha256": sha256(find_tool("spike-dasm", "SPIKE_INSTALL_DIR")),
+                },
+            },
+            "validation_mode": "rtl-only",
+            "reference_model": None,
         }
 
         (output_dir / "compiler.yml").write_text(
@@ -91,7 +123,7 @@ def main() -> None:
         )
         print(f"Prepared {toolchain_name} in {output_dir}")
         print(environment["toolchains"][toolchain_name]["version"])
-    except (KeyError, OSError, ValueError, subprocess.CalledProcessError) as error:
+    except (KeyError, OSError, ValueError, subprocess.SubprocessError) as error:
         raise SystemExit(f"ERROR: {error}") from error
 
 

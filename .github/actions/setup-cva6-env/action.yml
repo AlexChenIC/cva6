@@ -1,95 +1,96 @@
-# Copyright 2026 OpenHW Group
-# SPDX-License-Identifier: Apache-2.0
-# CVA6 simulation tools and Cook dependencies.
-
-name: "Setup CVA6 Environment"
-description: "Cache/restore tools and prepare the CVA6 simulation environment"
-
+name: Setup CVA6 Cook environment
+description: GCC and Verilator with vendor Spike libraries and disassembler for RTL-only jobs
 inputs:
+  verilator-version:
+    description: Verilator release to build
+    default: '5.050'
   install-tools:
-    description: "Run ci/setup.sh to install tools if cache miss"
-    required: false
-    default: "true"
+    description: Build missing tools instead of requiring an exact cache hit
+    default: 'true'
   install-cook-dependencies:
-    description: "Install the pinned Python environment required by cook.py"
-    required: false
-    default: "false"
-
-outputs:
-  toolchain-cache-hit:
-    description: "Whether RISC-V toolchain cache was hit"
-    value: ${{ steps.cache-toolchain.outputs.cache-hit }}
-  verilator-cache-hit:
-    description: "Whether Verilator cache was hit"
-    value: ${{ steps.cache-verilator.outputs.cache-hit }}
-  spike-cache-hit:
-    description: "Whether Spike cache was hit"
-    value: ${{ steps.cache-spike.outputs.cache-hit }}
-
+    description: Install pinned Cook Python dependencies
+    default: 'true'
 runs:
-  using: "composite"
+  using: composite
   steps:
-    - name: Set up Python for cook.py
-      if: inputs.install-cook-dependencies == 'true'
-      uses: actions/setup-python@v6
+    - uses: actions/setup-python@v6
       with:
-        python-version: "3.11"
-        cache: pip
-        cache-dependency-path: |
-          flows/requirements.txt
-          .github/requirements/cook-tier-ci-constraints.txt
-
-    - name: Install pinned cook.py dependencies
+        python-version: '3.11'
+    - name: Cook dependencies
       if: inputs.install-cook-dependencies == 'true'
       shell: bash
-      run: |
-        python3 -m pip install --disable-pip-version-check \
-          --constraint .github/requirements/cook-tier-ci-constraints.txt \
-          --requirement flows/requirements.txt
-
-    - name: Get core-v-verif submodule hash
-      id: submodule-hash
+      run: python3 -m pip install -c .github/requirements/cook-tier-ci-constraints.txt -r flows/requirements.txt
+    - name: Resolve tools
+      id: tools
       shell: bash
+      env:
+        VERSION: ${{ inputs.verilator-version }}
       run: |
-        cd verif/core-v-verif
-        echo "hash=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
-
-    - name: Cache RISC-V Toolchain
-      id: cache-toolchain
-      uses: actions/cache@v6
+        set -euo pipefail
+        case "$VERSION" in 5.050) ;; *) echo 'Unsupported CI Verilator release'; exit 1 ;; esac
+        echo "corev=$(git -C verif/core-v-verif rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+        echo "RISCV=$GITHUB_WORKSPACE/tools/riscv-toolchain" >> "$GITHUB_ENV"
+        echo "SPIKE_INSTALL_DIR=$GITHUB_WORKSPACE/tools/spike" >> "$GITHUB_ENV"
+        echo "VERILATOR_INSTALL_DIR=$GITHUB_WORKSPACE/tools/verilator-$VERSION" >> "$GITHUB_ENV"
+        echo "CV_SW_PREFIX=riscv32-unknown-elf-" >> "$GITHUB_ENV"
+        echo "$GITHUB_WORKSPACE/tools/verilator-$VERSION/bin" >> "$GITHUB_PATH"
+        echo "$GITHUB_WORKSPACE/tools/spike/bin" >> "$GITHUB_PATH"
+    - uses: actions/cache@v6
+      id: gcc
       with:
-        path: tools/riscv-toolchain/
+        path: tools/riscv-toolchain
         key: ${{ runner.os }}-toolchain-${{ hashFiles('ci/install-toolchain.sh') }}
-
-    - name: Cache Verilator
-      id: cache-verilator
-      uses: actions/cache@v6
+    - uses: actions/cache@v6
+      id: spike
       with:
-        path: tools/verilator/
-        key: ${{ runner.os }}-verilator-${{ hashFiles('verif/regress/install-verilator.sh') }}
-
-    - name: Cache Spike
-      id: cache-spike
-      uses: actions/cache@v6
+        path: tools/spike
+        key: ${{ runner.os }}-spike-${{ hashFiles('verif/regress/install-spike.sh') }}-${{ steps.tools.outputs.corev }}
+    - uses: actions/cache@v6
+      id: verilator
       with:
-        path: tools/spike/
-        key: ${{ runner.os }}-spike-${{ hashFiles('verif/regress/install-spike.sh') }}-${{ steps.submodule-hash.outputs.hash }}
-
-    - name: Setup tools (if cache miss)
-      if: |
-        inputs.install-tools == 'true' && (
-          steps.cache-toolchain.outputs.cache-hit != 'true' ||
-          steps.cache-verilator.outputs.cache-hit != 'true' ||
-          steps.cache-spike.outputs.cache-hit != 'true'
-        )
+        path: tools/verilator-${{ inputs.verilator-version }}
+        key: ubuntu24-cook-verilator-${{ inputs.verilator-version }}-v1
+    - name: Require tools or install missing entries
       shell: bash
+      env:
+        INSTALL_TOOLS: ${{ inputs.install-tools }}
+        GCC_HIT: ${{ steps.gcc.outputs.cache-hit }}
+        SPIKE_HIT: ${{ steps.spike.outputs.cache-hit }}
+        VERILATOR_HIT: ${{ steps.verilator.outputs.cache-hit }}
+        VERSION: ${{ inputs.verilator-version }}
       run: |
-        set -x
-        ci/setup.sh
-
-    - name: Setup environment variables
-      shell: bash
-      run: |
-        echo "RISCV=$(pwd)/tools/riscv-toolchain" >> $GITHUB_ENV
-        echo "$(pwd)/tools/verilator/bin" >> $GITHUB_PATH
-        echo "$(pwd)/tools/spike/bin" >> $GITHUB_PATH
+        set -eo pipefail
+        if [ "$INSTALL_TOOLS" != true ] && { [ "$GCC_HIT" != true ] || [ "$SPIKE_HIT" != true ] || [ "$VERILATOR_HIT" != true ]; }; then
+          echo 'Exact tool cache missing; rerun the setup job'; exit 1
+        fi
+        sudo apt-get update
+        sudo apt-get install -y autoconf automake autotools-dev curl git libmpc-dev libmpfr-dev libgmp-dev gawk build-essential bison flex libfl-dev texinfo gperf libtool patchutils bc zlib1g-dev device-tree-compiler libboost-regex-dev libboost-system-dev help2man
+        if [ "$GCC_HIT" != true ]; then
+          mkdir -p "$RISCV"
+          curl --fail --location --retry 3 --max-time 600 \
+            https://buildbot.embecosm.com/job/riscv32-gcc-ubuntu2204-release/10/artifact/riscv32-embecosm-ubuntu2204-gcc13.2.0.tar.gz \
+            -o "$RUNNER_TEMP/riscv-gcc.tar.gz"
+          sha256sum "$RUNNER_TEMP/riscv-gcc.tar.gz"
+          tar -xf "$RUNNER_TEMP/riscv-gcc.tar.gz" --strip-components=1 -C "$RISCV"
+        fi
+        "$RISCV/bin/${CV_SW_PREFIX}gcc" --version
+        if [ "$VERILATOR_HIT" != true ]; then
+          unset VERILATOR_ROOT
+          git clone --depth 1 --branch "v$VERSION" https://github.com/verilator/verilator.git "$RUNNER_TEMP/verilator-$VERSION"
+          (
+            cd "$RUNNER_TEMP/verilator-$VERSION"
+            autoconf
+            ./configure --prefix="$VERILATOR_INSTALL_DIR"
+            make -j"${NUM_JOBS:-2}"
+            make install
+          )
+        fi
+        "$VERILATOR_INSTALL_DIR/bin/verilator" --version
+        test -f "$VERILATOR_INSTALL_DIR/share/verilator/include/vltstd/svdpi.h"
+        if [ "$SPIKE_HIT" != true ]; then
+          source verif/regress/install-spike.sh
+        fi
+        export LD_LIBRARY_PATH="$SPIKE_INSTALL_DIR/lib:$RISCV/lib:${LD_LIBRARY_PATH:-}"
+        echo "LD_LIBRARY_PATH=$LD_LIBRARY_PATH" >> "$GITHUB_ENV"
+        "$VERILATOR_INSTALL_DIR/bin/verilator" --version
+        test -x "$SPIKE_INSTALL_DIR/bin/spike-dasm"

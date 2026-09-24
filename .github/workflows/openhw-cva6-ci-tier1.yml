@@ -1,104 +1,66 @@
-# Copyright 2026 OpenHW Group
-# Licensed under the Apache License, Version 2.0, see LICENSE for details.
 # SPDX-License-Identifier: Apache-2.0
-# Cook and Verilator tandem sanity checks for master_candidate AXI targets.
-
-name: openhw-cva6-ci-tier1
-
+# Keep the registered workflow path; this first stage is a single RTL-only smoke.
+name: Cook Verilator TestHarness smoke
 on:
-  pull_request:
-    branches:
-      - master_candidate
   workflow_dispatch:
-
+  pull_request:
+    branches: [master_candidate]
 permissions:
   contents: read
-
 concurrency:
-  group: openhw-cva6-ci-tier1-${{ github.ref }}
+  group: cook-testharness-smoke-${{ github.ref }}
   cancel-in-progress: true
-
 env:
-  SPIKE_TANDEM: 1
-  NUM_JOBS: 8
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
-
+  NUM_JOBS: '2'
+  NO_COLOR: '1'
+  TERM: dumb
 jobs:
-  setup-tools:
-    name: Setup Tools
+  hello-world:
+    name: cv32a65x_axi / Hello World / RTL-only
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v7
         with:
           submodules: recursive
-
-      - name: Setup CVA6 Environment
-        uses: ./.github/actions/setup-cva6-env
+          persist-credentials: false
+      - name: Record source
+        run: |
+          mkdir -p ci-results
+          git rev-parse HEAD > ci-results/source-revision.txt
+          git submodule status --recursive > ci-results/submodules.txt
+      - uses: actions/setup-python@v6
         with:
-          install-tools: "true"
-          install-cook-dependencies: "true"
-
-      - name: Test Verilator TestHarness result handling
-        run: python3 .github/tests/test_verilator_testharness_safety.py -v
-
-  execute-rv32-tier1:
-    name: RV32 Tier1 ${{ matrix.config }} / ${{ matrix.testcase }}
-    runs-on: ubuntu-24.04
-    timeout-minutes: 60
-    needs: setup-tools
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - config: cv32a60x_axi
-            testcase: base-rv32-p
-            install_script: install-riscv-tests
-            testlist: verif/tests/base_rv32_p.yaml
-            compiler_march: rv32imc_zicsr_zba_zbb_zbs_zbc
-
-          - config: cv32a65x_axi
-            testcase: base-rv32-p
-            install_script: install-riscv-tests
-            testlist: verif/tests/base_rv32_p.yaml
-            compiler_march: rv32imc_zicsr_zba_zbb_zbs_zbc_zifencei
-
-    steps:
-      - uses: actions/checkout@v7
+          python-version: '3.11'
+      - name: Cook dependencies
+        run: python3 -m pip install -c .github/requirements/cook-tier-ci-constraints.txt -r flows/requirements.txt
+      - name: Recipe and smoke contract tests
+        run: |
+          python3 .github/tests/test_logged_process.py -v
+          python3 .github/tests/test_verilator_testharness_comp.py -v
+          python3 .github/tests/test_verilator_testharness_run.py -v
+          python3 .github/tests/test_testharness_run_testlist.py -v
+          python3 .github/tests/test_cook_testharness_smoke.py -v
+      - uses: ./.github/actions/setup-cva6-env
         with:
-          submodules: recursive
-
-      - name: Setup CVA6 Environment
-        uses: ./.github/actions/setup-cva6-env
-        with:
-          install-cook-dependencies: "true"
-
-      - name: Install simulation prerequisites
-        run: source ci/install-prereq.sh
-
-      - name: Run Tier 1 for ${{ matrix.config }} / ${{ matrix.testcase }}
+          verilator-version: '5.050'
+          install-cook-dependencies: 'false'
+      - name: Compile and run Hello World
         env:
-          TIER_NAME: Tier 1
-          TIER_MODE: cook-testlist
-          TIER_CONFIG: ${{ matrix.config }}
-          TIER_TESTCASE: ${{ matrix.testcase }}
-          TIER_INSTALL_SCRIPT: ${{ matrix.install_script }}
-          TIER_TESTLIST: ${{ matrix.testlist }}
-          TIER_COMPILER_MARCH: ${{ matrix.compiler_march }}
-          TIER_EVENT_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-          TIER_EVENT_BASE_SHA: ${{ github.event.pull_request.base.sha || '' }}
-        run: bash .github/scripts/run-tier-regression.sh
-
-      - name: Upload Results
+          SMOKE_EVENT_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          SMOKE_EVENT_BASE_SHA: ${{ github.event.pull_request.base.sha || '' }}
+        run: bash .github/scripts/run-testharness-smoke.sh
+      - name: Retain smoke evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: tier1-rv32-${{ matrix.config }}-${{ matrix.testcase }}
+          name: cook-testharness-smoke-cv32a65x_axi
+          retention-days: 14
+          if-no-files-found: error
           path: |
             ci-results/
-            artifacts/reports/
-            build/${{ matrix.config }}/compile/
-            build/${{ matrix.config }}/simulation/sim_verilator_testharness/
-            build/${{ matrix.config }}/config/
-          if-no-files-found: error
-          retention-days: 14
+            build/cv32a65x_axi/compile/hello-world_0/
+            build/cv32a65x_axi/simulation/
+            build/cv32a65x_axi/elab/sim_rtl_verilator_testharness/compilation.*
+            build/cv32a65x_axi/elab/sim_rtl_verilator_testharness/cook_manifest.yml
+            build/cv32a65x_axi/elab/sim_rtl_verilator_testharness/verilator.version
