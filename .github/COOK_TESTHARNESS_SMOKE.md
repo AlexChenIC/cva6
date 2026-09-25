@@ -1,6 +1,6 @@
 # Cook Verilator TestHarness Smoke
 
-This self-contained first stage composes three atomic recipes:
+This standalone smoke entry point composes three atomic recipes:
 `verilator-testharness-comp`, `verilator-testharness-run`, and
 `testharness-run-testlist --simulator verilator`. It does not invoke
 `cva6.py` or the legacy monolithic TestHarness recipe.
@@ -21,24 +21,18 @@ This self-contained first stage composes three atomic recipes:
 
 ## Hosted Verification
 
-The workflow `Cook Verilator TestHarness smoke` prepares its own Linux tools.
-Reviewers do not need Verilator on their machines. Open the run for the exact
-candidate commit, inspect the job summary, and download
-`cook-testharness-smoke-cv32a65x_axi`.
-
-The registered workflow path remains
-`.github/workflows/openhw-cva6-ci-tier1.yml` for manual dispatch on a fork.
-Its content is now a single smoke job, not the previous Tier matrix.
-It can also run on pull requests targeting `master_candidate`.
-The old Tier 2 workflow from the integration branch is intentionally absent
-from this first-stage candidate. Unrelated upstream workflows are unchanged.
+The [RTL-only Tier 1 workflow](COOK_TIER1_RTL_ONLY.md) includes this acceptance
+on `cv32a65x_axi`, alongside a two-configuration instruction-test matrix.
+Reviewers do not need Verilator on their machines. Its artifact is
+`cook-tier1-rtl-cv32a65x_axi`; the direct Hello World evidence is under
+`ci-results/hello-single/`. The standalone local command below remains available.
 
 The job uses Ubuntu 24.04, Python 3.11, GCC 13.2.0 and Verilator 5.050.
 Cook Python dependencies are constrained in
 `.github/requirements/cook-tier-ci-constraints.txt`; Spike comes from the
 checked-out core-v-verif vendor tree. The setup action installs tools on cache
 misses. Tool caches do not contain compiled test ELFs or TestHarness binaries.
-The job is limited to two build workers and 90 minutes.
+The Tier 1 guide describes job timeouts and concurrency.
 
 ## Local Reproduction
 
@@ -85,7 +79,7 @@ and trace modes. Both are checked against their recipe-defined contracts.
 Timeouts, missing prerequisites, simulation failures, failed trace
 post-processing, missing output or inconsistent reports fail the job.
 
-The artifact contains:
+Running the standalone smoke command locally produces:
 
 - `ci-results/evidence.json`: source SHA, workflow event SHAs, tool versions
   and binary hashes, command arguments, exit codes, timeouts and results.

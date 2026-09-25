@@ -27,40 +27,59 @@ TEST_NAME = "hello-world_0"
 GREETING = "0: Hello World !"
 
 
-def checked_summary(data: dict) -> dict:
+def checked_summary(
+    data: dict,
+    target: str = TARGET,
+    testlist: str = TESTLIST,
+    names: list[str] | None = None,
+) -> dict:
+    """Validate the same Cook result contract for smoke and Tier 1 batches."""
+    names = [TEST_NAME] if names is None else names
     expected = {
         "schema_version": 1,
-        "target": TARGET,
-        "testlist": TESTLIST,
+        "target": target,
+        "testlist": testlist,
         "simulator": "verilator",
         "comp_mode": "rtl",
         "trace_mode": "notrace",
         "status": "PASS",
     }
     if not isinstance(data, dict) or any(data.get(k) != v for k, v in expected.items()):
-        raise ValueError("Missing or inconsistent smoke summary")
+        raise ValueError("Missing or inconsistent testlist summary")
+    if type(data.get("schema_version")) is not int:
+        raise ValueError("Invalid summary schema version")
     if data.get("iss_enabled") is not False:
-        raise ValueError("Smoke must not enable ISS comparison")
+        raise ValueError("Testlist must not enable ISS comparison")
     cases = data.get("cases")
     if (
         not isinstance(cases, list)
-        or len(cases) != 1
-        or not isinstance(cases[0], dict)
-        or cases[0].get("test_name") != TEST_NAME
-        or cases[0].get("status") != "PASS"
+        or not names
+        or len(set(names)) != len(names)
+        or any(
+            not isinstance(case, dict)
+            or case.get("status") != "PASS"
+            or not isinstance(case.get("detail"), str)
+            for case in cases
+        )
+        or [case.get("test_name") for case in cases] != names
     ):
-        raise ValueError("Expected exactly one passing Hello World result")
-    for key, value in {"total": 1, "passed": 1, "failed": 0}.items():
+        raise ValueError("Expected exactly the declared passing test iterations")
+    for key, value in {"total": len(names), "passed": len(names), "failed": 0}.items():
         if type(data.get(key)) is not int or data[key] != value:
             raise ValueError(f"Inconsistent smoke count: {key}")
     return data
 
 
-def checked_run(directory: Path) -> dict:
+def checked_run(
+    directory: Path,
+    target: str = TARGET,
+    test_name: str = TEST_NAME,
+    greeting: str | None = GREETING,
+) -> dict:
     result = yaml.safe_load((directory / "result.yml").read_text())
     expected = {
-        "target": TARGET,
-        "test_name": TEST_NAME,
+        "target": target,
+        "test_name": test_name,
         "status": "PASS",
     }
     if not isinstance(result, dict) or any(
@@ -71,8 +90,8 @@ def checked_run(directory: Path) -> dict:
         raise ValueError("Single-test result unexpectedly enables ISS")
     manifest = yaml.safe_load((directory / "cook_manifest.yml").read_text())
     options = {
-        "target": TARGET,
-        "test_name": TEST_NAME,
+        "target": target,
+        "test_name": test_name,
         "comp_mode": "rtl",
         "trace_mode": "notrace",
         "iss_enabled": False,
@@ -90,7 +109,7 @@ def checked_run(directory: Path) -> dict:
     passed, detail = testharness_log_passed(log)
     if not passed:
         raise ValueError(detail)
-    if GREETING not in log.read_text():
+    if greeting is not None and greeting not in log.read_text():
         raise ValueError("TestHarness did not print the expected Hello World greeting")
     return result
 
@@ -106,15 +125,18 @@ def checked_report(data: dict, summary: dict) -> None:
     ):
         raise ValueError("Missing Cook testlist metric")
     metric = metrics[0]
-    expected_row = {
-        "status": "pass",
-        "label": "PASS",
-        "col": [TARGET, TEST_NAME, summary["cases"][0]["detail"]],
-    }
+    expected_rows = [
+        {
+            "status": "pass",
+            "label": "PASS",
+            "col": [summary["target"], case["test_name"], case["detail"]],
+        }
+        for case in summary["cases"]
+    ]
     if (
         metric.get("status") != "pass"
         or metric.get("type") != "table_status"
-        or metric.get("value") != [expected_row]
+        or metric.get("value") != expected_rows
     ):
         raise ValueError("Cook report disagrees with the testlist summary")
 

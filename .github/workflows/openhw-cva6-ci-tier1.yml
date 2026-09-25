@@ -1,24 +1,82 @@
 # SPDX-License-Identifier: Apache-2.0
-# Keep the registered workflow path; this first stage is a single RTL-only smoke.
-name: Cook Verilator TestHarness smoke
+# Keep the registered path so a fork can dispatch a candidate before opening a PR.
+name: Cook Verilator TestHarness Tier 1 (RTL-only)
 on:
   workflow_dispatch:
   pull_request:
     branches: [master_candidate]
+  push:
+    branches: [master_candidate]
 permissions:
   contents: read
 concurrency:
-  group: cook-testharness-smoke-${{ github.ref }}
+  group: cook-tier1-rtl-${{ github.ref }}
   cancel-in-progress: true
 env:
   NUM_JOBS: '2'
   NO_COLOR: '1'
   TERM: dumb
 jobs:
-  hello-world:
-    name: cv32a65x_axi / Hello World / RTL-only
+  checks:
+    name: Recipe and CI contract tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - name: Cook dependencies
+        run: python3 -m pip install -c .github/requirements/cook-tier-ci-constraints.txt -r flows/requirements.txt
+      - name: Recipe, smoke and matrix contract tests
+        run: |
+          set -eo pipefail
+          mkdir -p ci-results
+          exec > >(tee ci-results/contract-tests.log) 2>&1
+          python3 .github/tests/test_logged_process.py -v
+          python3 .github/tests/test_verilator_testharness_comp.py -v
+          python3 .github/tests/test_verilator_testharness_run.py -v
+          python3 .github/tests/test_testharness_run_testlist.py -v
+          python3 .github/tests/test_cook_testharness_smoke.py -v
+          python3 .github/tests/test_cook_tier1.py -v
+      - name: Export declared matrix
+        id: matrix
+        run: echo "matrix=$(jq -c '{include}' .github/config/cook-tier1.json)" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: cook-tier1-contract-tests
+          path: ci-results/
+          retention-days: 14
+          if-no-files-found: error
+  setup-tools:
+    name: Prepare reusable tool caches
+    needs: checks
     runs-on: ubuntu-24.04
     timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+          persist-credentials: false
+      - uses: ./.github/actions/setup-cva6-env
+        with:
+          verilator-version: '5.050'
+          install-cook-dependencies: 'false'
+  regression:
+    name: ${{ matrix.target }} / RTL-only
+    needs: [checks, setup-tools]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix: ${{ fromJSON(needs.checks.outputs.matrix) }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -29,38 +87,43 @@ jobs:
           mkdir -p ci-results
           git rev-parse HEAD > ci-results/source-revision.txt
           git submodule status --recursive > ci-results/submodules.txt
-      - uses: actions/setup-python@v6
-        with:
-          python-version: '3.11'
-      - name: Cook dependencies
-        run: python3 -m pip install -c .github/requirements/cook-tier-ci-constraints.txt -r flows/requirements.txt
-      - name: Recipe and smoke contract tests
-        run: |
-          python3 .github/tests/test_logged_process.py -v
-          python3 .github/tests/test_verilator_testharness_comp.py -v
-          python3 .github/tests/test_verilator_testharness_run.py -v
-          python3 .github/tests/test_testharness_run_testlist.py -v
-          python3 .github/tests/test_cook_testharness_smoke.py -v
       - uses: ./.github/actions/setup-cva6-env
         with:
           verilator-version: '5.050'
-          install-cook-dependencies: 'false'
-      - name: Compile and run Hello World
+          install-tools: 'false'
+      - name: Compile and run declared Tier 1 tests
         env:
-          SMOKE_EVENT_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-          SMOKE_EVENT_BASE_SHA: ${{ github.event.pull_request.base.sha || '' }}
-        run: bash .github/scripts/run-testharness-smoke.sh
-      - name: Retain smoke evidence
+          TIER_TARGET: ${{ matrix.target }}
+          TIER_EVENT_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          TIER_EVENT_BASE_SHA: ${{ github.event.pull_request.base.sha || '' }}
+        run: bash .github/scripts/run-tier1-rtl.sh
+      - name: Retain per-configuration evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: cook-testharness-smoke-cv32a65x_axi
+          name: cook-tier1-rtl-${{ matrix.target }}
           retention-days: 14
           if-no-files-found: error
           path: |
             ci-results/
-            build/cv32a65x_axi/compile/hello-world_0/
-            build/cv32a65x_axi/simulation/
-            build/cv32a65x_axi/elab/sim_rtl_verilator_testharness/compilation.*
-            build/cv32a65x_axi/elab/sim_rtl_verilator_testharness/cook_manifest.yml
-            build/cv32a65x_axi/elab/sim_rtl_verilator_testharness/verilator.version
+            build/${{ matrix.target }}/compile/
+            build/${{ matrix.target }}/simulation/
+            build/${{ matrix.target }}/elab/sim_rtl_verilator_testharness/compilation.*
+            build/${{ matrix.target }}/elab/sim_rtl_verilator_testharness/cook_manifest.yml
+            build/${{ matrix.target }}/elab/sim_rtl_verilator_testharness/verilator.version
+  tier1:
+    name: Tier 1 RTL-only acceptance
+    if: always()
+    needs: [checks, setup-tools, regression]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Require the complete declared matrix
+        env:
+          CHECKS: ${{ needs.checks.result }}
+          TOOLS: ${{ needs.setup-tools.result }}
+          REGRESSION: ${{ needs.regression.result }}
+        run: |
+          test "$CHECKS" = success
+          test "$TOOLS" = success
+          test "$REGRESSION" = success

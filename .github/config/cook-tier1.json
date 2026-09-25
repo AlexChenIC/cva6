@@ -1,0 +1,22 @@
+{
+  "testlist": "verif/tests/base_rv32_p.yaml",
+  "expected_tests": [
+    "rv32ui-p-add_0",
+    "rv32ui-p-lw_0",
+    "rv32ui-p-sw_0",
+    "rv32ui-p-beq_0",
+    "rv32ui-p-jal_0"
+  ],
+  "include": [
+    {
+      "target": "cv32a60x_axi",
+      "march": "rv32imc_zicsr_zba_zbb_zbs_zbc",
+      "hello_world": false
+    },
+    {
+      "target": "cv32a65x_axi",
+      "march": "rv32imc_zicsr_zba_zbb_zbs_zbc_zifencei",
+      "hello_world": true
+    }
+  ]
+}
