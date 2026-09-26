@@ -1,5 +1,77 @@
 [
   {
+    "id": 36209042593,
+    "source": "github-actions",
+    "simulator": "verilator-testharness",
+    "run_number": 287,
+    "status": "completed",
+    "conclusion": "success",
+    "html_url": "https://github.com/AlexChenIC/cva6/actions/runs/36209042593",
+    "head_branch": "jchen/master-candidate-openhw-tier-ci",
+    "base_branches": [
+      "master_candidate"
+    ],
+    "head_sha": "e7c272c9",
+    "head_sha_full": "e7c272c93dc0db08d030f1ebe7412af8d78dae6b",
+    "event": "workflow_dispatch",
+    "created_at": "2026-09-26T01:37:18Z",
+    "updated_at": "2026-09-26T01:43:40Z",
+    "run_started_at": "2026-09-26T01:37:18Z",
+    "duration_seconds": 382,
+    "total_jobs": 3,
+    "passed_jobs": 3,
+    "failed_jobs": 0,
+    "skipped_jobs": 0,
+    "jobs": [
+      {
+        "arch": "rv32",
+        "config": "cv32a65x_axi",
+        "testcase": "base-pmp",
+        "name": "RV32 Tier2 cv32a65x_axi / base-pmp",
+        "conclusion": "success",
+        "started_at": "2026-09-26T01:39:15Z",
+        "completed_at": "2026-09-26T01:43:39Z",
+        "duration_seconds": 264,
+        "html_url": "https://github.com/AlexChenIC/cva6/actions/runs/36209042593/job/108311892720"
+      },
+      {
+        "arch": "rv32",
+        "config": "cv32a65x_axi",
+        "testcase": "base-rv32-p",
+        "name": "RV32 Tier2 cv32a65x_axi / base-rv32-p",
+        "conclusion": "success",
+        "started_at": "2026-09-26T01:39:14Z",
+        "completed_at": "2026-09-26T01:43:12Z",
+        "duration_seconds": 238,
+        "html_url": "https://github.com/AlexChenIC/cva6/actions/runs/36209042593/job/108311892730"
+      },
+      {
+        "arch": "rv32",
+        "config": "cv32a60x_axi",
+        "testcase": "base-rv32-p",
+        "name": "RV32 Tier2 cv32a60x_axi / base-rv32-p",
+        "conclusion": "success",
+        "started_at": "2026-09-26T01:39:15Z",
+        "completed_at": "2026-09-26T01:43:40Z",
+        "duration_seconds": 265,
+        "html_url": "https://github.com/AlexChenIC/cva6/actions/runs/36209042593/job/108311892768"
+      }
+    ],
+    "environment": {
+      "available": true,
+      "source": "ci-results artifact",
+      "artifact_name": "tier2-rv32-cv32a60x_axi-base-rv32-p",
+      "toolchain": "github_actions_gcc",
+      "gcc_version": "13.2.0",
+      "spike_version": "1.1.1-dev 69c5379",
+      "verilator_version": "Verilator 5.008 2023-03-04 rev v5.008 (mod)",
+      "simulator": "veri-testharness,spike",
+      "compiler_march": "rv32imc_zicsr_zba_zbb_zbs_zbc",
+      "source_revision": "e7c272c93dc0db08d030f1ebe7412af8d78dae6b",
+      "collected_at": "2026-09-26T05:04:36.914720+00:00"
+    }
+  },
+  {
     "id": 36082585759,
     "source": "github-actions",
     "simulator": "verilator-testharness",
