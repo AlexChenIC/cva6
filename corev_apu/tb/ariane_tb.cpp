@@ -38,6 +38,9 @@
 #include <ctime>
 #include <signal.h>
 #include <unistd.h>
+#ifdef CVA6_TANDEM_STACK_BYTES
+#include <sys/resource.h>
+#endif
 
 #include <fesvr/dtm.h>
 #include <fesvr/htif_hexwriter.h>
@@ -64,6 +67,31 @@ void handle_sigterm(int sig) {
   // Do not call FESVR or classify a forced stop as a successful tohost exit.
   termination_signal = sig;
 }
+
+#ifdef CVA6_TANDEM_STACK_BYTES
+static bool prepare_tandem_stack() {
+  // Packed RVFI/CSR temporaries in the generated live comparator exceed the
+  // usual 8 MiB stack. Raise only the soft limit, never the administrator's cap.
+  struct rlimit limit;
+  const rlim_t required = CVA6_TANDEM_STACK_BYTES;
+  if (getrlimit(RLIMIT_STACK, &limit) != 0) {
+    perror("Cannot inspect live tandem stack limit");
+    return false;
+  }
+  if (limit.rlim_cur == RLIM_INFINITY || limit.rlim_cur >= required) return true;
+  if (limit.rlim_max != RLIM_INFINITY && limit.rlim_max < required) {
+    fprintf(stderr, "Live tandem requires a stack limit of at least %llu bytes\n",
+            static_cast<unsigned long long>(required));
+    return false;
+  }
+  limit.rlim_cur = required;
+  if (setrlimit(RLIMIT_STACK, &limit) != 0) {
+    perror("Cannot raise live tandem stack limit");
+    return false;
+  }
+  return true;
+}
+#endif
 
 
 extern "C" void read_elf(const char* filename);
@@ -281,6 +309,9 @@ done_processing:
   const char *vcd_file = NULL;
   Verilated::commandArgs(argc, argv);
 
+#ifdef CVA6_TANDEM_STACK_BYTES
+  if (!prepare_tandem_stack()) return 1;
+#endif
   jtag = new remote_bitbang_t(rbb_port);
   dtm = new preload_aware_dtm_t(htif_argc, htif_argv);
   signal(SIGTERM, handle_sigterm);
@@ -331,6 +362,10 @@ done_processing:
 #endif
     main_time++;
   }
+  // Spike/FESVR installs its own handlers during the initial eval. The
+  // TestHarness owns termination once initialization has completed.
+  signal(SIGTERM, handle_sigterm);
+  signal(SIGINT, handle_sigterm);
   top->rst_ni = 1;
 
   // Preload memory.

@@ -258,6 +258,8 @@ def build_command(
         "-DVL_DEBUG",
         f"-I{spike}",
     ]
+    if tandem_enabled:
+        cflags.append("-DCVA6_TANDEM_STACK_BYTES=268435456")
     ldflags = [
         f"-L{riscv / 'lib'}",
         f"-L{spike / 'lib'}",

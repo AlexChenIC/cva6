@@ -57,6 +57,11 @@ Live build/run directories have a `_tandem` suffix; manifests must match the
 requested mode. No flag retains the existing RTL-only default and paths.
 `--iss-enabled` is still rejected: it does not alias live checking.
 
+Verilator 5.050's generated live comparator has large packed RVFI/CSR temporaries.
+The live executable requests a 256 MiB soft stack limit before simulation and
+fails clearly if the host's hard limit prevents this. RTL-only builds do not
+change stack limits. This is host runtime capacity, not a comparison waiver.
+
 A live PASS requires all of:
 1. Normal simulator exit, no timeout, successful tohost marker, no failure marker.
 2. A native `rvfi_compare` report with SUCCESS/exit 0, positive instruction
