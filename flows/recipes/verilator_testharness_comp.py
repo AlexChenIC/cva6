@@ -14,6 +14,7 @@ from pathlib import Path
 import shlex
 import shutil
 import subprocess
+from typing import Annotated
 
 import typer
 import yaml
@@ -358,13 +359,18 @@ def verilator_testharness_comp(
     quiet: bool = typer.Option(
         False, "--quiet", "-q", help="Suppress output (errors only)"
     ),
-    tandem_enabled: bool = False,
+    tandem_enabled: Annotated[
+        bool, typer.Option(help="Compile the native live Spike/RVFI comparison path")
+    ] = False,
 ) -> None:
     """Verilator TestHarness compilation flow."""
     print_recipe_title("VERILATOR TESTHARNESS COMPILATION", quiet=quiet)
     repo_dir = Path.cwd().resolve()
 
     try:
+        elab_dir = elaboration_directory(repo_dir, target, comp_mode, tandem_enabled)
+        # A rejected rebuild must not leave a prior manifest usable as success.
+        (elab_dir / MANIFEST_NAME).unlink(missing_ok=True)
         validate_options(comp_mode, trace_mode, stats)
         target_directory(repo_dir, target)
         riscv, spike, verilator, verilator_root = tool_paths(repo_dir)

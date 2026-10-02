@@ -16,6 +16,7 @@ import re
 import shutil
 import stat
 import subprocess
+from typing import Annotated
 
 import typer
 import yaml
@@ -127,6 +128,7 @@ def read_tandem_report(path: Path) -> dict:
         or report["exit_code"] != 0
         or report["instr_count"] == 0
         or report["mismatches_count"] != 0
+        or "mismatches" not in report
         or report.get("mismatches") not in (None, [])
         or report.get("mismatch_description") != ""
     ):
@@ -497,7 +499,12 @@ def verilator_testharness_run(
     quiet: bool = typer.Option(
         False, "--quiet", "-q", help="Suppress output (errors only)"
     ),
-    tandem_enabled: bool = False,
+    tandem_enabled: Annotated[
+        bool,
+        typer.Option(
+            help="Require native live Spike/RVFI comparison and a matching build"
+        ),
+    ] = False,
 ) -> None:
     """Run a single ELF, optionally with live Spike tandem (no offline comparison)."""
     print_recipe_title("VERILATOR TESTHARNESS RUN", quiet=quiet)

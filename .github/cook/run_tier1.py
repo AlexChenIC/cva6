@@ -25,6 +25,7 @@ from flows.utils.logged_process import run_logged_process
 from flows.utils.utils import CompMode
 from prepare_testlists import materialize
 from run_smoke import read_yaml, require_fields, sha256
+from check_native_failures import check_native_failures
 
 
 def checked_case(root, target, name):
@@ -81,6 +82,7 @@ def checked_suite(root, target, testlist):
     require_fields(
         summary,
         {
+            "schema_version": 1,
             "target": target,
             "testlist": testlist,
             "simulator": "verilator",
@@ -235,9 +237,12 @@ def main():
             testharness_binary(root, target, CompMode.rtl, True)
         )
         evidence["elf_sha256"] = {
-            str(path): sha256(path)
+            str(path.relative_to(root)): sha256(path)
             for path in (root / "build" / target / "compile").glob("*/*.elf")
         }
+        evidence["native_negative_checks"] = check_native_failures(
+            root, target, config, enabled_tests(Path(lists["basic"])), cook, run
+        )
         evidence["status"], rc = "PASS", 0
     except (
         OSError,

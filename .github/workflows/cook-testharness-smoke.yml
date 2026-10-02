@@ -7,8 +7,7 @@ on:
   workflow_dispatch: {}
   push:
     branches: [jchen/master-candidate-cook-verilator-testharness-hello]
-  pull_request:
-    branches: [master_candidate]
+  # master_candidate PR/push coverage is provided by the Tier 1 caller.
 permissions:
   contents: read
 concurrency:

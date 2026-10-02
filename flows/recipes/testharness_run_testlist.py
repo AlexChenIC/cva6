@@ -12,6 +12,7 @@ from enum import Enum
 from io import StringIO
 from pathlib import Path
 import re
+from typing import Annotated
 
 import typer
 import yaml
@@ -210,7 +211,9 @@ def testharness_run_testlist(
     quiet: bool = typer.Option(
         False, "--quiet", "-q", help="Suppress output (errors only)"
     ),
-    tandem_enabled: bool = False,
+    tandem_enabled: Annotated[
+        bool, typer.Option(help="Run every test with native live Spike tandem")
+    ] = False,
 ) -> None:
     """Run a testlist after separate software and TestHarness compilation."""
     print_recipe_title("TESTHARNESS RUN TESTLIST", quiet=quiet)

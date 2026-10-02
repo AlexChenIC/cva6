@@ -17,7 +17,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from flows.recipes import testharness_run_testlist as batch
 from flows.recipes.sw_compile import run_compile_tool
-from flows.recipes.verilator_testharness_comp import elaboration_directory
+from flows.recipes.verilator_testharness_comp import (
+    elaboration_directory,
+    verilator_testharness_comp,
+)
 from flows.recipes.verilator_testharness_run import (
     check_manifests,
     read_tandem_report,
@@ -140,6 +143,23 @@ class Contracts(unittest.TestCase):
                     trace_mode=TraceMode.notrace,
                     iss_enabled=True,
                     interactive_gui=False,
+                )
+            self.assertFalse(path.exists())
+
+    def test_failed_rebuild_invalidates_old_hardware_manifest(self):
+        with chdir(self.root):
+            path = (
+                elaboration_directory(self.root, "t", CompMode.rtl)
+                / "cook_manifest.yml"
+            )
+            self.write(path, dict(recipe="verilator-testharness-comp"))
+            with self.assertRaises(typer.Exit):
+                verilator_testharness_comp(
+                    target="t",
+                    comp_mode=CompMode.rtl,
+                    trace_mode=TraceMode.notrace,
+                    stats=False,
+                    quiet=True,
                 )
             self.assertFalse(path.exists())
 

@@ -70,8 +70,9 @@ jobs:
           CONFIG_DIR: ${{ github.workspace }}/ci-results/cook-config
           PROFILE: ${{ matrix.profile }}
         run: |
+          ulimit -c 0
           python3 .github/cook/prepare_toolchains.py --output-dir "$CONFIG_DIR" --tandem-enabled
-          python3 .github/cook/run_tier1.py --profile "$PROFILE" --suite basic
+          python3 .github/cook/run_tier1.py --profile "$PROFILE" --suite full
       - name: Upload available evidence, including failures
         if: always()
         uses: actions/upload-artifact@v4
@@ -86,3 +87,20 @@ jobs:
             build/*/elab/*/compilation.*
             build/*/elab/*/cook_manifest.yml
             build/*/elab/*/verilator.version
+  acceptance:
+    name: Cook Tier 1 acceptance
+    if: always()
+    needs: [contracts, smoke, live]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Require every mandatory job to succeed
+        env:
+          CONTRACTS: ${{ needs.contracts.result }}
+          SMOKE: ${{ needs.smoke.result }}
+          LIVE: ${{ needs.live.result }}
+        run: |
+          printf 'contracts=%s; smoke=%s; live=%s\n' "$CONTRACTS" "$SMOKE" "$LIVE" >> "$GITHUB_STEP_SUMMARY"
+          test "$CONTRACTS" = success
+          test "$SMOKE" = success
+          test "$LIVE" = success

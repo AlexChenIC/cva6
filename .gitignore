@@ -18,6 +18,7 @@ build/*
 *.dasm
 /Bender.local
 build/
+ci-results/
 *.vcd
 *.fsdb
 *.log

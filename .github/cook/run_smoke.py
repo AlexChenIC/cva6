@@ -48,6 +48,15 @@ def checked_run(directory, name):
         result.get("detail"), str
     ):
         raise ValueError("Invalid run result detail or ISS setting")
+    if result.get("tandem_enabled") is not False:
+        raise ValueError("Smoke must remain RTL-only")
+    execution = read_yaml(directory / "execution.yml")
+    if (
+        type(execution.get("exit_code")) is not int
+        or execution["exit_code"] != 0
+        or execution.get("timed_out") is not False
+    ):
+        raise ValueError("Smoke did not terminate normally")
     manifest = read_yaml(directory / "cook_manifest.yml")
     options = {
         "target": TARGET,
@@ -308,7 +317,13 @@ def main():
                 evidence["checks"]["single"][label] = "PASS"
                 saved = output / "single" / label
                 saved.mkdir(parents=True)
-                for name in ("testharness.log", "result.yml", "cook_manifest.yml"):
+                for name in (
+                    "testharness.log",
+                    "result.yml",
+                    "cook_manifest.yml",
+                    "execution.yml",
+                    "simulation.command.json",
+                ):
                     shutil.copy2(root / RUNS / label / name, saved / name)
         receipts = {}
         for name in TESTS:
