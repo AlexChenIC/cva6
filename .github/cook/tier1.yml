@@ -25,4 +25,3 @@ deferred_configs:
   cv64a6_imafdc_sv39: No target directory; original cache coverage is not claimed.
 excluded_mechanisms:
   - Independent Spike execution and offline trace comparison (live-only by design).
-

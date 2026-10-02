@@ -8,7 +8,7 @@ from pathlib import Path
 import sys
 import tempfile
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import typer
 import yaml
@@ -33,7 +33,7 @@ from flows.utils.logged_process import run_logged_process
 from flows.utils.utils import CompMode, TraceMode
 from prepare_testlists import materialize
 from run_tier1 import checked_suite
-from check_native_failures import has_instruction_divergence
+from check_native_failures import has_instruction_divergence, wait_for_initialization
 
 
 class Contracts(unittest.TestCase):
@@ -122,6 +122,28 @@ mismatches:
         for entries in (None, [], [None], [{"core": {}, "reference_model": {}}]):
             with self.subTest(entries=entries), self.assertRaises(ValueError):
                 has_instruction_divergence({"mismatches": entries})
+
+    def test_signal_injection_waits_for_initialization(self):
+        log = self.root / "startup.log"
+        log.write_text("Spike is still initializing\n")
+        process = Mock()
+        process.poll.return_value = None
+        with patch(
+            "check_native_failures.time.sleep",
+            side_effect=lambda _: log.write_text(
+                "TestHarness initialized; starting execution\n"
+            ),
+        ) as sleep:
+            wait_for_initialization(process, log)
+            sleep.assert_called_once()
+        process.poll.return_value = 1
+        with self.assertRaises(ValueError):
+            wait_for_initialization(process, log)
+        process.poll.return_value = None
+        log.write_text("No readiness marker\n")
+        with patch("check_native_failures.time.monotonic", side_effect=[0, 31]):
+            with self.assertRaises(ValueError):
+                wait_for_initialization(process, log)
 
     def test_missing_malformed_or_symlink_report_rejected(self):
         with self.assertRaises(FileNotFoundError):

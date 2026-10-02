@@ -394,6 +394,7 @@ done_processing:
         }
   }
 
+  fprintf(stderr, "TestHarness initialized; starting execution\n");
   while (!termination_signal && !Verilated::gotFinish() &&
          !dtm->done() && !jtag->done() && !(top->exit_o & 0x1)) {
     top->clk_i = 0;

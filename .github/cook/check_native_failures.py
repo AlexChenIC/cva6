@@ -24,6 +24,19 @@ from flows.recipes.verilator_testharness_run import (
 from flows.utils.utils import CompMode, TraceMode
 
 
+def wait_for_initialization(process, log, timeout=30):
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if process.poll() is not None:
+            raise ValueError("Non-terminating ELF exited before signal injection")
+        if "TestHarness initialized; starting execution" in log.read_text(
+            errors="replace"
+        ):
+            return
+        time.sleep(0.05)
+    raise ValueError("TestHarness initialization was not observed before SIGTERM")
+
+
 def has_instruction_divergence(report):
     entries = report.get("mismatches")
     if not isinstance(entries, list) or not entries:
@@ -125,11 +138,7 @@ def check_native_failures(root, target, config, names, cook, run):
                 start_new_session=True,
             )
             try:
-                time.sleep(2)
-                if process.poll() is not None:
-                    raise ValueError(
-                        "Non-terminating ELF exited before signal injection"
-                    )
+                wait_for_initialization(process, directory / "testharness.log")
                 process.send_signal(signal.SIGTERM)
                 code = process.wait(timeout=15)
             finally:
@@ -145,6 +154,7 @@ def check_native_failures(root, target, config, names, cook, run):
             raise ValueError(f"SIGTERM was not classified by the TestHarness: {code}")
         results["checks"]["sigterm"] = {
             "status": "PASS",
+            "initialization_observed": True,
             "actual_exit_code": code,
             "expected_simulation": "FAIL",
         }
