@@ -56,6 +56,12 @@ jobs:
           python3 -m pip install -c .github/cook/constraints.txt -r flows/requirements.txt
           python3 -m pip freeze > ci-results/python-packages.txt
       - uses: ./.github/cook/setup
+      - name: Check immediate CSR readback in real RTL (not ISA coverage)
+        env:
+          PROFILE: ${{ matrix.profile }}
+        run: |
+          target=$(python3 -c 'import os,yaml; print(yaml.safe_load(open(".github/cook/tier1.yml"))["profiles"][os.environ["PROFILE"]]["target"])')
+          python3 .github/cook/check_csr_readback.py --target "$target" --output ci-results/csr-readback
       - name: Prepare pinned legacy test sources (not legacy execution flows)
         shell: bash
         run: |
@@ -82,6 +88,7 @@ jobs:
           if-no-files-found: error
           path: |
             ci-results/
+            !ci-results/csr-readback/obj/
             build/*/compile/
             build/*/simulation/
             build/*/elab/*/compilation.*
