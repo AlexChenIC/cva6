@@ -659,7 +659,7 @@ module cva6_rvfi
     bit [CVA6Cfg.XLEN-1:0] pmpaddr_q;
     genvar i;
     for (i = 0; i < 16; i++) begin
-      `CONNECT_RVFI_FULL(1'b1, pmpaddr[i], {csr.pmpaddr_q[i][CVA6Cfg.PLEN-3:1], pmpcfg_q[i].addr_mode[1]})
+      `CONNECT_RVFI_FULL(1'b1, pmpaddr[i], {csr.pmpaddr_q[i][CVA6Cfg.PLEN-3:1], (CVA6Cfg.PMPNapotEn && csr.pmpcfg_q[i].addr_mode[1])})
     end
     ;
   end

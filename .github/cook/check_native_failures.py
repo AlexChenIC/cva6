@@ -24,6 +24,25 @@ from flows.recipes.verilator_testharness_run import (
 from flows.utils.utils import CompMode, TraceMode
 
 
+def has_instruction_divergence(report):
+    entries = report.get("mismatches")
+    if not isinstance(entries, list) or not entries:
+        raise ValueError("Native report contains no mismatch entries")
+    divergent = False
+    for entry in entries:
+        if not isinstance(entry, dict):
+            raise ValueError("Invalid native mismatch entry")
+        # The numeric marker is null; core/reference_model are sibling keys.
+        core, reference = entry.get("core"), entry.get("reference_model")
+        if not isinstance(core, dict) or not isinstance(reference, dict):
+            raise ValueError("Native mismatch is missing comparison operands")
+        for key in ("insn", "pc_rdata"):
+            if core.get(key) is None or reference.get(key) is None:
+                raise ValueError(f"Native mismatch is missing {key}")
+            divergent |= core[key] != reference[key]
+    return divergent
+
+
 def check_native_failures(root, target, config, names, cook, run):
     output = root / "ci-results" / "native-negative"
     output.mkdir(parents=True)
@@ -179,12 +198,7 @@ def check_native_failures(root, target, config, names, cook, run):
             tandem_enabled=True,
         )
         report = yaml.safe_load((directory / "testharness.log.yaml").read_text())
-        divergent_instruction = any(
-            mismatch["core"].get(key) != mismatch["reference_model"].get(key)
-            for entry in report.get("mismatches") or []
-            for mismatch in entry.values()
-            for key in ("insn", "pc_rdata")
-        )
+        divergent_instruction = has_instruction_divergence(report)
         if (
             passed
             or type(report.get("mismatches_count")) is not int

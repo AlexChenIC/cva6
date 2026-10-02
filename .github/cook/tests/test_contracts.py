@@ -33,6 +33,7 @@ from flows.utils.logged_process import run_logged_process
 from flows.utils.utils import CompMode, TraceMode
 from prepare_testlists import materialize
 from run_tier1 import checked_suite
+from check_native_failures import has_instruction_divergence
 
 
 class Contracts(unittest.TestCase):
@@ -97,6 +98,30 @@ class Contracts(unittest.TestCase):
                 self.write(self.report, {**self.good, key: value})
                 with self.assertRaises(ValueError):
                     read_tandem_report(self.report)
+
+    def test_native_mismatch_yaml_sibling_operands(self):
+        report = yaml.safe_load("""
+mismatches:
+  - 00000000:
+    core:
+      pc_rdata: "0000000080000118"
+      insn: "0000000000004081"
+    reference_model:
+      pc_rdata: "0000000080000118"
+      insn: "0000000000003097"
+""")
+        self.assertTrue(has_instruction_divergence(report))
+        entry = report["mismatches"][0]
+        entry["reference_model"] = dict(entry["core"])
+        self.assertFalse(has_instruction_divergence(report))
+        entry["reference_model"]["pc_rdata"] = "000000008000011c"
+        self.assertTrue(has_instruction_divergence(report))
+        del entry["reference_model"]["insn"]
+        with self.assertRaises(ValueError):
+            has_instruction_divergence(report)
+        for entries in (None, [], [None], [{"core": {}, "reference_model": {}}]):
+            with self.subTest(entries=entries), self.assertRaises(ValueError):
+                has_instruction_divergence({"mismatches": entries})
 
     def test_missing_malformed_or_symlink_report_rejected(self):
         with self.assertRaises(FileNotFoundError):
