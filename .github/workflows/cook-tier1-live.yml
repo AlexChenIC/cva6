@@ -73,11 +73,6 @@ jobs:
           ulimit -c 0
           python3 .github/cook/prepare_toolchains.py --output-dir "$CONFIG_DIR" --tandem-enabled
           python3 .github/cook/run_tier1.py --profile "$PROFILE" --suite full
-      - name: Diagnose native failure without changing acceptance
-        if: failure()
-        run: |
-          sudo apt-get install -y gdb
-          python3 .github/cook/diagnose_native.py
       - name: Upload available evidence, including failures
         if: always()
         uses: actions/upload-artifact@v4

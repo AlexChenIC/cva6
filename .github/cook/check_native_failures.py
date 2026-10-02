@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import signal
+import sys
 import subprocess
 import time
 
@@ -64,6 +65,33 @@ def check_native_failures(root, target, config, names, cook, run):
         command = testharness_command(
             binary, loop, target=target, tohost=tohost, trace_mode=TraceMode.notrace
         )
+
+        directory = output / "stack-limit"
+        directory.mkdir()
+        limited = [
+            sys.executable,
+            "-c",
+            "import os,resource,sys; resource.setrlimit(resource.RLIMIT_STACK,(8388608,8388608)); os.execv(sys.argv[1],sys.argv[1:])",
+            *command,
+        ]
+        with (directory / "testharness.log").open("w") as log:
+            rejected = subprocess.run(
+                limited,
+                cwd=directory,
+                env=env,
+                stdout=log,
+                stderr=subprocess.STDOUT,
+                check=False,
+                timeout=15,
+            )
+        text = (directory / "testharness.log").read_text()
+        if rejected.returncode != 1 or "requires a stack limit" not in text:
+            raise ValueError("A restrictive hard stack limit was not rejected clearly")
+        results["checks"]["stack-limit"] = {
+            "status": "PASS",
+            "actual_exit_code": rejected.returncode,
+            "expected_simulation": "FAIL",
+        }
 
         directory = output / "sigterm"
         directory.mkdir()
@@ -151,10 +179,17 @@ def check_native_failures(root, target, config, names, cook, run):
             tandem_enabled=True,
         )
         report = yaml.safe_load((directory / "testharness.log.yaml").read_text())
+        divergent_instruction = any(
+            mismatch["core"].get(key) != mismatch["reference_model"].get(key)
+            for entry in report.get("mismatches") or []
+            for mismatch in entry.values()
+            for key in ("insn", "pc_rdata")
+        )
         if (
             passed
             or type(report.get("mismatches_count")) is not int
             or report["mismatches_count"] < 1
+            or not divergent_instruction
         ):
             raise ValueError(f"Controlled mismatch was not detected: {detail}")
         try:
@@ -166,6 +201,7 @@ def check_native_failures(root, target, config, names, cook, run):
         results["checks"]["mismatch"] = {
             "status": "PASS",
             "mismatches_count": report["mismatches_count"],
+            "divergent_instruction": divergent_instruction,
             "expected_simulation": "FAIL",
             "detail": detail,
         }

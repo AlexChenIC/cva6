@@ -103,8 +103,9 @@ Software ELFs, compilation commands/manifests and generated lists are uploaded,
 including available evidence when a job fails. DUT/software are never cached.
 
 Python contract tests are orchestration tests, not ISA cases. Native negative
-checks separately compile an infinite loop, send SIGTERM to the simulator, enforce
-a Cook timeout, and load different genuine test ELFs into RTL and Spike. Each must
+checks separately compile an infinite loop, reject an insufficient hard stack
+limit, send SIGTERM to the simulator, enforce a Cook timeout, and load different
+genuine test ELFs into RTL and Spike. Each must
 fail simulation and pass its failure-detection assertion. Their expected errors
 are confined to `ci-results/native-negative` and the `ci-loop` output, not waived
 for any positive regression test.

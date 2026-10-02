@@ -287,7 +287,8 @@ def build_command(
     ]
     command.extend(str(repo_dir / source) for source in PACKAGE_SOURCES)
     if tandem_enabled:
-        command.append("+define+SPIKE_TANDEM=1")
+        # Keep the large RVFI/CSR functions out of the per-cycle eager inlining.
+        command.extend(("+define+SPIKE_TANDEM=1", "-fno-inline-funcs-eager"))
         command.extend(str(repo_dir / source) for source in TANDEM_SOURCES)
     command.extend(
         (

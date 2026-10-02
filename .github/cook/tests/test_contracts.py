@@ -18,6 +18,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from flows.recipes import testharness_run_testlist as batch
 from flows.recipes.sw_compile import run_compile_tool
 from flows.recipes.verilator_testharness_comp import (
+    build_command,
     elaboration_directory,
     verilator_testharness_comp,
 )
@@ -53,6 +54,29 @@ class Contracts(unittest.TestCase):
     def write(self, path, data):
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(yaml.safe_dump(data), encoding="utf-8")
+
+    def test_live_stack_capacity_does_not_change_rtl_only(self):
+        for live in (False, True):
+            command = build_command(
+                repo_dir=self.root,
+                target="t",
+                comp_mode=CompMode.rtl,
+                trace_mode=TraceMode.notrace,
+                stats=False,
+                jobs=1,
+                verilator="verilator",
+                verilator_root=self.root / "verilator",
+                riscv=self.root / "riscv",
+                spike=self.root / "spike",
+                tandem_enabled=live,
+            )
+            self.assertEqual(
+                "-DCVA6_TANDEM_STACK_BYTES=268435456"
+                in command[command.index("-CFLAGS") + 1],
+                live,
+            )
+            self.assertEqual("+define+SPIKE_TANDEM=1" in command, live)
+            self.assertEqual("-fno-inline-funcs-eager" in command, live)
 
     def test_native_success_requires_comparisons(self):
         self.write(self.report, self.good)

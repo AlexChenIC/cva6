@@ -155,6 +155,9 @@ def main():
         )
 
     def run(label, command, timeout=2400):
+        evidence["active_stage"] = label
+        save()
+        print(f"Starting Cook stage: {label}", flush=True)
         code, timed_out = run_logged_process(
             command,
             cwd=root,
@@ -165,7 +168,9 @@ def main():
         evidence["commands"].append(
             {"stage": label, "argv": command, "exit_code": code, "timed_out": timed_out}
         )
+        evidence["active_stage"] = None
         save()
+        print(f"Completed {label}: exit={code}, timed_out={timed_out}", flush=True)
         if code != 0 or timed_out:
             print(
                 (output / f"{label}.log").read_text(errors="replace")[-12000:],
@@ -214,6 +219,10 @@ def main():
                 ],
             )
             if suite == "basic":
+                evidence["native_negative_checks"] = check_native_failures(
+                    root, target, config, enabled_tests(Path(testlist)), cook, run
+                )
+                save()
                 name = enabled_tests(Path(testlist))[0]
                 run(
                     "single-test",
@@ -240,9 +249,6 @@ def main():
             str(path.relative_to(root)): sha256(path)
             for path in (root / "build" / target / "compile").glob("*/*.elf")
         }
-        evidence["native_negative_checks"] = check_native_failures(
-            root, target, config, enabled_tests(Path(lists["basic"])), cook, run
-        )
         evidence["status"], rc = "PASS", 0
     except (
         OSError,

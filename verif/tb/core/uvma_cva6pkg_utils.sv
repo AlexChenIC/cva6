@@ -93,11 +93,10 @@ function st_core_cntrl_cfg cva6pkg_to_core_cntrl_cfg(st_core_cntrl_cfg cfg);
     void'(spike_set_param_bool    (base, "misa_we", 1'b0));
 
     if (!cfg.TvalEn) begin
-      void'(spike_set_param_bool    (base, "mtval_we_enable", 1'b1));
-      void'(spike_set_param_bool    (base, "mtval_we", 1'b0));
+      // The pinned Spike uses write_mask; the legacy _we parameters are unused.
+      void'(spike_set_param_uint64_t(base, "mtval_write_mask", 64'h0));
     end
 
     return cfg;
 
 endfunction : cva6pkg_to_core_cntrl_cfg
-
