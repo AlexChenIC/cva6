@@ -10,11 +10,13 @@
 # Please refer to flows/README.md to add target
 
 from pathlib import Path
+import os
 import shutil
 import typer
 import yaml
 from flows.utils.config_loader import load_compiler_config
 from flows.utils.manifest import write_manifest
+from flows.utils.logged_process import run_logged_process
 from flows.utils.utils import (
     ToolchainOption,
     autocompletion_target,
@@ -30,6 +32,25 @@ from flows.utils.utils import (
 )
 
 app = typer.Typer()
+
+
+def run_compile_tool(command: list[str], log: Path, quiet: bool) -> str:
+    """Do not accept an output file from a failed or timed-out tool invocation."""
+    try:
+        code, timed_out = run_logged_process(
+            command, cwd=Path.cwd(), env=os.environ.copy(), log=log, timeout=90
+        )
+        if code != 0 or timed_out:
+            raise ValueError(
+                f"Tool failed: exit={code}, timeout={timed_out}; log: {log}"
+            )
+        text = log.read_text(encoding="utf-8")
+        if not quiet and text:
+            print_info(text)
+        return text
+    except (OSError, ValueError) as error:
+        print_error(str(error))
+        raise typer.Exit(code=1) from error
 
 
 # ==========================================================
@@ -243,19 +264,7 @@ def sw_compile(
                 quiet=quiet,
             )
 
-    run_cmd(
-        cmd=compile_cmd,
-        cwd=None,
-        env=None,
-        error_patterns=["error"],
-        warning_patterns=["warning"],
-        highlight_patterns=None,
-        log_file=compile_dir / "compile.log",
-        timeout=90,
-        check=False,
-        capture_output=False,
-        quiet=quiet,
-    )
+    run_compile_tool(compile_cmd, compile_dir / "compile.log", quiet)
 
     if elf_file.exists():
         print_success("Compilation successful", quiet=quiet)
@@ -272,19 +281,7 @@ def sw_compile(
 
     compile_cmd = [f"{tools_path}/bin/{objdump}", "-D", str(elf_file)]
 
-    run_cmd(
-        cmd=compile_cmd,
-        cwd=None,
-        env=None,
-        error_patterns=None,
-        warning_patterns=None,
-        highlight_patterns=None,
-        log_file=objdump_file,
-        timeout=90,
-        check=False,
-        capture_output=False,
-        quiet=quiet,
-    )
+    run_compile_tool(compile_cmd, objdump_file, quiet)
 
     if objdump_file.exists():
         print_success("Objdump generated", quiet=quiet)
@@ -299,19 +296,7 @@ def sw_compile(
 
     compile_cmd = ["size", "-A", str(elf_file)]
 
-    run_cmd(
-        cmd=compile_cmd,
-        cwd=None,
-        env=None,
-        error_patterns=None,
-        warning_patterns=None,
-        highlight_patterns=None,
-        log_file=size_file,
-        timeout=90,
-        check=False,
-        capture_output=False,
-        quiet=quiet,
-    )
+    run_compile_tool(compile_cmd, size_file, quiet)
 
     if size_file.exists():
         print_success("Size report generated", quiet=quiet)
@@ -328,19 +313,7 @@ def sw_compile(
 
         compile_cmd = [f"{tools_path}/bin/{nm}", str(elf_file)]
 
-        result = run_cmd(
-            cmd=compile_cmd,
-            cwd=None,
-            env=None,
-            error_patterns=None,
-            warning_patterns=None,
-            highlight_patterns=None,
-            log_file=None,
-            timeout=90,
-            check=False,
-            capture_output=True,
-            quiet=quiet,
-        )
+        result = run_compile_tool(compile_cmd, compile_dir / "symbols.log", quiet)
 
         for line in result.splitlines():
             parts = line.split()

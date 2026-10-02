@@ -10,6 +10,7 @@
 from __future__ import annotations
 
 import os
+import json
 from pathlib import Path
 import re
 import shutil
@@ -71,7 +72,11 @@ def validate_run_options(
 
 
 def simulation_directory(
-    repo_dir: Path, target: str, test_name: str, comp_mode: CompMode
+    repo_dir: Path,
+    target: str,
+    test_name: str,
+    comp_mode: CompMode,
+    tandem_enabled: bool = False,
 ) -> Path:
     target = validate_path_component(target, "target name")
     test_name = validate_path_component(test_name, "test name")
@@ -79,7 +84,7 @@ def simulation_directory(
         repo_dir,
         target,
         "simulation",
-        f"sim_{comp_mode.value}_verilator_testharness",
+        f"sim_{comp_mode.value}_verilator_testharness{'_tandem' if tandem_enabled else ''}",
         test_name,
     )
 
@@ -105,6 +110,32 @@ def testharness_log_passed(log: Path) -> tuple[bool, str]:
     if "*** SUCCESS *** (tohost = 0)" not in text:
         return False, "missing successful TestHarness tohost result"
     return True, "TestHarness completed"
+
+
+def read_tandem_report(path: Path) -> dict:
+    """Validate the native rvfi_compare report, not disassembled trace text."""
+    if not stat.S_ISREG(path.lstat().st_mode):
+        raise ValueError("Tandem report must be a regular file")
+    report = yaml.safe_load(path.read_text(encoding="utf-8"))
+    if not isinstance(report, dict):
+        raise ValueError("Missing or malformed live tandem report")
+    for key in ("exit_code", "instr_count", "csrs_match_count", "mismatches_count"):
+        if type(report.get(key)) is not int or report[key] < 0:
+            raise ValueError(f"Invalid tandem report field: {key}")
+    if (
+        report.get("exit_cause") != "SUCCESS"
+        or report["exit_code"] != 0
+        or report["instr_count"] == 0
+        or report["mismatches_count"] != 0
+        or report.get("mismatches") not in (None, [])
+        or report.get("mismatch_description") != ""
+    ):
+        raise ValueError(
+            f"Live tandem failed: cause={report.get('exit_cause')}, "
+            f"exit={report['exit_code']}, compared={report['instr_count']}, "
+            f"mismatches={report['mismatches_count']}"
+        )
+    return report
 
 
 def runtime_environment(repo_dir: Path, target: str) -> tuple[dict[str, str], Path]:
@@ -206,6 +237,7 @@ def check_manifests(
     trace_mode: TraceMode,
     compile_dir: Path,
     elab_dir: Path,
+    tandem_enabled: bool = False,
 ) -> None:
     software_manifest = read_manifest(compile_dir)
     for directory in (compile_dir, elab_dir):
@@ -236,6 +268,10 @@ def check_manifests(
     hardware_manifest = read_manifest(elab_dir)
     if hardware_manifest.get("recipe") != "verilator-testharness-comp":
         raise ValueError("Hardware must be produced by verilator-testharness-comp")
+    if hardware_manifest["options"].get("tandem_enabled", False) is not tandem_enabled:
+        raise ValueError(
+            "TestHarness live tandem build does not match the requested mode"
+        )
     require_manifest_option(
         hardware_manifest,
         "target",
@@ -271,14 +307,22 @@ def run_testharness_and_trace(
     spike_install: Path,
     compiler_isa: str,
     timeout: int,
+    tandem_enabled: bool = False,
 ) -> tuple[bool, str]:
     testharness_log = output_dir / "testharness.log"
+    (output_dir / "simulation.command.json").write_text(
+        json.dumps(command, indent=2) + "\n", encoding="utf-8"
+    )
     return_code, timed_out = run_logged_process(
         command,
         cwd=output_dir,
         env=env,
         log=testharness_log,
         timeout=timeout,
+    )
+    (output_dir / "execution.yml").write_text(
+        yaml.safe_dump({"exit_code": return_code, "timed_out": timed_out}),
+        encoding="utf-8",
     )
     if timed_out:
         return False, f"TestHarness timed out after {timeout} seconds"
@@ -288,6 +332,13 @@ def run_testharness_and_trace(
     passed, detail = testharness_log_passed(testharness_log)
     if not passed:
         return False, detail
+
+    if tandem_enabled:
+        try:
+            report = read_tandem_report(output_dir / "testharness.log.yaml")
+            detail += f"; live tandem compared {report['instr_count']} instructions, 0 mismatches"
+        except (OSError, ValueError, yaml.YAMLError) as error:
+            return False, f"Live tandem evidence failed: {error}"
 
     raw_trace = output_dir / "trace_rvfi_hart_00.dasm"
     failure = "RTL simulation passed; trace post-processing failed"
@@ -327,9 +378,17 @@ def run_test(
     iss_enabled: bool,
     interactive_gui: bool,
     timeout: int = SIMULATION_TIMEOUT,
+    tandem_enabled: bool = False,
 ) -> tuple[bool, str, Path]:
+    output_dir = simulation_directory(
+        Path.cwd(), target, test_name, comp_mode, tandem_enabled
+    )
+    # Invalidate previous success even if this invocation fails its prerequisites.
+    (output_dir / "result.yml").unlink(missing_ok=True)
     if iss_enabled:
-        raise ValueError("ISS comparison is not supported by this version")
+        raise ValueError(
+            "Offline ISS comparison is unsupported; use --tandem-enabled for live checking"
+        )
 
     repo_dir = Path.cwd().resolve()
     validate_run_options(comp_mode, trace_mode, interactive_gui)
@@ -338,12 +397,11 @@ def run_test(
 
     target_directory(repo_dir, target)
     compile_dir = repo_dir / "build" / target / "compile" / test_name
-    elab_dir = elaboration_directory(repo_dir, target, comp_mode)
-    output_dir = simulation_directory(repo_dir, target, test_name, comp_mode)
+    elab_dir = elaboration_directory(repo_dir, target, comp_mode, tandem_enabled)
     elf = compile_dir / f"{test_name}.elf"
     isa_file = compile_dir / "isa_string"
     tohost_file = compile_dir / f"{test_name}.add_tohost"
-    binary = testharness_binary(repo_dir, target, comp_mode)
+    binary = testharness_binary(repo_dir, target, comp_mode, tandem_enabled)
 
     require_prerequisite(
         elf,
@@ -372,6 +430,7 @@ def run_test(
         trace_mode=trace_mode,
         compile_dir=compile_dir,
         elab_dir=elab_dir,
+        tandem_enabled=tandem_enabled,
     )
 
     compiler_isa = isa_file.read_text(encoding="utf-8").strip()
@@ -401,6 +460,7 @@ def run_test(
         spike_install=spike_install,
         compiler_isa=compiler_isa,
         timeout=timeout,
+        tandem_enabled=tandem_enabled,
     )
     return passed, detail, output_dir
 
@@ -429,7 +489,7 @@ def verilator_testharness_run(
         help="notrace, fast (VCD), or compact (FST); must match the build",
     ),
     iss_enabled: bool = typer.Option(
-        False, help="Reserved for ISS comparison; enabling it is not yet supported"
+        False, help="Offline ISS comparison is unsupported; use --tandem-enabled"
     ),
     interactive_gui: bool = typer.Option(
         False, help="Interactive GUI is currently unsupported"
@@ -437,8 +497,9 @@ def verilator_testharness_run(
     quiet: bool = typer.Option(
         False, "--quiet", "-q", help="Suppress output (errors only)"
     ),
+    tandem_enabled: bool = False,
 ) -> None:
-    """Run a single ELF with the Verilator TestHarness (no ISS comparison)."""
+    """Run a single ELF, optionally with live Spike tandem (no offline comparison)."""
     print_recipe_title("VERILATOR TESTHARNESS RUN", quiet=quiet)
     print_param_table(
         {
@@ -447,6 +508,7 @@ def verilator_testharness_run(
             "Compilation mode": comp_mode.value,
             "Trace mode": trace_mode.value,
             "ISS comparison": iss_enabled,
+            "Live Spike tandem": tandem_enabled,
             "Interactive GUI": interactive_gui,
         },
         "Options",
@@ -462,6 +524,7 @@ def verilator_testharness_run(
             trace_mode=trace_mode,
             iss_enabled=iss_enabled,
             interactive_gui=interactive_gui,
+            tandem_enabled=tandem_enabled,
         )
     except (OSError, TypeError, ValueError, yaml.YAMLError) as error:
         print_error(str(error))
@@ -476,6 +539,7 @@ def verilator_testharness_run(
         "trace_mode": trace_mode.value,
         "iss_enabled": iss_enabled,
         "interactive_gui": interactive_gui,
+        "tandem_enabled": tandem_enabled,
     }
     write_manifest(
         output_dir,
@@ -501,6 +565,7 @@ def verilator_testharness_run(
                     "test_name": test_name,
                     "status": "PASS" if passed else "FAIL",
                     "iss_enabled": iss_enabled,
+                    "tandem_enabled": tandem_enabled,
                     "detail": detail,
                 },
                 sort_keys=False,

@@ -1,0 +1,28 @@
+# Copyright 2026 OpenHW Foundation
+# SPDX-License-Identifier: Apache-2.0
+schema_version: 1
+profiles:
+  rv32:
+    target: cv32a65x_axi
+    march: rv32imc_zicsr_zifencei_zba_zbb_zbs_zbc
+    mabi: ilp32
+    basic_source: verif/tests/testlist_riscv-tests-cv32a65x-p.yaml
+    basic_tests: [rv32ui-p-add, rv32ui-p-lw, rv32ui-p-sw, rv32ui-p-beq, rv32ui-p-jal]
+    arch_source: verif/tests/testlist_riscv-arch-test-cv32a65x.yaml
+    arch_enabled: 104
+  rv64:
+    target: cv64a6_imafdc_sv39_hpdcache_pmp_mmu_axi
+    march: rv64gc_zba_zbb_zbs_zbc
+    mabi: lp64d
+    basic_source: verif/tests/testlist_riscv-tests-cv64a6_imafdc_sv39-v.yaml
+    basic_tests: [rv64ui-v-add, rv64ui-v-ld, rv64ui-v-sd, rv64ui-v-beq, rv64ui-v-jal]
+    arch_source: verif/tests/testlist_riscv-arch-test-cv64a6_imafdc_sv39.yaml
+    arch_enabled: 193
+deferred_configs:
+  cv64a6_imafdc_sv39_hpdcache: No target directory; new WT/PMP/MMU AXI profile is not identical.
+  cv64a6_imafdc_sv39_hpdcache_wb: Incomplete target; missing Flist.cva6 and testbench_cfg.yml.
+  cv64a6_imafdc_sv39_wb: No target directory; WB coverage is not claimed.
+  cv64a6_imafdc_sv39: No target directory; original cache coverage is not claimed.
+excluded_mechanisms:
+  - Independent Spike execution and offline trace comparison (live-only by design).
+

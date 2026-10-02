@@ -37,6 +37,15 @@ from flows.utils.utils import (
 
 app = typer.Typer()
 
+TANDEM_SOURCES = (
+    "verif/tb/core/uvma_core_cntrl_pkg.sv",
+    "verif/tb/core/uvma_cva6pkg_utils_pkg.sv",
+    "verif/tb/core/uvma_rvfi_pkg.sv",
+    "verif/tb/core/uvmc_rvfi_reference_model_pkg.sv",
+    "verif/tb/core/uvmc_rvfi_scoreboard_pkg.sv",
+    "corev_apu/tb/common/spike.sv",
+)
+
 
 PACKAGE_SOURCES = (
     "corev_apu/tb/ariane_axi_pkg.sv",
@@ -128,14 +137,22 @@ def build_directory(repo_dir: Path, *parts: str) -> Path:
     return directory
 
 
-def elaboration_directory(repo_dir: Path, target: str, comp_mode: CompMode) -> Path:
+def elaboration_directory(
+    repo_dir: Path, target: str, comp_mode: CompMode, tandem_enabled: bool = False
+) -> Path:
+    suffix = "_tandem" if tandem_enabled else ""
     return build_directory(
-        repo_dir, target, "elab", f"sim_{comp_mode.value}_verilator_testharness"
+        repo_dir, target, "elab", f"sim_{comp_mode.value}_verilator_testharness{suffix}"
     )
 
 
-def testharness_binary(repo_dir: Path, target: str, comp_mode: CompMode) -> Path:
-    return elaboration_directory(repo_dir, target, comp_mode) / "Variane_testharness"
+def testharness_binary(
+    repo_dir: Path, target: str, comp_mode: CompMode, tandem_enabled: bool = False
+) -> Path:
+    return (
+        elaboration_directory(repo_dir, target, comp_mode, tandem_enabled)
+        / "Variane_testharness"
+    )
 
 
 def _verilator_from_install(install_dir: Path) -> tuple[str, Path]:
@@ -222,9 +239,10 @@ def build_command(
     verilator_root: Path,
     riscv: Path,
     spike: Path,
+    tandem_enabled: bool = False,
 ) -> list[str]:
     validate_options(comp_mode, trace_mode, stats)
-    elab_dir = elaboration_directory(repo_dir, target, comp_mode)
+    elab_dir = elaboration_directory(repo_dir, target, comp_mode, tandem_enabled)
 
     cflags = [
         f"-I{repo_dir}",
@@ -265,6 +283,9 @@ def build_command(
         str(repo_dir / "core" / "cva6_rvfi.sv"),
     ]
     command.extend(str(repo_dir / source) for source in PACKAGE_SOURCES)
+    if tandem_enabled:
+        command.append("+define+SPIKE_TANDEM=1")
+        command.extend(str(repo_dir / source) for source in TANDEM_SOURCES)
     command.extend(
         (
             "-f",
@@ -337,6 +358,7 @@ def verilator_testharness_comp(
     quiet: bool = typer.Option(
         False, "--quiet", "-q", help="Suppress output (errors only)"
     ),
+    tandem_enabled: bool = False,
 ) -> None:
     """Verilator TestHarness compilation flow."""
     print_recipe_title("VERILATOR TESTHARNESS COMPILATION", quiet=quiet)
@@ -348,6 +370,7 @@ def verilator_testharness_comp(
         riscv, spike, verilator, verilator_root = tool_paths(repo_dir)
         env = {**os.environ, **compile_environment(repo_dir, target, spike)}
         env["VERILATOR_ROOT"] = str(verilator_root)
+        env.pop("SPIKE_TANDEM", None)
         version = subprocess.run(
             [verilator, "--version"],
             check=True,
@@ -370,6 +393,7 @@ def verilator_testharness_comp(
             verilator_root=verilator_root,
             riscv=riscv,
             spike=spike,
+            tandem_enabled=tandem_enabled,
         )
     except (
         OSError,
@@ -381,8 +405,8 @@ def verilator_testharness_comp(
         print_error(str(error))
         raise typer.Exit(code=1) from error
 
-    elab_dir = elaboration_directory(repo_dir, target, comp_mode)
-    binary = testharness_binary(repo_dir, target, comp_mode)
+    elab_dir = elaboration_directory(repo_dir, target, comp_mode, tandem_enabled)
+    binary = testharness_binary(repo_dir, target, comp_mode, tandem_enabled)
     log_file = elab_dir / "compilation.log"
     print_param_table(
         {
@@ -390,6 +414,7 @@ def verilator_testharness_comp(
             "Compilation mode": comp_mode.value,
             "Trace mode": trace_mode.value,
             "RTL perf tracer": stats,
+            "Live Spike tandem": tandem_enabled,
             "Build directory": elab_dir,
             "Jobs": jobs,
             "Verilator": version,
@@ -453,6 +478,7 @@ def verilator_testharness_comp(
             "comp_mode": comp_mode,
             "trace_mode": trace_mode,
             "stats": stats,
+            "tandem_enabled": tandem_enabled,
         },
         quiet=quiet,
     )
@@ -462,6 +488,7 @@ def verilator_testharness_comp(
         "comp_mode": comp_mode.value,
         "trace_mode": trace_mode.value,
         "stats": stats,
+        "tandem_enabled": tandem_enabled,
     }
     if (
         not isinstance(manifest, dict)

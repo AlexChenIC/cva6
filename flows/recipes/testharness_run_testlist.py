@@ -69,8 +69,16 @@ def enabled_tests(testlist: Path) -> list[str]:
     return names
 
 
-def report_path(repo: Path, target: str, simulator: Simulator, testlist: str) -> Path:
+def report_path(
+    repo: Path,
+    target: str,
+    simulator: Simulator,
+    testlist: str,
+    tandem_enabled: bool = False,
+) -> Path:
     label = re.sub(r"[^A-Za-z0-9_.-]+", "_", Path(testlist).stem)
+    if tandem_enabled:
+        label += "_tandem"
     return build_directory(
         repo, target, "simulation", f"testharness_{simulator.value}_{label}_report.yml"
     )
@@ -84,12 +92,15 @@ def run_entries(
     trace_mode: TraceMode,
     iss_enabled: bool,
     quiet: bool,
+    tandem_enabled: bool = False,
 ) -> list[dict]:
     results = []
     for name in names:
         case = {"test_name": name, "status": "FAIL", "detail": "Run did not complete"}
         try:
-            output = simulation_directory(Path.cwd(), target, name, comp_mode)
+            output = simulation_directory(
+                Path.cwd(), target, name, comp_mode, tandem_enabled
+            )
             receipt = output / "result.yml"
             # A failed preflight must not be confused with an earlier passing run.
             receipt.unlink(missing_ok=True)
@@ -103,6 +114,7 @@ def run_entries(
                     iss_enabled=iss_enabled,
                     interactive_gui=False,
                     quiet=quiet,
+                    tandem_enabled=tandem_enabled,
                 )
             except typer.Exit as error:
                 run_error = f"Run recipe exited with code {error.exit_code}"
@@ -122,6 +134,7 @@ def run_entries(
                     }.items()
                 )
                 or result.get("iss_enabled") is not False
+                or result.get("tandem_enabled") is not tandem_enabled
                 or result.get("status") not in {"PASS", "FAIL"}
             ):
                 raise ValueError("Missing or inconsistent run result")
@@ -192,25 +205,28 @@ def testharness_run_testlist(
         TraceMode.notrace, help="notrace, fast (VCD), compact (FST)"
     ),
     iss_enabled: bool = typer.Option(
-        False, help="Reserved for ISS comparison; enabling it is not yet supported"
+        False, help="Offline ISS comparison is unsupported; use --tandem-enabled"
     ),
     quiet: bool = typer.Option(
         False, "--quiet", "-q", help="Suppress output (errors only)"
     ),
+    tandem_enabled: bool = False,
 ) -> None:
     """Run a testlist after separate software and TestHarness compilation."""
     print_recipe_title("TESTHARNESS RUN TESTLIST", quiet=quiet)
     try:
-        if iss_enabled:
-            raise ValueError("ISS comparison is not supported by this version")
-        if simulator != Simulator.verilator:
-            raise ValueError(f"Unsupported TestHarness simulator: {simulator}")
-        validate_options(comp_mode, trace_mode, stats=False)
-        output = report_path(Path.cwd(), target, simulator, testlist)
+        output = report_path(Path.cwd(), target, simulator, testlist, tandem_enabled)
         output.unlink(missing_ok=True)
         summary = output.with_name(output.name.replace("_report.yml", "_summary.yml"))
         build_directory(Path.cwd(), target, "simulation", summary.name)
         summary.unlink(missing_ok=True)
+        if iss_enabled:
+            raise ValueError(
+                "Offline ISS comparison is unsupported; use --tandem-enabled"
+            )
+        if simulator != Simulator.verilator:
+            raise ValueError(f"Unsupported TestHarness simulator: {simulator}")
+        validate_options(comp_mode, trace_mode, stats=False)
         names = enabled_tests(Path(testlist))
         cases = run_entries(
             names,
@@ -219,6 +235,7 @@ def testharness_run_testlist(
             trace_mode=trace_mode,
             iss_enabled=iss_enabled,
             quiet=quiet,
+            tandem_enabled=tandem_enabled,
         )
         write_reports(
             output,
@@ -230,6 +247,7 @@ def testharness_run_testlist(
                 "comp_mode": comp_mode.value,
                 "trace_mode": trace_mode.value,
                 "iss_enabled": iss_enabled,
+                "tandem_enabled": tandem_enabled,
             },
             quiet,
         )

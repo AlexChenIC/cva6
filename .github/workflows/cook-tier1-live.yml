@@ -1,0 +1,88 @@
+# Copyright 2026 OpenHW Foundation
+# SPDX-License-Identifier: Apache-2.0
+name: Cook Tier 1 live tandem
+on:
+  workflow_dispatch: {}
+  push:
+    branches: [jchen/master-candidate-cook-tier1-live-tandem, master_candidate]
+  pull_request:
+    branches: [master_candidate]
+permissions:
+  contents: read
+concurrency:
+  group: cook-tier1-live-${{ github.ref }}
+  cancel-in-progress: true
+env:
+  NUM_JOBS: '2'
+  NO_COLOR: '1'
+  TERM: dumb
+jobs:
+  contracts:
+    name: Python orchestration contracts (not RTL tests)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - run: python3 -m pip install -c .github/cook/constraints.txt -r flows/requirements.txt
+      - run: python3 -m unittest discover -s .github/cook/tests -v
+  smoke:
+    uses: ./.github/workflows/cook-testharness-smoke.yml
+  live:
+    name: ${{ matrix.profile }} / live Spike tandem
+    runs-on: ubuntu-24.04
+    timeout-minutes: 100
+    strategy:
+      fail-fast: false
+      matrix:
+        profile: [rv32, rv64]
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - name: Record source and install Cook dependencies
+        run: |
+          mkdir -p ci-results
+          git rev-parse HEAD > ci-results/source-revision.txt
+          git submodule status --recursive > ci-results/submodules.txt
+          python3 -m pip install -c .github/cook/constraints.txt -r flows/requirements.txt
+          python3 -m pip freeze > ci-results/python-packages.txt
+      - uses: ./.github/cook/setup
+      - name: Prepare pinned legacy test sources (not legacy execution flows)
+        shell: bash
+        run: |
+          set -eo pipefail
+          source verif/regress/install-riscv-tests.sh
+          source verif/regress/install-riscv-arch-test.sh
+          git -C verif/tests/riscv-tests rev-parse HEAD > ci-results/riscv-tests-revision.txt
+          git -C verif/tests/riscv-tests diff > ci-results/riscv-tests.patch
+          git -C verif/tests/riscv-arch-test rev-parse HEAD > ci-results/riscv-arch-test-revision.txt
+      - name: Cook compile, single run and live testlist
+        env:
+          CONFIG_DIR: ${{ github.workspace }}/ci-results/cook-config
+          PROFILE: ${{ matrix.profile }}
+        run: |
+          python3 .github/cook/prepare_toolchains.py --output-dir "$CONFIG_DIR" --tandem-enabled
+          python3 .github/cook/run_tier1.py --profile "$PROFILE" --suite basic
+      - name: Upload available evidence, including failures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cook-tier1-live-${{ matrix.profile }}
+          retention-days: 14
+          if-no-files-found: error
+          path: |
+            ci-results/
+            build/*/compile/
+            build/*/simulation/
+            build/*/elab/*/compilation.*
+            build/*/elab/*/cook_manifest.yml
+            build/*/elab/*/verilator.version

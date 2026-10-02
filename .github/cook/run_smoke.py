@@ -56,6 +56,7 @@ def checked_run(directory, name):
         "trace_mode": "notrace",
         "iss_enabled": False,
         "interactive_gui": False,
+        "tandem_enabled": False,
     }
     require_fields(
         manifest,

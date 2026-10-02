@@ -58,8 +58,11 @@ static const char *verilog_plusargs[] = {"jtag_rbb_enable", "time_out", "debug_d
 extern dtm_t* dtm;
 extern remote_bitbang_t * jtag;
 
+static volatile sig_atomic_t termination_signal = 0;
+
 void handle_sigterm(int sig) {
-  dtm->stop();
+  // Do not call FESVR or classify a forced stop as a successful tohost exit.
+  termination_signal = sig;
 }
 
 
@@ -281,6 +284,7 @@ done_processing:
   jtag = new remote_bitbang_t(rbb_port);
   dtm = new preload_aware_dtm_t(htif_argc, htif_argv);
   signal(SIGTERM, handle_sigterm);
+  signal(SIGINT, handle_sigterm);
 
   std::unique_ptr<Variane_testharness> top(new Variane_testharness);
 
@@ -355,7 +359,8 @@ done_processing:
         }
   }
 
-  while (!dtm->done() && !jtag->done() && !(top->exit_o & 0x1)) {
+  while (!termination_signal && !Verilated::gotFinish() &&
+         !dtm->done() && !jtag->done() && !(top->exit_o & 0x1)) {
     top->clk_i = 0;
     top->eval();
 #if VM_TRACE
@@ -383,7 +388,14 @@ done_processing:
     fclose(vcdfile);
 #endif
 
-  if (dtm->exit_code()) {
+  if (termination_signal) {
+    fprintf(stderr, "*** FAILED *** (interrupted by signal %d)\n", termination_signal);
+    dtm->stop();
+    ret = 128 + termination_signal;
+  } else if (!dtm->done() && !jtag->done() && !(top->exit_o & 0x1)) {
+    fprintf(stderr, "*** FAILED *** (simulation finished without a tohost result)\n");
+    ret = 1;
+  } else if (dtm->exit_code()) {
     fprintf(stderr, "%s *** FAILED *** (tohost = %d) after %ld cycles\n", htif_argv[1], dtm->exit_code(), main_time);
     ret = dtm->exit_code();
   } else if (jtag->exit_code()) {

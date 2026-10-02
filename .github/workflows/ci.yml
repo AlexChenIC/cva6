@@ -4,7 +4,11 @@
 
 # Run functional regression checks
 name: ci
-on: [push, pull_request]
+on:
+  push:
+    # Isolate the Cook development candidate; production triggers remain unchanged.
+    branches-ignore: [jchen/master-candidate-cook-tier1-live-tandem]
+  pull_request: {}
 
 jobs:
   build-riscv-tests:

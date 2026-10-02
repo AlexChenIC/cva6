@@ -1,7 +1,7 @@
 # Copyright 2026 OpenHW Foundation
 # SPDX-License-Identifier: Apache-2.0
 name: Setup CVA6 Cook environment
-description: GCC and Verilator with vendor Spike libraries and disassembler for RTL-only jobs
+description: GCC and Verilator with vendor Spike libraries for RTL-only and live tandem jobs
 inputs:
   verilator-version:
     description: Verilator release to build
