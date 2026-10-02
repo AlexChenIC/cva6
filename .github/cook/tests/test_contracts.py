@@ -3,6 +3,7 @@
 """Orchestration checks, not RTL ISA tests. Expected failures are asserted."""
 
 from contextlib import chdir
+import hashlib
 import os
 from pathlib import Path
 import sys
@@ -25,9 +26,11 @@ from flows.recipes.verilator_testharness_comp import (
 from flows.recipes.verilator_testharness_run import (
     check_manifests,
     read_tandem_report,
+    prepare_spike_config,
     run_test,
     run_testharness_and_trace,
     simulation_directory,
+    testharness_command,
 )
 from flows.utils.logged_process import run_logged_process
 from flows.utils.utils import CompMode, TraceMode
@@ -98,6 +101,62 @@ class Contracts(unittest.TestCase):
                 self.write(self.report, {**self.good, key: value})
                 with self.assertRaises(ValueError):
                     read_tandem_report(self.report)
+
+    def test_target_spike_parameters_are_preserved_and_selected(self):
+        source = self.root / "config/target/t/spike.yaml"
+        self.write(
+            source,
+            dict(
+                spike_param_tree=dict(
+                    core_configs=[dict(pmpregions_max=64, pmpregions_writable=0)]
+                )
+            ),
+        )
+        snapshot = prepare_spike_config(self.root, "t", self.root)
+        self.assertEqual(snapshot.read_bytes(), source.read_bytes())
+        self.assertEqual(
+            yaml.safe_load((self.root / "spike-config-source.yml").read_text()),
+            {
+                "mode": "target-yaml",
+                "source": "config/target/t/spike.yaml",
+                "sha256": hashlib.sha256(source.read_bytes()).hexdigest(),
+            },
+        )
+        command = testharness_command(
+            Path("binary"),
+            Path("elf"),
+            target="t",
+            tohost="80001000",
+            trace_mode=TraceMode.notrace,
+            spike_config=snapshot,
+        )
+        self.assertIn(f"+config_file={snapshot}", command)
+        command = testharness_command(
+            Path("binary"),
+            Path("elf"),
+            target="t",
+            tohost="80001000",
+            trace_mode=TraceMode.notrace,
+        )
+        self.assertFalse(any(arg.startswith("+config_file=") for arg in command))
+
+    def test_missing_spike_parameters_use_explicit_auto_provenance(self):
+        self.assertIsNone(prepare_spike_config(self.root, "t", self.root))
+        self.assertEqual(
+            yaml.safe_load((self.root / "spike-config-source.yml").read_text()),
+            {"mode": "rtl-derived"},
+        )
+
+    def test_invalid_spike_parameters_do_not_fall_back_to_auto(self):
+        source = self.root / "config/target/t/spike.yaml"
+        for data in (None, [], {}, {"spike_param_tree": []}):
+            self.write(source, data)
+            with self.subTest(data=data), self.assertRaises(ValueError):
+                prepare_spike_config(self.root, "t", self.root)
+        source.unlink()
+        source.symlink_to(self.root / "missing")
+        with self.assertRaises(ValueError):
+            prepare_spike_config(self.root, "t", self.root)
 
     def test_native_mismatch_yaml_sibling_operands(self):
         report = yaml.safe_load("""
@@ -415,6 +474,8 @@ mismatches:
             self.write(directory / "execution.yml", dict(exit_code=0, timed_out=False))
             (directory / "testharness.log").write_text("*** SUCCESS *** (tohost = 0)\n")
             self.write(directory / "testharness.log.yaml", self.good)
+            self.write(directory / "spike-config-source.yml", {"mode": "rtl-derived"})
+            (directory / "simulation.command.json").write_text('["binary"]')
             output = batch.report_path(
                 self.root, "t", batch.Simulator.verilator, "list.yml", True
             )

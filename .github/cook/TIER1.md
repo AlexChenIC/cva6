@@ -73,7 +73,16 @@ agreement before any old CI task can be retired.
 ## Live versus RTL-only
 
 `--tandem-enabled` is explicit on Comp, Run and Testlist. It compiles the existing
-Spike wrapper and RVFI scoreboard, using RTL-derived Spike configuration.
+Spike wrapper and RVFI scoreboard. As in the Cook VCS Run recipe, an existing
+`config/target/<target>/spike.yaml` supplies the target model parameters. Run
+copies it byte-for-byte to its output, records the source/SHA-256, and passes
+`+config_file` to the native wrapper. Without a target file, configuration is
+RTL-derived and that choice is recorded. ISA, privilege mode and TestHarness
+boot address are still supplied by the native RTL wrapper.
+The RV32 no-PMP target needs its existing YAML distinction between accessible
+PMP CSRs and zero writable PMP regions; this is not a comparison mask or RTL edit.
+Invalid target files fail instead of silently falling back. RTL-only ignores
+Spike parameter files. Native negative checks use the same configuration policy.
 Live build/run directories have a `_tandem` suffix; manifests must match the
 requested mode. No flag retains the existing RTL-only default and paths.
 `--iss-enabled` is still rejected: it does not alias live checking.

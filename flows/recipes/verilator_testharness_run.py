@@ -10,6 +10,7 @@
 from __future__ import annotations
 
 import os
+import hashlib
 import json
 from pathlib import Path
 import re
@@ -168,6 +169,7 @@ def testharness_command(
     target: str,
     tohost: str,
     trace_mode: TraceMode,
+    spike_config: Path | None = None,
 ) -> list[str]:
     command = [str(binary)]
     if trace_mode == TraceMode.fast:
@@ -191,7 +193,40 @@ def testharness_command(
             f"+tohost_addr={tohost}",
         )
     )
+    if spike_config is not None:
+        command.append(f"+config_file={spike_config}")
     return command
+
+
+def prepare_spike_config(repo: Path, target: str, output: Path) -> Path | None:
+    """Snapshot the target model parameters, matching the Cook UVM flow."""
+    source = repo / "config" / "target" / target / "spike.yaml"
+    metadata = {"mode": "rtl-derived"}
+    snapshot = None
+    try:
+        source_stat = source.lstat()
+    except FileNotFoundError:
+        pass
+    else:
+        if not stat.S_ISREG(source_stat.st_mode):
+            raise ValueError(f"Spike configuration must be a regular file: {source}")
+        content = source.read_bytes()
+        data = yaml.safe_load(content)
+        if not isinstance(data, dict) or not isinstance(
+            data.get("spike_param_tree"), dict
+        ):
+            raise ValueError(f"Invalid Spike parameter tree: {source}")
+        snapshot = output / "spike-config.yaml"
+        snapshot.write_bytes(content)
+        metadata = {
+            "mode": "target-yaml",
+            "source": str(source.relative_to(repo)),
+            "sha256": hashlib.sha256(content).hexdigest(),
+        }
+    (output / "spike-config-source.yml").write_text(
+        yaml.safe_dump(metadata, sort_keys=False), encoding="utf-8"
+    )
+    return snapshot
 
 
 def run_spike_dasm(
@@ -448,12 +483,16 @@ def run_test(
     if output_dir.exists():
         shutil.rmtree(output_dir)
     output_dir.mkdir(parents=True)
+    spike_config = (
+        prepare_spike_config(repo_dir, target, output_dir) if tandem_enabled else None
+    )
     command = testharness_command(
         binary,
         elf,
         target=target,
         tohost=tohost,
         trace_mode=trace_mode,
+        spike_config=spike_config,
     )
     passed, detail = run_testharness_and_trace(
         command=command,

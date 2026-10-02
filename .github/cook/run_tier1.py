@@ -70,6 +70,25 @@ def checked_case(root, target, name):
     if not passed:
         raise ValueError(detail)
     tandem = read_tandem_report(directory / "testharness.log.yaml")
+    source = root / "config" / "target" / target / "spike.yaml"
+    provenance = read_yaml(directory / "spike-config-source.yml")
+    command = json.loads((directory / "simulation.command.json").read_text())
+    config_args = [arg for arg in command if arg.startswith("+config_file=")]
+    if source.is_file():
+        snapshot = directory / "spike-config.yaml"
+        if (
+            provenance
+            != {
+                "mode": "target-yaml",
+                "source": str(source.relative_to(root)),
+                "sha256": sha256(source),
+            }
+            or sha256(snapshot) != sha256(source)
+            or config_args != [f"+config_file={snapshot}"]
+        ):
+            raise ValueError(f"{name}: target Spike configuration evidence mismatch")
+    elif provenance != {"mode": "rtl-derived"} or config_args:
+        raise ValueError(f"{name}: unexpected Spike configuration override")
     return result, tandem
 
 

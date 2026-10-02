@@ -15,6 +15,7 @@ import yaml
 from flows.recipes.verilator_testharness_comp import testharness_binary
 from flows.recipes.verilator_testharness_run import (
     read_tandem_report,
+    prepare_spike_config,
     run_test,
     run_testharness_and_trace,
     runtime_environment,
@@ -94,8 +95,14 @@ def check_native_failures(root, target, config, names, cook, run):
         loop = compile_root / "ci-loop" / "ci-loop.elf"
         tohost = (compile_root / "ci-loop" / "ci-loop.add_tohost").read_text().strip()
         env, spike = runtime_environment(root, target)
+        spike_config = prepare_spike_config(root, target, output)
         command = testharness_command(
-            binary, loop, target=target, tohost=tohost, trace_mode=TraceMode.notrace
+            binary,
+            loop,
+            target=target,
+            tohost=tohost,
+            trace_mode=TraceMode.notrace,
+            spike_config=spike_config,
         )
 
         directory = output / "stack-limit"
@@ -192,7 +199,12 @@ def check_native_failures(root, target, config, names, cook, run):
         other = compile_root / second / f"{second}.elf"
         tohost = (compile_root / first / f"{first}.add_tohost").read_text().strip()
         command = testharness_command(
-            binary, elf, target=target, tohost=tohost, trace_mode=TraceMode.notrace
+            binary,
+            elf,
+            target=target,
+            tohost=tohost,
+            trace_mode=TraceMode.notrace,
+            spike_config=spike_config,
         )
         command = [
             f"+elf_file={other}" if part.startswith("+elf_file=") else part
