@@ -31,6 +31,7 @@ from flows.recipes.verilator_testharness_run import (
 from flows.utils.logged_process import run_logged_process
 from flows.utils.utils import CompMode, TraceMode
 from prepare_testlists import materialize
+from run_tier1 import checked_suite
 
 
 class Contracts(unittest.TestCase):
@@ -269,6 +270,63 @@ class Contracts(unittest.TestCase):
                 config, lists = materialize(profile, self.root / profile)
                 self.assertEqual(len(batch.enabled_tests(Path(lists["basic"]))), 6)
                 self.assertEqual(len(batch.enabled_tests(Path(lists["arch"]))), count)
+
+    def test_evidence_reconciliation_rejects_changed_native_result(self):
+        with chdir(self.root):
+            self.write(Path("list.yml"), dict(testlist=[dict(test="a", iterations=1)]))
+            directory = simulation_directory(self.root, "t", "a_0", CompMode.rtl, True)
+            self.write(
+                directory / "result.yml",
+                dict(
+                    target="t",
+                    test_name="a_0",
+                    status="PASS",
+                    detail="native ok",
+                    tandem_enabled=True,
+                    iss_enabled=False,
+                ),
+            )
+            self.write(
+                directory / "cook_manifest.yml",
+                dict(
+                    recipe="verilator-testharness-run",
+                    options=dict(
+                        target="t",
+                        test_name="a_0",
+                        comp_mode="rtl",
+                        trace_mode="notrace",
+                        tandem_enabled=True,
+                        iss_enabled=False,
+                        interactive_gui=False,
+                    ),
+                ),
+            )
+            self.write(directory / "execution.yml", dict(exit_code=0, timed_out=False))
+            (directory / "testharness.log").write_text("*** SUCCESS *** (tohost = 0)\n")
+            self.write(directory / "testharness.log.yaml", self.good)
+            output = batch.report_path(
+                self.root, "t", batch.Simulator.verilator, "list.yml", True
+            )
+            batch.write_reports(
+                output,
+                [dict(test_name="a_0", status="PASS", detail="native ok")],
+                dict(
+                    target="t",
+                    testlist="list.yml",
+                    simulator="verilator",
+                    comp_mode="rtl",
+                    trace_mode="notrace",
+                    tandem_enabled=True,
+                    iss_enabled=False,
+                ),
+                True,
+            )
+            self.assertEqual(checked_suite(self.root, "t", "list.yml")["passed"], 1)
+            self.write(
+                directory / "testharness.log.yaml", {**self.good, "mismatches_count": 1}
+            )
+            with self.assertRaises(ValueError):
+                checked_suite(self.root, "t", "list.yml")
 
 
 if __name__ == "__main__":

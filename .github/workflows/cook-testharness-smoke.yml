@@ -88,3 +88,4 @@ jobs:
             build/cv32a65x_axi/elab/sim_rtl_verilator_testharness/compilation.*
             build/cv32a65x_axi/elab/sim_rtl_verilator_testharness/cook_manifest.yml
             build/cv32a65x_axi/elab/sim_rtl_verilator_testharness/verilator.version
+            build/cv32a65x_axi/elab/sim_rtl_verilator_testharness/Variane_testharness
