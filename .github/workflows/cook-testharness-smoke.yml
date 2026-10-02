@@ -2,7 +2,12 @@
 # SPDX-License-Identifier: Apache-2.0
 name: Cook Verilator TestHarness smoke
 on:
-  workflow_call: {}
+  workflow_call:
+    inputs:
+      cold_tools:
+        description: Prepare tools without cache reuse
+        type: boolean
+        default: false
   # Manual runs require this workflow to exist on the repository's default branch.
   workflow_dispatch: {}
   push:
@@ -49,6 +54,7 @@ jobs:
         uses: ./.github/cook/setup
         with:
           verilator-version: '5.050'
+          cold-tools: ${{ inputs.cold_tools || false }}
       - name: Compile, run and validate both Hello tests
         id: smoke
         env:

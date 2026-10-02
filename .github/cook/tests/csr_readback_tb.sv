@@ -72,6 +72,10 @@ module csr_readback_tb;
     rst_n = 1;
 
     // PMP tests use the CSR interface, not a reimplementation of its WARL logic.
+    if (Cfg.NrPMPEntries == 0) begin
+      write_check(riscv::CSR_PMPCFG0, '1, '1, '0, "No PMP: PMPCFG reads zero");
+      write_check(riscv::CSR_PMPADDR0, '1, '1, '0, "No PMP: PMPADDR reads zero");
+    end else begin
     write_check(riscv::CSR_PMPCFG0, 'h7, 'hff, 'h7, "PMP OFF");
     write_check(riscv::CSR_PMPCFG0, 'h17, 'hff, 'h7, "NA4 retains OFF");
     write_check(riscv::CSR_PMPCFG0, 'h1f, 'hff, Cfg.PMPNapotEn ? 'h1f : 'h7, "NAPOT from OFF");
@@ -80,6 +84,7 @@ module csr_readback_tb;
     write_check(riscv::CSR_PMPCFG0, 'h1f, 'hff, Cfg.PMPNapotEn ? 'h1f : 'hf, "NAPOT from TOR");
     write_check(riscv::CSR_PMPCFG0, 'h8f, 'hff, 'h8f, "PMP lock TOR");
     write_check(riscv::CSR_PMPCFG0, 'h0, 'hff, 'h8f, "PMP locked entry unchanged");
+    end
 
     if (Cfg.FpPresent) begin
       write_check(riscv::CSR_MSTATUS, 'h6000, sd | 'h6000, sd | 'h6000, "FS Dirty sets SD immediately");

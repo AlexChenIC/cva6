@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # Copyright 2026 OpenHW Foundation
 # SPDX-License-Identifier: Apache-2.0
-"""Materialize Cook lists from the legacy CI selections without running legacy flows."""
+"""Copy Thales Cook base lists; retain the old selection for explicit diagnostics."""
 
 import argparse
 import copy
@@ -15,19 +15,28 @@ def read(path):
     return yaml.safe_load(path.read_text(encoding="utf-8"))
 
 
-def materialize(profile, output):
-    config = read(Path(".github/cook/tier1.yml"))["profiles"][profile]
+def materialize(profile, output, diagnostic=False):
+    selection = "diagnostic_profiles" if diagnostic else "profiles"
+    config = read(Path(".github/cook/tier1.yml"))[selection][profile]
     output.mkdir(parents=True, exist_ok=True)
-    basic_path, arch_path = map(Path, (config["basic_source"], config["arch_source"]))
+    basic_path = Path(config["basic_source"])
     source = read(basic_path)["testlist"]
+    if not diagnostic and [entry["test"] for entry in source] != config["basic_tests"]:
+        raise ValueError(
+            "Thales base list changed; review the complete supported scope"
+        )
     by_name = {entry["test"]: entry for entry in source}
     basic = [copy.deepcopy(by_name[name]) for name in config["basic_tests"]]
-    hello_path = Path("verif/tests/testlist_verilator_testharness_smoke.yaml")
-    hello = copy.deepcopy(read(hello_path)["testlist"][0])
-    # Same original Hello and runtime as the merged smoke, compiled for this XLEN.
-    hello["gcc_opts"] += " -nostdlib -lgcc"
-    basic.append(hello)
-    arch = copy.deepcopy(read(arch_path)["testlist"])
+    sources = [basic_path, Path(".github/cook/tier1.yml")]
+    arch = []
+    if diagnostic:
+        hello_path = Path("verif/tests/testlist_verilator_testharness_smoke.yaml")
+        hello = copy.deepcopy(read(hello_path)["testlist"][0])
+        hello["gcc_opts"] += " -nostdlib -lgcc"
+        basic.append(hello)
+        arch_path = Path(config["arch_source"])
+        arch = copy.deepcopy(read(arch_path)["testlist"])
+        sources.extend((hello_path, arch_path))
     # Legacy RV64 lists repeat lb-align01. Preserve both invocations without
     # overwriting a compiled ELF or hiding the duplicate from the evidence.
     seen, renamed = {}, []
@@ -41,10 +50,13 @@ def materialize(profile, output):
         else:
             seen[name] = copy.deepcopy(entry)
     count = sum(entry.get("iterations", 1) for entry in arch)
-    if count != config["arch_enabled"]:
+    if diagnostic and count != config["arch_enabled"]:
         raise ValueError(f"Legacy enabled count changed: {count}")
     lists = {}
-    for suite, entries in (("basic", basic), ("arch", arch)):
+    suites = [("basic", basic)]
+    if diagnostic:
+        suites.append(("arch", arch))
+    for suite, entries in suites:
         for entry in entries:
             entry["march"], entry["mabi"] = config["march"], config["mabi"]
             # GCC builtins used by the legacy VM runtime must appear after sources.
@@ -61,20 +73,15 @@ def materialize(profile, output):
         lists[suite] = str(path)
     provenance = {
         "profile": profile,
+        "selection": selection,
         **config,
         "lists": lists,
         "renamed_duplicate_invocations": renamed,
         "sources": {
-            str(path): hashlib.sha256(path.read_bytes()).hexdigest()
-            for path in (
-                basic_path,
-                arch_path,
-                hello_path,
-                Path(".github/cook/tier1.yml"),
-            )
+            str(path): hashlib.sha256(path.read_bytes()).hexdigest() for path in sources
         },
         "notes": [
-            "Existing assembly sources, iterations and p/v runtimes are retained.",
+            "Existing assembly sources, compiler options, iterations and runtimes are retained.",
             "Target linker is selected by Cook; compiler ISA/ABI are explicit in tier1.yml.",
             "Live comparison only; no independent Spike or offline trace comparison.",
         ],
@@ -89,5 +96,6 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--profile", choices=("rv32", "rv64"), required=True)
     parser.add_argument("--output", type=Path, default=Path("ci-results/testlists"))
+    parser.add_argument("--diagnostic", action="store_true")
     args = parser.parse_args()
-    materialize(args.profile, args.output)
+    materialize(args.profile, args.output, diagnostic=args.diagnostic)

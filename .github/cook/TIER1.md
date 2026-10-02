@@ -17,37 +17,58 @@ The regression does not invoke `cva6.py`, old shell regression entry points,
 an independent Spike run, or CSV trace comparison. `spike-dasm` remains optional
 trace post-processing, not reference-model checking.
 
-## Coverage migration
+## Supported first-stage scope
 
 The machine-readable selection is `tier1.yml`. Generated lists and source hashes
-are retained in `ci-results/testlists/`; shared legacy lists are not edited.
+are retained in `ci-results/testlists/`; shared Thales lists are not edited.
 
-| Profile | Current target | Selected legacy cases |
+| Profile | Current target | Complete source testlist |
 | --- | --- | --- |
-| RV32 | `cv32a65x_axi` | add/lw/sw/beq/jal + original Hello; 104 enabled arch entries |
-| RV64 | `cv64a6_imafdc_sv39_hpdcache_pmp_mmu_axi` | VM add/ld/sd/beq/jal + original Hello; 193 enabled arch entries |
+| RV32 | `cv32a60x_axi` | `verif/tests/base_rv32_p.yaml`: add/lw/sw/beq/jal |
+| RV64 | `cv64a6_imafdc_sv39_hpdcache_pmp_mmu_axi` | `verif/tests/base_rv64_p.yaml`: add/lw/sw/beq/jal |
 | RTL-only smoke | `cv32a65x_axi` | original and UART Hello, independently and as a testlist |
 
-The nominal live batch selection is 309 invocations. RV64 arch has 192 distinct
-test definitions: the source repeats `rv64i_m-lb-align01`. Both invocations are
-retained; the second gets `-repeat2` so its ELF and results cannot overwrite the
-first. Existing disabled entries remain disabled and do not count as passes.
+The supported batch scope is ten invocations, plus one independent add run per
+profile. These are the complete two Thales base lists, not an ISA compliance suite.
+The materializer preserves sources, runtime, compiler options and iterations,
+adds explicit ISA/ABI, and rejects unexpected list changes instead of dropping cases.
 
-RV32 uses the current M-mode, no-MMU, HPDCache-WT AXI target. RV64 uses the current
-M/S/U, Sv39/MMU, eight-entry PMP, HPDCache-WT AXI target. This is a mapping with
-differences, not four renamed equivalents of the historical RV64 targets:
+RV32 is the existing no-PMP/no-MMU AXI configuration; no RTL configuration is
+modified to get a pass. RV64 retains the existing eight-entry PMP/MMU AXI target,
+whose hardware and some live VM cases were already exercised. First-stage tests
+use the Thales p-mode runtime, not the previous VM runtime: presence of MMU/PMP
+hardware does not establish dedicated MMU/PMP coverage. Both targets/list mappings
+exist in the baseline `.gitlab-ci.yml`. Historical dashboard OK/KO is only context,
+not proof that this Verilator flow passes.
+
+This scope is not four renamed equivalents of the historical RV64 targets:
 
 | Historical target | First-stage disposition |
 | --- | --- |
-| `cv64a6_imafdc_sv39_hpdcache` | Absent target; mapped-with-differences to current WT/PMP/MMU target |
+| `cv64a6_imafdc_sv39_hpdcache` | Absent target; no equivalent full-coverage claim |
 | `cv64a6_imafdc_sv39_hpdcache_wb` | Incomplete target; WB variant deferred |
 | `cv64a6_imafdc_sv39_wb` | Absent target; original WB coverage deferred |
 | `cv64a6_imafdc_sv39` | Absent target; original cache coverage deferred |
 
-Compiler ISA/ABI are explicit in `tier1.yml`. They preserve the legacy test
-families; they do not claim every extension implemented by the current target
-(for example RV32 Zcmt or RV64 Zbkb) is tested. Original assembly and p/v runtimes
-are reused, with the current target linker and GCC runtime library where needed.
+Compiler ISA/ABI are explicit in `tier1.yml`; they are conservative subsets
+of the target ISA, not full extension coverage (e.g. Zcmt/Zbkb are not claimed).
+The existing p runtime, source pin and target linker are used. Private Thales
+toolchains and VCS/UVM execution are not claimed to be identical.
+
+## Preserved diagnostics, not accepted coverage
+
+`workflow_dispatch` with `profile_set=diagnostic` retains the old RV32
+`cv32a65x_axi` PMP failure and RV64 VM/Hello failures, including the original
+309 nominal batch invocations and arch source installation. Failures still make
+that workflow fail; it is explicitly named as diagnostic, not Tier 1 acceptance.
+There is no continue-on-error or CSR filter. Source definitions, disabled entries
+and the explicit RV64 duplicate `lb-align01-repeat2` are preserved.
+
+At revision 4aa9455e1, run 37003390683 found RV32 PMPCFG0 mismatch and RV64
+VM ld exit 32, VM sd timeout, and live Hello RD ADDR mismatch. RV64 VM add/beq/jal
+passed. The new scope does not claim to fix these problems. Zcmt, dedicated PMP,
+AMO, VM, arch and OBI coverage remain deferred; de-scoping requires maintainer
+agreement before any old CI task can be retired.
 
 ## Live versus RTL-only
 
@@ -77,26 +98,31 @@ manifests/receipts. Software compilation and ELF post-processing check exit code
 Use recursive submodules, GCC, Verilator 5.050 and the pinned vendor Spike libraries.
 Set `RISCV`, `SPIKE_INSTALL_DIR`, `VERILATOR_INSTALL_DIR`, `CV_SW_PREFIX`
 and `NUM_JOBS` as in the reusable setup action. Install `flows/requirements.txt`
-with `.github/cook/constraints.txt`. Prepare the pinned riscv-tests and
-riscv-arch-test sources using the two installation helpers in the workflow.
+with `.github/cook/constraints.txt`. Prepare pinned riscv-tests using the workflow
+installation helper; riscv-arch-test is needed only in diagnostic mode.
 
 ```sh
 export CONFIG_DIR="$PWD/ci-results/cook-config"
 python3 .github/cook/prepare_toolchains.py --output-dir "$CONFIG_DIR" --tandem-enabled
 python3 .github/cook/prepare_testlists.py --profile rv32
-python3 cook.py verilator-testharness-comp -t cv32a65x_axi --tandem-enabled
-python3 cook.py sw-compile-testlist -t cv32a65x_axi -c github_actions_gcc -l ci-results/testlists/rv32-basic.yaml
-python3 cook.py verilator-testharness-run -t cv32a65x_axi -n rv32ui-p-add_0 --tandem-enabled
-python3 cook.py testharness-run-testlist -s verilator -t cv32a65x_axi -l ci-results/testlists/rv32-basic.yaml --tandem-enabled
+python3 cook.py verilator-testharness-comp -t cv32a60x_axi --tandem-enabled
+python3 cook.py sw-compile-testlist -t cv32a60x_axi -c github_actions_gcc -l ci-results/testlists/rv32-basic.yaml
+python3 cook.py verilator-testharness-run -t cv32a60x_axi -n rv32ui-p-add_0 --tandem-enabled
+python3 cook.py testharness-run-testlist -s verilator -t cv32a60x_axi -l ci-results/testlists/rv32-basic.yaml --tandem-enabled
 ```
 
-The CI controller `run_tier1.py --profile rv32 --suite full` requires a fresh target
+The CI controller `run_tier1.py --profile rv32` requires a fresh target
 build directory and performs the complete positive and negative validation.
 Run each profile in an independent checkout, as hosted jobs do.
+Use `--diagnostic` only for the preserved diagnostic selection.
+For same-SHA cold/warm validation, dispatch supported mode with `cold_tools=true`
+(all three tool caches bypassed, including smoke), then false. Neither run caches
+the DUT or software ELF. A green warm run does not replace cold verification.
 
 ## Evidence and expected errors
 
 Three main artifacts contain RTL-only smoke, RV32 live, and RV64 live evidence.
+Live artifact names end in `-supported` or `-diagnostic` to separate their scope.
 Native reports live beside per-test logs/results; `execution.yml` records process
 exit/timeout; `simulation.command.json` records the actual simulator argv.
 Software ELFs, compilation commands/manifests and generated lists are uploaded,
@@ -109,6 +135,11 @@ genuine test ELFs into RTL and Spike. Each must
 fail simulation and pass its failure-detection assertion. Their expected errors
 are confined to `ci-results/native-negative` and the `ci-loop` output, not waived
 for any positive regression test.
+
+The real CSR module readback test is also AI-added diagnostic coverage, not a
+Thales ISA test. No-PMP configurations check zero readback; PMP configurations
+check OFF/TOR/NAPOT/locking; FP configurations exercise immediate FS/SD readback.
+The existing one-line SD next-state RTL fix remains a separately reviewable commit.
 
 The acceptance job fails on failed, cancelled or skipped required jobs. This
 candidate isolates its fork push from legacy `ci.yml` but does not retire upstream

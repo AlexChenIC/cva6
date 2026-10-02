@@ -338,9 +338,49 @@ mismatches:
     def test_legacy_lists_keep_enabled_counts(self):
         for profile, count in (("rv32", 104), ("rv64", 193)):
             with self.subTest(profile=profile):
-                config, lists = materialize(profile, self.root / profile)
+                config, lists = materialize(
+                    profile, self.root / profile, diagnostic=True
+                )
                 self.assertEqual(len(batch.enabled_tests(Path(lists["basic"]))), 6)
                 self.assertEqual(len(batch.enabled_tests(Path(lists["arch"]))), count)
+
+    def test_supported_lists_match_complete_thales_sources(self):
+        for profile in ("rv32", "rv64"):
+            with self.subTest(profile=profile):
+                config, lists = materialize(profile, self.root / profile)
+                source = yaml.safe_load(Path(config["basic_source"]).read_text())[
+                    "testlist"
+                ]
+                actual = yaml.safe_load(Path(lists["basic"]).read_text())["testlist"]
+                self.assertEqual(list(lists), ["basic"])
+                self.assertEqual(len(batch.enabled_tests(Path(lists["basic"]))), 5)
+                self.assertEqual(
+                    actual,
+                    [
+                        dict(entry, march=config["march"], mabi=config["mabi"])
+                        for entry in source
+                    ],
+                )
+                provenance = yaml.safe_load(
+                    (self.root / profile / f"{profile}-provenance.yml").read_text()
+                )
+                self.assertEqual(provenance["selection"], "profiles")
+                self.assertEqual(provenance["renamed_duplicate_invocations"], [])
+
+    def test_supported_scope_drift_is_not_silently_filtered(self):
+        import prepare_testlists
+
+        original = prepare_testlists.read
+
+        def changed(path):
+            data = original(path)
+            if path.name == "base_rv32_p.yaml":
+                data["testlist"].append(dict(data["testlist"][0], test="new-case"))
+            return data
+
+        with patch.object(prepare_testlists, "read", side_effect=changed):
+            with self.assertRaisesRegex(ValueError, "Thales base list changed"):
+                materialize("rv32", self.root)
 
     def test_evidence_reconciliation_rejects_changed_native_result(self):
         with chdir(self.root):

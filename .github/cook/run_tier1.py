@@ -136,7 +136,7 @@ def checked_suite(root, target, testlist):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--profile", choices=("rv32", "rv64"), required=True)
-    parser.add_argument("--suite", choices=("basic", "full"), default="full")
+    parser.add_argument("--diagnostic", action="store_true")
     args = parser.parse_args()
     root, output = Path.cwd(), Path("ci-results")
     output.mkdir(exist_ok=True)
@@ -144,6 +144,7 @@ def main():
         "status": "FAIL",
         "profile": args.profile,
         "validation_mode": "live-tandem",
+        "selection": "diagnostic_profiles" if args.diagnostic else "profiles",
         "commands": [],
         "suites": {},
     }
@@ -180,7 +181,9 @@ def main():
 
     rc = 1
     try:
-        config, lists = materialize(args.profile, output / "testlists")
+        config, lists = materialize(
+            args.profile, output / "testlists", diagnostic=args.diagnostic
+        )
         target = config["target"]
         evidence["target"] = target
         evidence["source_revision"] = subprocess.check_output(
@@ -201,7 +204,7 @@ def main():
             "--quiet",
         ]
         run("compile-testharness", cook + ["verilator-testharness-comp"] + common)
-        suites = ("basic", "arch") if args.suite == "full" else ("basic",)
+        suites = tuple(lists)
         for suite in suites:
             testlist = lists[suite]
             run(
@@ -272,7 +275,9 @@ def main():
                         f"- {suite}: {result['passed']} PASS / {result['failed']} FAIL; native comparison reports checked.\n"
                     )
                 stream.write(
-                    "\nNot full historical cache coverage. Exclusions are in tier1.yml.\n"
+                    "\nScope: "
+                    + evidence["selection"]
+                    + ". Not full ci.yml or Thales coverage; exclusions are in tier1.yml.\n"
                 )
     return rc
 

@@ -2,7 +2,17 @@
 # SPDX-License-Identifier: Apache-2.0
 name: Cook Tier 1 live tandem
 on:
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      profile_set:
+        description: Supported Thales base lists or the preserved failing diagnostic matrix
+        type: choice
+        options: [supported, diagnostic]
+        default: supported
+      cold_tools:
+        description: Rebuild tools without restoring or saving tool caches
+        type: boolean
+        default: false
   push:
     branches: [jchen/master-candidate-cook-tier1-live-tandem, master_candidate]
   pull_request:
@@ -32,8 +42,10 @@ jobs:
       - run: python3 -m unittest discover -s .github/cook/tests -v
   smoke:
     uses: ./.github/workflows/cook-testharness-smoke.yml
+    with:
+      cold_tools: ${{ inputs.cold_tools || false }}
   live:
-    name: ${{ matrix.profile }} / live Spike tandem
+    name: ${{ matrix.profile }} / ${{ inputs.profile_set || 'supported' }} / live Spike tandem
     runs-on: ubuntu-24.04
     timeout-minutes: 100
     strategy:
@@ -56,34 +68,44 @@ jobs:
           python3 -m pip install -c .github/cook/constraints.txt -r flows/requirements.txt
           python3 -m pip freeze > ci-results/python-packages.txt
       - uses: ./.github/cook/setup
+        with:
+          cold-tools: ${{ inputs.cold_tools || false }}
       - name: Check immediate CSR readback in real RTL (not ISA coverage)
         env:
           PROFILE: ${{ matrix.profile }}
+          PROFILE_SET: ${{ inputs.profile_set || 'supported' }}
         run: |
-          target=$(python3 -c 'import os,yaml; print(yaml.safe_load(open(".github/cook/tier1.yml"))["profiles"][os.environ["PROFILE"]]["target"])')
+          target=$(python3 -c 'import os,yaml; key="diagnostic_profiles" if os.environ["PROFILE_SET"]=="diagnostic" else "profiles"; print(yaml.safe_load(open(".github/cook/tier1.yml"))[key][os.environ["PROFILE"]]["target"])')
           python3 .github/cook/check_csr_readback.py --target "$target" --output ci-results/csr-readback
-      - name: Prepare pinned legacy test sources (not legacy execution flows)
+      - name: Prepare pinned test sources (not legacy execution flows)
         shell: bash
+        env:
+          PROFILE_SET: ${{ inputs.profile_set || 'supported' }}
         run: |
           set -eo pipefail
           source verif/regress/install-riscv-tests.sh
-          source verif/regress/install-riscv-arch-test.sh
           git -C verif/tests/riscv-tests rev-parse HEAD > ci-results/riscv-tests-revision.txt
           git -C verif/tests/riscv-tests diff > ci-results/riscv-tests.patch
-          git -C verif/tests/riscv-arch-test rev-parse HEAD > ci-results/riscv-arch-test-revision.txt
+          if [ "$PROFILE_SET" = diagnostic ]; then
+            source verif/regress/install-riscv-arch-test.sh
+            git -C verif/tests/riscv-arch-test rev-parse HEAD > ci-results/riscv-arch-test-revision.txt
+          fi
       - name: Cook compile, single run and live testlist
         env:
           CONFIG_DIR: ${{ github.workspace }}/ci-results/cook-config
           PROFILE: ${{ matrix.profile }}
+          PROFILE_SET: ${{ inputs.profile_set || 'supported' }}
         run: |
           ulimit -c 0
           python3 .github/cook/prepare_toolchains.py --output-dir "$CONFIG_DIR" --tandem-enabled
-          python3 .github/cook/run_tier1.py --profile "$PROFILE" --suite full
+          args=()
+          if [ "$PROFILE_SET" = diagnostic ]; then args+=(--diagnostic); fi
+          python3 .github/cook/run_tier1.py --profile "$PROFILE" "${args[@]}"
       - name: Upload available evidence, including failures
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: cook-tier1-live-${{ matrix.profile }}
+          name: cook-tier1-live-${{ matrix.profile }}-${{ inputs.profile_set || 'supported' }}
           retention-days: 14
           if-no-files-found: error
           path: |
@@ -96,7 +118,7 @@ jobs:
             build/*/elab/*/verilator.version
             build/*/elab/*/Variane_testharness
   acceptance:
-    name: Cook Tier 1 acceptance
+    name: ${{ inputs.profile_set == 'diagnostic' && 'Diagnostic outcome (not Tier 1 acceptance)' || 'Cook Tier 1 acceptance' }}
     if: always()
     needs: [contracts, smoke, live]
     runs-on: ubuntu-24.04
