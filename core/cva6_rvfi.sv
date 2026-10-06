@@ -592,12 +592,12 @@ module cva6_rvfi
   `define CONNECT_RVFI_FULL(CSR_ENABLE_COND, CSR_NAME, CSR_SOURCE_NAME) \
   always_ff @(posedge clk_i) begin \
       if (CSR_ENABLE_COND) begin \
-          rvfi_csr_o.``CSR_NAME``.rdata <= {{CVA6Cfg.XLEN - $bits(CSR_SOURCE_NAME)}, CSR_SOURCE_NAME}; \
+          rvfi_csr_o.``CSR_NAME``.rdata <= {{(CVA6Cfg.XLEN - $bits(CSR_SOURCE_NAME)){1'b0}}, CSR_SOURCE_NAME}; \
       end \
   end \
-  assign rvfi_csr_o.``CSR_NAME``.wdata = CSR_ENABLE_COND ? { {{CVA6Cfg.XLEN-$bits(CSR_SOURCE_NAME)}, CSR_SOURCE_NAME} } : 0; \
+  assign rvfi_csr_o.``CSR_NAME``.wdata = CSR_ENABLE_COND ? {{(CVA6Cfg.XLEN-$bits(CSR_SOURCE_NAME)){1'b0}}, CSR_SOURCE_NAME} : 0; \
   assign rvfi_csr_o.``CSR_NAME``.rmask = CSR_ENABLE_COND ? 1 : 0; \
-  assign rvfi_csr_o.``CSR_NAME``.wmask = (rvfi_csr_o.``CSR_NAME``.rdata != {{CVA6Cfg.XLEN - $bits(CSR_SOURCE_NAME)}, CSR_SOURCE_NAME}) && CSR_ENABLE_COND;
+  assign rvfi_csr_o.``CSR_NAME``.wmask = (rvfi_csr_o.``CSR_NAME``.rdata != {{(CVA6Cfg.XLEN - $bits(CSR_SOURCE_NAME)){1'b0}}, CSR_SOURCE_NAME}) && CSR_ENABLE_COND;
 
   `define CONNECT_RVFI_SAME(CSR_ENABLE_COND, CSR_NAME) \
           `CONNECT_RVFI_FULL(CSR_ENABLE_COND, CSR_NAME, csr.``CSR_NAME``_q)
@@ -689,7 +689,7 @@ module cva6_rvfi
     bit [CVA6Cfg.XLEN-1:0] pmpaddr_q;
     genvar i;
     for (i = 0; i < 16; i++) begin
-      `CONNECT_RVFI_FULL(1'b1, pmpaddr[i], {csr.pmpaddr_q[i][CVA6Cfg.PLEN-3:1], pmpcfg_q[i].addr_mode[1]})
+      `CONNECT_RVFI_FULL(1'b1, pmpaddr[i], {csr.pmpaddr_q[i][CVA6Cfg.PLEN-3:1], (CVA6Cfg.PMPNapotEn && csr.pmpcfg_q[i].addr_mode[1])})
     end
     ;
   end

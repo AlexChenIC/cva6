@@ -1,0 +1,132 @@
+# Copyright 2026 OpenHW Foundation
+# SPDX-License-Identifier: Apache-2.0
+name: Cook Stage 1 Verilator
+on:
+  workflow_dispatch:
+    inputs:
+      selection:
+        description: Required Tier 1, diagnostics, or bounded manual Tier 2 pilot
+        type: choice
+        options: [profiles, diagnostics, pilots]
+        default: profiles
+      cold_tools:
+        description: Build tools without restoring or saving caches
+        type: boolean
+        default: false
+  push:
+    branches: [jchen/master-candidate-cook-stage1-20261006]
+  pull_request:
+    branches: [master_candidate]
+permissions:
+  contents: read
+concurrency:
+  group: cook-stage1-${{ github.ref }}-${{ inputs.selection || 'profiles' }}
+  cancel-in-progress: true
+env:
+  NUM_JOBS: '2'
+  NO_COLOR: '1'
+  TERM: dumb
+jobs:
+  plan:
+    runs-on: ubuntu-24.04
+    outputs:
+      profiles: ${{ steps.plan.outputs.profiles }}
+    steps:
+      - uses: actions/checkout@v7
+        with: {persist-credentials: false}
+      - uses: actions/setup-python@v6
+        with: {python-version: '3.11'}
+      - run: python3 -m pip install pyyaml==6.0.3
+      - id: plan
+        env:
+          SELECTION: ${{ inputs.selection || 'profiles' }}
+        run: |
+          python3 -c 'import os,json,yaml; c=yaml.safe_load(open(".github/cook/stage1.yml")); print("profiles="+json.dumps(list(c[os.environ["SELECTION"]])))' >> "$GITHUB_OUTPUT"
+  contracts:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with: {persist-credentials: false}
+      - uses: actions/setup-python@v6
+        with: {python-version: '3.11'}
+      - run: python3 -m pip install -c .github/cook/constraints.txt -r flows/requirements.txt
+      - run: python3 -m unittest discover -s .github/cook/tests -v
+  smoke:
+    uses: ./.github/workflows/cook-testharness-smoke.yml
+    with:
+      cold_tools: ${{ inputs.cold_tools || false }}
+  live:
+    needs: plan
+    name: ${{ matrix.profile }} / ${{ inputs.selection || 'profiles' }} / live
+    runs-on: ubuntu-24.04
+    timeout-minutes: 110
+    strategy:
+      fail-fast: false
+      matrix:
+        profile: ${{ fromJSON(needs.plan.outputs.profiles) }}
+    steps:
+      - uses: actions/checkout@v7
+        with: {submodules: recursive, persist-credentials: false}
+      - uses: actions/setup-python@v6
+        with: {python-version: '3.11'}
+      - name: Record source and dependencies
+        run: |
+          mkdir -p ci-results
+          git rev-parse HEAD > ci-results/source-revision.txt
+          git submodule status --recursive > ci-results/submodules.txt
+          python3 -m pip install -c .github/cook/constraints.txt -r flows/requirements.txt
+          python3 -m pip freeze > ci-results/python-packages.txt
+      - uses: ./.github/cook/setup
+        with:
+          cold-tools: ${{ inputs.cold_tools || false }}
+      - name: Prepare pinned software sources
+        run: |
+          set -eo pipefail
+          source verif/regress/install-riscv-tests.sh
+          git -C verif/tests/riscv-tests rev-parse HEAD > ci-results/riscv-tests-revision.txt
+          git -C verif/tests/riscv-tests diff > ci-results/riscv-tests.patch
+      - name: Run real CSR readback checks
+        env:
+          SELECTION: ${{ inputs.selection || 'profiles' }}
+          PROFILE: ${{ matrix.profile }}
+        run: |
+          target=$(python3 -c 'import os,yaml; print(yaml.safe_load(open(".github/cook/stage1.yml"))[os.environ["SELECTION"]][os.environ["PROFILE"]]["target"])')
+          python3 .github/cook/check_csr_readback.py --target "$target" --output ci-results/csr-readback
+      - name: Compile and execute Cook suites
+        env:
+          CONFIG_DIR: ${{ github.workspace }}/ci-results/cook-config
+          SELECTION: ${{ inputs.selection || 'profiles' }}
+          PROFILE: ${{ matrix.profile }}
+        run: |
+          ulimit -c 0
+          python3 .github/cook/prepare_toolchains.py --output-dir "$CONFIG_DIR" --tandem-enabled
+          python3 .github/cook/run_stage1.py --selection "$SELECTION" --profile "$PROFILE"
+      - name: Upload available native and unified Cook evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cook-stage1-${{ inputs.selection || 'profiles' }}-${{ matrix.profile }}
+          retention-days: 14
+          if-no-files-found: error
+          path: |
+            ci-results/
+            !ci-results/csr-readback/obj/
+            build/*/compile/
+            build/*/simulation/
+            build/*/elab/*/compilation.*
+            build/*/elab/*/cook_manifest.yml
+            build/*/elab/*/cook_report.yml
+            build/*/elab/*/Flist.live
+            build/*/elab/*/verilator.version
+            build/*/elab/*/Variane_testharness
+  acceptance:
+    name: ${{ inputs.selection == 'diagnostics' && 'Diagnostic result (not Tier 1 acceptance)' || inputs.selection == 'pilots' && 'Manual Tier 2 pilot acceptance' || 'Cook Stage 1 required acceptance' }}
+    if: always()
+    needs: [plan, contracts, smoke, live]
+    runs-on: ubuntu-24.04
+    steps:
+      - env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: |
+          python3 -c 'import json,os; n=json.loads(os.environ["RESULTS"]); print(n); assert all(j["result"]=="success" for j in n.values()), "Missing, failed, skipped or cancelled mandatory job"'

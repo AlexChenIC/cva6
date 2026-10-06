@@ -1,0 +1,17 @@
+# Copyright 2026 OpenHW Foundation
+# SPDX-License-Identifier: Apache-2.0
+# Bounded pilot using existing riscv-tests assembly, not assistant-written ISA tests.
+common: &common
+  iterations: 1
+  path_var: TESTS_PATH
+  gcc_opts: "-static -mcmodel=medany -fvisibility=hidden -nostdlib -nostartfiles -I<path_var>/riscv-tests/isa/macros/scalar/ -I<path_var>/riscv-tests/env/p/ -I<path_var>/riscv-tests/riscv-target/spike/ -lgcc"
+testlist:
+  - test: rv32ui-p-sub
+    <<: *common
+    asm_tests: <path_var>/riscv-tests/isa/rv32ui/sub.S
+  - test: rv32ui-p-xor
+    <<: *common
+    asm_tests: <path_var>/riscv-tests/isa/rv32ui/xor.S
+  - test: rv32ui-p-sll
+    <<: *common
+    asm_tests: <path_var>/riscv-tests/isa/rv32ui/sll.S

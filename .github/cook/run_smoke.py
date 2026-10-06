@@ -179,6 +179,8 @@ def cook_commands():
                 TARGET,
                 "--trace-mode",
                 "notrace",
+                "--jobs",
+                "2",
                 "--quiet",
             ],
         ),
@@ -364,7 +366,7 @@ def main():  # pylint: disable=too-many-locals,too-many-branches,too-many-statem
                 # keep what the single runs left before it overwrites them.
                 saved = output / "single" / label
                 saved.mkdir(parents=True)
-                for name in ("testharness.log", REPORT, MANIFEST):
+                for name in ("testharness.log", REPORT, MANIFEST, "result.yml", "execution.yml", "simulation.command.json"):
                     shutil.copy2(root / RUNS / label / name, saved / name)
 
         for name in TESTS:

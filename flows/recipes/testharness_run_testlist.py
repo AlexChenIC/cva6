@@ -30,6 +30,7 @@ from flows.utils.autocompletion import (
     autocompletion_testlist,
 )
 from flows.utils.recipe_report import RecipeReport
+from flows.utils.testharness import simulation_directory, validate_path_component
 from flows.recipes.questa_testharness_run import questa_testharness_run
 from flows.recipes.vcs_testharness_run import vcs_testharness_run
 from flows.recipes.verilator_testharness_run import (
@@ -82,6 +83,9 @@ def testharness_run_testlist(
     sim_timeout: int = typer.Option(
         SIMULATION_TIMEOUT, "--sim-timeout", help="Simulation timeout in seconds"
     ),
+    tandem_enabled: bool = typer.Option(
+        False, help="Require native live Spike/RVFI comparison (Verilator)"
+    ),
     uvm_verbosity: UvmVerbosity = typer.Option(
         # LOW rather than NONE: the harness reports its verdict with
         # `uvm_info(..., UVM_LOW)`, and NONE drops the line the recipes
@@ -97,13 +101,14 @@ def testharness_run_testlist(
     Run a testlist on the TestHarness testbench
     """
     repo_dir = Path.cwd()
+    target = validate_path_component(target, "target")
     testlist_file = Path(testlist)
     build_root = repo_dir / "build" / target
     report = RecipeReport(
         "testharness-run-testlist",
         out_dir=build_root
         / "simulation"
-        / f"testharness_{simulator.value}_{testlist_file.stem}",
+        / f"testharness_{simulator.value}_{testlist_file.stem}{'_tandem' if tandem_enabled else ''}",
         title="TESTHARNESS TESTLIST RUN",
         context={
             "simulator": simulator.value,
@@ -111,10 +116,18 @@ def testharness_run_testlist(
             "testlist": testlist,
             "comp_mode": comp_mode.value,
             "trace_mode": trace_mode.value,
+            "tandem_enabled": tandem_enabled,
         },
         quiet=quiet,
     )
     results = report.metric("Test results")
+    report.out_dir.joinpath("cook_report.yml").unlink(missing_ok=True)
+    if tandem_enabled and simulator != Simulator.verilator:
+        report.error_exit(
+            "Live mode in this recipe is implemented for Verilator only", env=True
+        )
+    if type(sim_timeout) is not int or sim_timeout < 1:
+        report.error_exit("sim_timeout must be positive", env=True)
 
     report.step("Read the testlist")
     if not testlist_file.is_file():
@@ -135,8 +148,18 @@ def testharness_run_testlist(
             report.error_exit(
                 f"Each entry of {testlist_file} needs a string 'test'", env=True
             )
-        for iteration in range(entry.get("iterations", 1)):
-            names.append(f"{entry['test']}_{iteration}")
+        try:
+            validate_path_component(entry["test"], "test")
+        except ValueError as error:
+            report.error_exit(str(error), env=True)
+        iterations = entry.get("iterations", 1)
+        if type(iterations) is not int or iterations < 0:
+            report.error_exit("iterations must be a nonnegative integer", env=True)
+        for iteration in range(iterations):
+            name = f"{entry['test']}_{iteration}"
+            if name in names:
+                report.error_exit(f"Duplicate compiled test: {name}", env=True)
+            names.append(name)
     if not names:
         report.error_exit(f"No enabled test in {testlist_file}", env=True)
     report.success(f"{len(names)} test(s) to run")
@@ -146,6 +169,12 @@ def testharness_run_testlist(
         run_dir = (
             build_root / "simulation" / f"sim_rtl_{simulator.value}_testharness" / name
         )
+        if simulator == Simulator.verilator:
+            run_dir = simulation_directory(
+                repo_dir, target, name, comp_mode, tandem_enabled
+            )
+            for stale in ("cook_report.yml", "result.yml", "cook_manifest.yml"):
+                (run_dir / stale).unlink(missing_ok=True)
         # Each test already has its own output directory, hence run_name.
         # The options are passed explicitly: one left out of a recipe
         # called as a plain function arrives as the Typer descriptor,
@@ -162,7 +191,9 @@ def testharness_run_testlist(
         try:
             if simulator == Simulator.verilator:
                 # Only Verilator opens a waveform viewer of its own.
-                verilator_testharness_run(interactive_gui=False, **arguments)
+                verilator_testharness_run(
+                    interactive_gui=False, tandem_enabled=tandem_enabled, **arguments
+                )
             else:
                 # The event-driven simulators take the UVM verbosity, the
                 # harness reporting its verdict through uvm_info.
@@ -173,9 +204,27 @@ def testharness_run_testlist(
                     questa_testharness_run(**arguments)
                 else:
                     xcelium_testharness_run(**arguments)
+            child = yaml.safe_load((run_dir / "cook_report.yml").read_text())
+            if not isinstance(child, dict) or child.get("status") != "pass":
+                raise ValueError("Missing or failing child Cook report")
+            if simulator == Simulator.verilator:
+                receipt = yaml.safe_load((run_dir / "result.yml").read_text())
+                if not isinstance(receipt, dict) or any(
+                    receipt.get(k) != v
+                    for k, v in dict(
+                        target=target,
+                        test_name=name,
+                        status="PASS",
+                        tandem_enabled=tandem_enabled,
+                    ).items()
+                ):
+                    raise ValueError("Missing or inconsistent child result")
             results.add_row(status="pass", test=name, report=str(run_dir))
         except typer.Exit:
             report.error(f"{name}: Returned error")
+            results.add_row(status="fail", test=name, report=str(run_dir))
+        except (OSError, TypeError, ValueError, yaml.YAMLError) as error:
+            report.error(f"{name}: {error}")
             results.add_row(status="fail", test=name, report=str(run_dir))
 
     report.print_metric(results)

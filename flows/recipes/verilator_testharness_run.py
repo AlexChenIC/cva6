@@ -12,15 +12,16 @@
 """
 Run one test on the Verilator TestHarness.
 
-The harness prints its verdict rather than returning it: the simulation
-exits 0 whatever the program did, so the log is what says whether the
-test passed.
+Require a normal process exit and successful tohost. In live mode the native
+RVFI report must additionally show nonzero comparisons and zero mismatches.
 """
 
 from pathlib import Path
 import re
 import shutil
 import stat
+
+import yaml
 
 import typer
 
@@ -38,7 +39,7 @@ from flows.utils.manifest import (
     write_manifest,
 )
 from flows.utils.recipe_report import RecipeReport
-from flows.utils.run_cmd import run_cmd
+from flows.utils.testharness import run_test, simulation_directory, read_tandem_report
 
 app = typer.Typer()
 
@@ -87,266 +88,94 @@ def verilator_testharness_run(
         help="Name of the output directory, when the same test is run more "
         "than once on the same design (default: the test name)",
     ),
+    tandem_enabled: bool = typer.Option(
+        False, help="Require native live Spike/RVFI comparison"
+    ),
     quiet: bool = typer.Option(
         False, "--quiet", "-q", help="Suppress output (errors only)"
     ),
 ):
-    """
-    Run one test on the Verilator TestHarness
-    """
+    """Run one ELF; require native zero-mismatch evidence in live mode."""
     report = RecipeReport(
         "verilator-testharness-run",
         title="VERILATOR TESTHARNESS RUN",
-        context={
-            "target": target,
-            "test_name": test_name,
-            "comp_mode": comp_mode,
-            "trace_mode": trace_mode,
-            "interactive_gui": interactive_gui,
-            "sim_timeout": sim_timeout,
-            "run_name": run_name,
-        },
+        context=dict(
+            target=target,
+            test_name=test_name,
+            comp_mode=comp_mode,
+            trace_mode=trace_mode,
+            interactive_gui=interactive_gui,
+            sim_timeout=sim_timeout,
+            run_name=run_name,
+            tandem_enabled=tandem_enabled,
+        ),
         quiet=quiet,
     )
-
-    if comp_mode != CompMode.rtl:
-        report.error_exit(
-            f"The TestHarness supports only the rtl compilation mode, got "
-            f"{comp_mode.value}",
-            env=True,
-        )
-    if trace_mode == TraceMode.gui or interactive_gui:
-        report.error_exit("The Verilator TestHarness has no GUI mode", env=True)
-
-    # Create files and folder paths
-    repo_dir = Path.cwd()
-    build_root = repo_dir / "build" / target
-    compile_dir = build_root / "compile" / test_name
-    elab_dir = build_root / "elab" / "sim_rtl_verilator_testharness"
-    # Named after the run rather than the test, so running the same test
-    # twice on one elaboration keeps both outputs and both reports.
-    simulation_dir = (
-        build_root
-        / "simulation"
-        / "sim_rtl_verilator_testharness"
-        / (run_name or test_name)
-    )
-    report.set_out_dir(simulation_dir)
-
-    spike_dir = repo_dir / "tools" / "spike"
-    spike_dasm = spike_dir / "bin" / "spike-dasm"
-    elf = compile_dir / f"{test_name}.elf"
-    binary = elab_dir / "Variane_testharness"
-
-    # ==========================================================
-    # CHECK PREREQUISITES
-    # ==========================================================
-    report.step("Check prerequisites")
-
-    # Software must be compiled first
-    require_prerequisite(
-        elf,
-        f"compiled software for test '{test_name}'",
-        f"./cook.py sw-compile -t {target} -c <toolchain> --out {test_name} <sources>",
-        report=report,
-    )
-
-    # Hardware must be elaborated first
-    require_prerequisite(
-        binary,
-        "Verilator TestHarness",
-        f"./cook.py verilator-testharness-comp -t {target}",
-        report=report,
-    )
-
-    # Options must be compatible with how the design was elaborated
-    elab_manifest = read_manifest(elab_dir, report)
-    compile_manifest = read_manifest(compile_dir, report)
-    if trace_mode != TraceMode.notrace:
-        require_manifest_option(
-            elab_manifest,
-            "trace_mode",
-            [trace_mode.value],
-            f"trace mode '{trace_mode.value}' requires a matching TestHarness build",
-            f"./cook.py verilator-testharness-comp -t {target} "
-            f"--trace-mode {trace_mode.value}",
-            report=report,
-            manifest_dir=elab_dir,
-        )
-
-    report.success("Prerequisites OK")
-
-    # ==========================================================
-    # CLEAN
-    # ==========================================================
-    report.step("Clean")
     try:
-        if simulation_dir.exists():
-            shutil.rmtree(simulation_dir)
-            report.info(f"remove {simulation_dir}")
-    except Exception as e:
-        report.error_exit(f"Clean error : {e}", env=True)
-
-    simulation_dir.mkdir(parents=True, exist_ok=True)
-    report.info(f"create {simulation_dir}")
-
-    # ==========================================================
-    # OPTIONS
-    # ==========================================================
-
-    # Symbol address extracted at compile time (sw-compile manifest):
-    # tohost drives the end-of-test detection
-    symbols = get_manifest_option(compile_manifest, "symbols", {})
-    add_tohost = symbols.get("tohost")
-    if add_tohost is None:
-        report.error_exit(
-            f"No tohost symbol recorded in the sw-compile manifest of {compile_dir}",
-            env=True,
+        directory = simulation_directory(
+            Path.cwd(), target, run_name or test_name, comp_mode, tandem_enabled
         )
-
-    options = []
-    if trace_mode == TraceMode.fast:
-        options += ["--vcd", "verilator.vcd"]
-    elif trace_mode == TraceMode.compact:
-        options += ["--fst", "verilator.fst"]
-
-    # ==========================================================
-    # BUILD SIMULATION COMMAND
-    # ==========================================================
-    sim_cmd = [str(binary)] + options
-    sim_cmd += [
-        "--seed",
-        "1",
-        str(elf),
-        "+tb_performance_mode",
-        # Nothing drives the debug module: left enabled, the SimDTM of the
-        # harness halts a core built with DebugEn into its debug ROM
-        # 500 cycles after reset, and the program crawls through it.
-        "+debug_disable=1",
-        "+UVM_VERBOSITY=UVM_NONE",
-        f"++{elf}",
-        f"+elf_file={elf}",
-        f"+core_name={target}",
-        "+signature=signature_output",
-        "+UVM_TESTNAME=uvmt_cva6_firmware_test_c",
-        "+report_file=testharness.log.yaml",
-        f"+tohost_addr={add_tohost}",
-    ]
-
-    # ==========================================================
-    # LAUNCH SIMULATION
-    # ==========================================================
-    report.step("LAUNCH SIMULATION")
-
-    log_file = simulation_dir / "testharness.log"
-    raw_trace = simulation_dir / "trace_rvfi_hart_00.dasm"
-    dasm_log = simulation_dir / "spike_dasm.log"
-
-    # The driver returns the tohost value of the program: run_cmd records a
-    # non-zero exit code, like a timeout, as a failure of the run.
-    failed_before = report.failed
-    run_cmd(
-        cmd=sim_cmd,
-        report=report,
-        cwd=simulation_dir,
-        error_patterns=[r"(\*\*\* FAILED \*\*\*|^%Error|terminate called)"],
-        warning_patterns=[r"(^%Warning)"],
-        highlight_patterns=[r"\*\*\* SUCCESS \*\*\*"],
-        log_file=log_file,
-        timeout=sim_timeout,
-    )
-    run_failed = report.failed and not failed_before
-
-    # ==========================================================
-    # VERDICT
-    # ==========================================================
-    # The driver prints `*** SUCCESS ***` or `*** FAILED *** (tohost = N)`,
-    # but the log alone is not the verdict: on SIGTERM, which is how a
-    # timeout ends the run, the driver stops the DTM and prints SUCCESS
-    # with an exit code of 0. The failure recorded by run_cmd comes first.
-    # Named after the test: the GitHub smoke reads the verdict of this step
-    report.step(f"Run {test_name}")
-    passed = False
-    text = log_file.read_text(encoding="utf-8", errors="replace")
-    failures = [
-        marker
-        for marker in (
-            "*** FAILED ***",
-            "SIMULATION FAILED",
-            "[FAILED]",
-            "UVM_ERROR",
-            "UVM_FATAL",
+        report.set_out_dir(directory)
+        if type(sim_timeout) is not int or sim_timeout < 1:
+            report.error_exit("sim_timeout must be a positive integer", env=True)
+        report.step(f"Run {test_name}")
+        passed, detail, directory = run_test(
+            target=target,
+            test_name=test_name,
+            comp_mode=comp_mode,
+            trace_mode=trace_mode,
+            interactive_gui=interactive_gui,
+            iss_enabled=False,
+            timeout=sim_timeout,
+            tandem_enabled=tandem_enabled,
+            run_name=run_name,
         )
-        if marker in text
-    ]
-    if failures:
-        report.error(f"{test_name}: failure marker(s): " + ", ".join(failures))
-    elif run_failed:
-        report.error(f"{test_name}: the run did not complete, see above")
-    elif "*** SUCCESS *** (tohost = 0)" not in text:
-        report.error(f"{test_name}: missing successful TestHarness tohost result")
-    else:
-        passed = True
-        report.success(f"{test_name}: TestHarness completed")
-        # The cycle count the driver prints with its verdict, the label
-        # the dashboard shows as for the UVM runs
-        cycles = re.search(r"\*\*\* SUCCESS \*\*\*.* after (\d+) cycles", text)
-        if cycles:
-            report.set_label(f"{int(cycles.group(1)) / 1000:.2f} kCycles")
-
-    # ==========================================================
-    # DISASSEMBLE RVFI TRACE
-    # ==========================================================
-    # Only on a passing run: a failing one is already reported, and its
-    # trace may be cut. A missing trace is skipped, but a path that is
-    # not a regular file is not followed.
-    report.step("Disassemble rvfi trace")
-    if not passed:
-        report.info("Skipped: the simulation did not pass")
-    elif not raw_trace.exists() and not raw_trace.is_symlink():
-        report.info(f"Skipped: {raw_trace.name} not produced")
-    elif not stat.S_ISREG(raw_trace.lstat().st_mode):
-        report.error(f"Raw trace is not a regular file: {raw_trace}")
-    else:
-        with raw_trace.open("rb") as source:
-            run_cmd(
-                cmd=[
-                    str(spike_dasm),
-                    f"--isa={get_manifest_option(compile_manifest, 'march')}",
-                ],
-                report=report,
-                cwd=simulation_dir,
-                stdin=source,
-                log_file=dasm_log,
-                timeout=120,
+        if passed:
+            report.success(f"{test_name}: {detail}")
+            if tandem_enabled:
+                native = read_tandem_report(directory / "testharness.log.yaml")
+                report.metric(
+                    "Live tandem",
+                    {
+                        k: native[k]
+                        for k in ("instr_count", "csrs_match_count", "mismatches_count")
+                    },
+                )
+            text = (directory / "testharness.log").read_text(errors="replace")
+            cycles = re.search(r"after (\d+) cycles", text)
+            if cycles:
+                report.set_label(f"{int(cycles.group(1)) / 1000:.2f} kCycles")
+        else:
+            report.error(f"{test_name}: {detail}")
+        options = dict(
+            target=target,
+            test_name=test_name,
+            comp_mode=comp_mode.value,
+            trace_mode=trace_mode.value,
+            interactive_gui=interactive_gui,
+            run_name=run_name,
+            sim_timeout=sim_timeout,
+            tandem_enabled=tandem_enabled,
+        )
+        write_manifest(directory, "verilator-testharness-run", options, report=report)
+        manifest = read_manifest(directory, report)
+        if not isinstance(manifest, dict) or manifest.get("options") != options:
+            report.error_exit("Run manifest was not written correctly", env=True)
+        (directory / "result.yml").write_text(
+            yaml.safe_dump(
+                dict(
+                    target=target,
+                    test_name=test_name,
+                    status="PASS" if passed else "FAIL",
+                    iss_enabled=False,
+                    tandem_enabled=tandem_enabled,
+                    detail=detail,
+                )
             )
-
-    # ==========================================================
-    # BUILD MANIFEST
-    # ==========================================================
-    write_manifest(
-        simulation_dir,
-        "verilator-testharness-run",
-        {
-            "target": target,
-            "test_name": test_name,
-            "comp_mode": comp_mode,
-            "trace_mode": trace_mode,
-            "interactive_gui": interactive_gui,
-            "run_name": run_name,
-        },
-        report=report,
-    )
-
-    # ==========================================================
-    # List
-    # ==========================================================
-    report.step("Generated files")
-    generated = []
-    for genfile in [log_file, raw_trace, dasm_log]:
-        if genfile.exists():
-            report.info(f"> {genfile}")
-            generated.append(str(genfile.relative_to(repo_dir)))
-    report.log("Generated files", generated)
-
+        )
+        report.log(
+            "Generated files", [str(p) for p in directory.iterdir() if p.is_file()]
+        )
+    except (OSError, TypeError, ValueError, yaml.YAMLError) as error:
+        report.error_exit(str(error), env=True)
     report.end("Completed")

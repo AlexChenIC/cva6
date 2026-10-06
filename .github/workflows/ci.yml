@@ -4,7 +4,11 @@
 
 # Run functional regression checks
 name: ci
-on: [push, pull_request]
+on:
+  push:
+    # Isolated fork experiment only; upstream master_candidate/master stay unchanged.
+    branches-ignore: [jchen/master-candidate-cook-stage1-20261006]
+  pull_request: {}
 
 jobs:
   build-riscv-tests:
