@@ -344,6 +344,17 @@ def check_manifests(
         and hardware["options"].get("trace_mode") != trace_mode.value
     ):
         raise ValueError("Trace mode requires a matching TestHarness build")
+    for directory, recipe in (
+        (compile_dir, "sw-compile"),
+        (elab_dir, "verilator-testharness-comp"),
+    ):
+        report = yaml.safe_load((directory / "cook_report.yml").read_text())
+        if (
+            not isinstance(report, dict)
+            or report.get("recipe") != recipe
+            or report.get("status") != "pass"
+        ):
+            raise ValueError("Prerequisite compilation has no passing Cook report")
 
 
 def run_testharness_and_trace(
@@ -434,6 +445,8 @@ def run_test(
     # Invalidate previous success even if this invocation fails its prerequisites.
     for stale in ("result.yml", "cook_manifest.yml", "cook_report.yml"):
         (output_dir / stale).unlink(missing_ok=True)
+    if type(timeout) is not int or timeout < 1:
+        raise ValueError("Simulation timeout must be a positive integer")
     if iss_enabled:
         raise ValueError(
             "Offline ISS comparison is unsupported; use --tandem-enabled for live checking"
@@ -465,7 +478,8 @@ def run_test(
 
     software = yaml.safe_load((compile_dir / MANIFEST_NAME).read_text())["options"]
     compiler_isa = software.get("march")
-    tohost = software.get("symbols", {}).get("tohost")
+    symbols = software.get("symbols")
+    tohost = symbols.get("tohost") if isinstance(symbols, dict) else None
     if not isinstance(compiler_isa, str) or not isinstance(tohost, str):
         raise ValueError("Missing march or tohost in software manifest")
     if not compiler_isa:

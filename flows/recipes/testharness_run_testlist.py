@@ -30,7 +30,11 @@ from flows.utils.autocompletion import (
     autocompletion_testlist,
 )
 from flows.utils.recipe_report import RecipeReport
-from flows.utils.testharness import simulation_directory, validate_path_component
+from flows.utils.testharness import (
+    build_directory,
+    simulation_directory,
+    validate_path_component,
+)
 from flows.recipes.questa_testharness_run import questa_testharness_run
 from flows.recipes.vcs_testharness_run import vcs_testharness_run
 from flows.recipes.verilator_testharness_run import (
@@ -104,11 +108,13 @@ def testharness_run_testlist(
     target = validate_path_component(target, "target")
     testlist_file = Path(testlist)
     build_root = repo_dir / "build" / target
+    batch_name = f"testharness_{simulator.value}_{testlist_file.stem}{'_tandem' if tandem_enabled else ''}"
+    batch_dir = build_root / "simulation" / batch_name
+    if simulator == Simulator.verilator:
+        batch_dir = build_directory(repo_dir, target, "simulation", batch_name)
     report = RecipeReport(
         "testharness-run-testlist",
-        out_dir=build_root
-        / "simulation"
-        / f"testharness_{simulator.value}_{testlist_file.stem}{'_tandem' if tandem_enabled else ''}",
+        out_dir=batch_dir,
         title="TESTHARNESS TESTLIST RUN",
         context={
             "simulator": simulator.value,
@@ -169,12 +175,6 @@ def testharness_run_testlist(
         run_dir = (
             build_root / "simulation" / f"sim_rtl_{simulator.value}_testharness" / name
         )
-        if simulator == Simulator.verilator:
-            run_dir = simulation_directory(
-                repo_dir, target, name, comp_mode, tandem_enabled
-            )
-            for stale in ("cook_report.yml", "result.yml", "cook_manifest.yml"):
-                (run_dir / stale).unlink(missing_ok=True)
         # Each test already has its own output directory, hence run_name.
         # The options are passed explicitly: one left out of a recipe
         # called as a plain function arrives as the Typer descriptor,
@@ -190,6 +190,11 @@ def testharness_run_testlist(
         }
         try:
             if simulator == Simulator.verilator:
+                run_dir = simulation_directory(
+                    repo_dir, target, name, comp_mode, tandem_enabled
+                )
+                for stale in ("cook_report.yml", "result.yml", "cook_manifest.yml"):
+                    (run_dir / stale).unlink(missing_ok=True)
                 # Only Verilator opens a waveform viewer of its own.
                 verilator_testharness_run(
                     interactive_gui=False, tandem_enabled=tandem_enabled, **arguments
@@ -205,18 +210,27 @@ def testharness_run_testlist(
                 else:
                     xcelium_testharness_run(**arguments)
             child = yaml.safe_load((run_dir / "cook_report.yml").read_text())
-            if not isinstance(child, dict) or child.get("status") != "pass":
+            if (
+                not isinstance(child, dict)
+                or child.get("status") != "pass"
+                or child.get("recipe") != f"{simulator.value}-testharness-run"
+            ):
                 raise ValueError("Missing or failing child Cook report")
             if simulator == Simulator.verilator:
                 receipt = yaml.safe_load((run_dir / "result.yml").read_text())
-                if not isinstance(receipt, dict) or any(
-                    receipt.get(k) != v
-                    for k, v in dict(
-                        target=target,
-                        test_name=name,
-                        status="PASS",
-                        tandem_enabled=tandem_enabled,
-                    ).items()
+                if (
+                    not isinstance(receipt, dict)
+                    or receipt.get("tandem_enabled") is not tandem_enabled
+                    or receipt.get("iss_enabled") is not False
+                    or any(
+                        receipt.get(k) != v
+                        for k, v in dict(
+                            target=target,
+                            test_name=name,
+                            status="PASS",
+                            tandem_enabled=tandem_enabled,
+                        ).items()
+                    )
                 ):
                     raise ValueError("Missing or inconsistent child result")
             results.add_row(status="pass", test=name, report=str(run_dir))

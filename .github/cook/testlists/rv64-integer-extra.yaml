@@ -6,12 +6,12 @@ common: &common
   path_var: TESTS_PATH
   gcc_opts: "-static -mcmodel=medany -fvisibility=hidden -nostdlib -nostartfiles -I<path_var>/riscv-tests/isa/macros/scalar/ -I<path_var>/riscv-tests/env/p/ -I<path_var>/riscv-tests/riscv-target/spike/ -lgcc"
 testlist:
-  - test: rv32ui-p-sub
+  - test: rv64ui-p-sub
     <<: *common
-    asm_tests: <path_var>/riscv-tests/isa/rv32ui/sub.S
-  - test: rv32ui-p-xor
+    asm_tests: <path_var>/riscv-tests/isa/rv64ui/sub.S
+  - test: rv64ui-p-xor
     <<: *common
-    asm_tests: <path_var>/riscv-tests/isa/rv32ui/xor.S
-  - test: rv32ui-p-sll
+    asm_tests: <path_var>/riscv-tests/isa/rv64ui/xor.S
+  - test: rv64ui-p-sll
     <<: *common
-    asm_tests: <path_var>/riscv-tests/isa/rv32ui/sll.S
+    asm_tests: <path_var>/riscv-tests/isa/rv64ui/sll.S

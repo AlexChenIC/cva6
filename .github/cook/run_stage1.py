@@ -215,9 +215,6 @@ def main():
                 )
                 planned = names(read_yaml(Path(testlist)))
                 if suite == "basic":
-                    evidence["native_negative_checks"] = check_native_failures(
-                        root, target, config, planned, cook, run
-                    )
                     run(
                         "single-test",
                         cook + ["verilator-testharness-run", "-n", planned[0]] + common,
@@ -239,6 +236,10 @@ def main():
                 evidence["suites"][suite] = dict(
                     status="PASS", **checked_suite(root, target, testlist)
                 )
+                if suite == "basic":
+                    evidence["native_negative_checks"] = check_native_failures(
+                        root, target, config, planned, cook, run
+                    )
             except (OSError, TypeError, KeyError, ValueError, yaml.YAMLError) as error:
                 errors.append(str(error))
                 evidence["suites"][suite] = dict(status="FAIL", error=str(error))

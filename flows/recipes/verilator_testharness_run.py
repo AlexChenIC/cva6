@@ -18,8 +18,6 @@ RVFI report must additionally show nonzero comparisons and zero mismatches.
 
 from pathlib import Path
 import re
-import shutil
-import stat
 
 import yaml
 
@@ -31,13 +29,7 @@ from flows.utils.autocompletion import (
     autocompletion_target,
     autocompletion_testname_compiled,
 )
-from flows.utils.manifest import (
-    get_manifest_option,
-    read_manifest,
-    require_manifest_option,
-    require_prerequisite,
-    write_manifest,
-)
+from flows.utils.manifest import read_manifest, write_manifest
 from flows.utils.recipe_report import RecipeReport
 from flows.utils.testharness import run_test, simulation_directory, read_tandem_report
 
@@ -116,6 +108,8 @@ def verilator_testharness_run(
             Path.cwd(), target, run_name or test_name, comp_mode, tandem_enabled
         )
         report.set_out_dir(directory)
+        for stale in ("result.yml", "cook_manifest.yml", "cook_report.yml"):
+            (directory / stale).unlink(missing_ok=True)
         if type(sim_timeout) is not int or sim_timeout < 1:
             report.error_exit("sim_timeout must be a positive integer", env=True)
         report.step(f"Run {test_name}")

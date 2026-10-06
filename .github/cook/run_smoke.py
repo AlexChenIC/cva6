@@ -26,6 +26,9 @@ import sys
 
 import yaml
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from flows.utils.logged_process import run_logged_process
+
 TARGET = "cv32a65x_axi"
 TESTLIST = "verif/tests/testlist_verilator_testharness_smoke.yaml"
 TESTS = ("hello-original_0", "hello-uart_0")
@@ -199,20 +202,7 @@ def cook_commands():
 
 def run_logged(command, *, cwd, env, log, timeout):
     "Run a command with its output in `log`; return (exit code, timed out)."
-    with log.open("w", encoding="utf-8") as stream:
-        try:
-            done = subprocess.run(
-                command,
-                cwd=cwd,
-                env=env,
-                stdout=stream,
-                stderr=subprocess.STDOUT,
-                timeout=timeout,
-                check=False,
-            )
-        except subprocess.TimeoutExpired:
-            return None, True
-    return done.returncode, False
+    return run_logged_process(command, cwd=cwd, env=env, log=log, timeout=timeout)
 
 
 def sha256(path):
@@ -366,7 +356,14 @@ def main():  # pylint: disable=too-many-locals,too-many-branches,too-many-statem
                 # keep what the single runs left before it overwrites them.
                 saved = output / "single" / label
                 saved.mkdir(parents=True)
-                for name in ("testharness.log", REPORT, MANIFEST, "result.yml", "execution.yml", "simulation.command.json"):
+                for name in (
+                    "testharness.log",
+                    REPORT,
+                    MANIFEST,
+                    "result.yml",
+                    "execution.yml",
+                    "simulation.command.json",
+                ):
                     shutil.copy2(root / RUNS / label / name, saved / name)
 
         for name in TESTS:

@@ -1,17 +1,17 @@
 # Copyright 2026 OpenHW Foundation
 # SPDX-License-Identifier: Apache-2.0
-# Bounded supplement using existing riscv-tests assembly, not new ISA tests.
+# Manual Tier 2 supplement using existing riscv-tests assembly.
 common: &common
   iterations: 1
   path_var: TESTS_PATH
   gcc_opts: "-static -mcmodel=medany -fvisibility=hidden -nostdlib -nostartfiles -I<path_var>/riscv-tests/isa/macros/scalar/ -I<path_var>/riscv-tests/env/p/ -I<path_var>/riscv-tests/riscv-target/spike/ -lgcc"
 testlist:
-  - test: rv32ui-p-sub
+  - test: rv32um-p-div
     <<: *common
-    asm_tests: <path_var>/riscv-tests/isa/rv32ui/sub.S
-  - test: rv32ui-p-xor
+    asm_tests: <path_var>/riscv-tests/isa/rv32um/div.S
+  - test: rv32um-p-rem
     <<: *common
-    asm_tests: <path_var>/riscv-tests/isa/rv32ui/xor.S
-  - test: rv32ui-p-sll
+    asm_tests: <path_var>/riscv-tests/isa/rv32um/rem.S
+  - test: rv32um-p-mulh
     <<: *common
-    asm_tests: <path_var>/riscv-tests/isa/rv32ui/sll.S
+    asm_tests: <path_var>/riscv-tests/isa/rv32um/mulh.S

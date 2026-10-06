@@ -8,19 +8,29 @@ profiles:
     mabi: ilp32
     suites:
       basic: {source: verif/tests/base_rv32_p.yaml, enabled: 5}
+      integer-extra: {source: .github/cook/testlists/rv32-integer-extra.yaml, enabled: 3}
   rv32-65x:
-    target: cv32a65x_axi
+    # Existing Thales historical OK target with NAPOT; does not fix the non-SV32 model gap.
+    target: cv32a65x_sv32_axi
     march: rv32imc_zicsr_zifencei_zba_zbb_zbs_zbc
     mabi: ilp32
     suites:
       basic: {source: verif/tests/base_rv32_p.yaml, enabled: 5}
+      integer-extra: {source: .github/cook/testlists/rv32-integer-extra.yaml, enabled: 3}
   rv64:
     target: cv64a6_imafdc_sv39_hpdcache_pmp_mmu_axi
     march: rv64gc_zba_zbb_zbs_zbc
     mabi: lp64d
     suites:
       basic: {source: verif/tests/base_rv64_p.yaml, enabled: 5}
+      integer-extra: {source: .github/cook/testlists/rv64-integer-extra.yaml, enabled: 3}
 diagnostics:
+  basic-65x-no-napot:
+    target: cv32a65x_axi
+    march: rv32imc_zicsr_zifencei_zba_zbb_zbs_zbc
+    mabi: ilp32
+    suites:
+      basic: {source: verif/tests/base_rv32_p.yaml, enabled: 5}
   zcmt-60x:
     target: cv32a60x_axi
     march: rv32imc_zicsr_zifencei_zba_zbb_zbs_zbc_zcmt
@@ -47,7 +57,9 @@ pilots:
     suites:
       basic: {source: verif/tests/base_rv32_p.yaml, enabled: 5}
       integer-extra: {source: .github/cook/testlists/rv32-integer-extra.yaml, enabled: 3}
+      multiply-divide: {source: .github/cook/testlists/rv32-m-extra.yaml, enabled: 3}
 deferred:
+  non_sv32_65x: cv32a65x_axi rejects NAPOT PMP writes while vendor Spike accepts them. Keep strict diagnostics; no WARL masking or RTL change is used to hide it.
   zcmt: Historical Thales cv32a65x_axi base_zcmt jobs fail; same root cause not proven. Diagnostics only pending native evidence.
   pmp: Dedicated cv32a65x_axi PMP list needs strict native validation; historical dashboard PASS alone is insufficient.
   legacy: No full legacy ci.yml equivalence, offline comparison, WB, OBI, VM or architecture acceptance is claimed.

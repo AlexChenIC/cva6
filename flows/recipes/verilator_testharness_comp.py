@@ -302,7 +302,7 @@ def verilator_testharness_comp(
         warning_patterns=[r"^%Warning"],
         log_file=log_file,
         timeout=1800,
-        check=False,
+        check=True,
     )
 
     report.analyze_log(

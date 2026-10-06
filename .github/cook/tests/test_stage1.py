@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 import sys
 import tempfile
+from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
@@ -27,8 +28,11 @@ from flows.utils.testharness import (
 )
 from flows.utils.autocompletion import CompMode, TraceMode
 from flows.recipes.testharness_run_testlist import testharness_run_testlist, Simulator
+from flows.recipes.verilator_testharness_run import verilator_testharness_run
+from flows.recipes.verilator_testharness_comp import verilator_testharness_comp
 from prepare_stage1 import materialize, names
 from check_native_failures import has_instruction_divergence
+from flows.utils.logged_process import run_logged_process
 
 
 class Contracts(unittest.TestCase):
@@ -110,6 +114,55 @@ class Contracts(unittest.TestCase):
             )
         self.assertFalse(passed)
 
+    def test_real_process_timeout_is_reaped_and_recorded(self):
+        code, timed_out = run_logged_process(
+            [sys.executable, "-c", "import time; time.sleep(10)"],
+            cwd=self.root,
+            env=os.environ.copy(),
+            log=self.root / "timeout.log",
+            timeout=0.1,
+        )
+        self.assertEqual((code, timed_out), (124, True))
+
+    def test_failed_compiler_cannot_accept_leftover_binary(self):
+        module = "flows.recipes.verilator_testharness_comp"
+        (self.root / "tools/spike/lib").mkdir(parents=True)
+        directory = self.root / "build/t/elab/sim_rtl_verilator_testharness"
+
+        def compiler(*, cmd, report, **kwargs):
+            if "--version" in cmd:
+                return "Verilator test"
+            self.assertIs(kwargs["check"], True)
+            (directory / "Variane_testharness").write_text("partial build")
+            (directory / "compilation.log").write_text("compiler exited 1")
+            report.error("Command failed (1)")
+            return ""
+
+        with chdir(self.root), patch(
+            module + ".shutil.which", return_value="unused"
+        ), patch(
+            module + ".read_config_or_exit_testbench_cfg",
+            return_value=SimpleNamespace(value="axi"),
+        ), patch(
+            module + ".run_cmd", side_effect=compiler
+        ), self.assertRaises(
+            typer.Exit
+        ):
+            verilator_testharness_comp(
+                target="t",
+                comp_mode=CompMode.rtl,
+                trace_mode=TraceMode.notrace,
+                stats=False,
+                jobs=1,
+                tandem_enabled=False,
+                quiet=True,
+            )
+        self.assertFalse((directory / "cook_manifest.yml").exists())
+        self.assertEqual(
+            yaml.safe_load((directory / "cook_report.yml").read_text())["status"],
+            "fail",
+        )
+
     def test_stale_success_invalidated_before_missing_prerequisites(self):
         with chdir(self.root):
             output = simulation_directory(self.root, "t", "n", CompMode.rtl, True)
@@ -139,6 +192,86 @@ class Contracts(unittest.TestCase):
         )
         snapshot = prepare_spike_config(self.root, "t", self.root)
         self.assertEqual(snapshot.read_bytes(), source.read_bytes())
+
+    def test_prerequisites_require_passing_reports_and_matching_live_mode(self):
+        software, hardware = self.root / "compile", self.root / "elab"
+        for directory, recipe, options in (
+            (software, "sw-compile", dict(target="t", test_name="n")),
+            (
+                hardware,
+                "verilator-testharness-comp",
+                dict(target="t", comp_mode="rtl", tandem_enabled=True),
+            ),
+        ):
+            self.write(
+                directory / "cook_manifest.yml", dict(recipe=recipe, options=options)
+            )
+            self.write(
+                directory / "cook_report.yml", dict(recipe=recipe, status="pass")
+            )
+        arguments = dict(
+            target="t",
+            test_name="n",
+            comp_mode=CompMode.rtl,
+            trace_mode=TraceMode.notrace,
+            compile_dir=software,
+            elab_dir=hardware,
+            tandem_enabled=True,
+        )
+        check_manifests(**arguments)
+        with self.assertRaises(ValueError):
+            check_manifests(**dict(arguments, tandem_enabled=False))
+        self.write(
+            software / "cook_report.yml", dict(recipe="sw-compile", status="fail")
+        )
+        with self.assertRaises(ValueError):
+            check_manifests(**arguments)
+
+    def test_invalid_timeout_cannot_leave_stale_receipt(self):
+        with chdir(self.root):
+            directory = simulation_directory(self.root, "t", "n", CompMode.rtl, True)
+            self.write(directory / "result.yml", dict(status="PASS"))
+            with self.assertRaises(typer.Exit):
+                verilator_testharness_run(
+                    target="t",
+                    test_name="n",
+                    comp_mode=CompMode.rtl,
+                    trace_mode=TraceMode.notrace,
+                    interactive_gui=False,
+                    sim_timeout=0,
+                    run_name=None,
+                    tandem_enabled=True,
+                    quiet=True,
+                )
+            self.assertFalse((directory / "result.yml").exists())
+            self.assertEqual(
+                yaml.safe_load((directory / "cook_report.yml").read_text())["status"],
+                "fail",
+            )
+
+    def test_missing_child_report_fails_batch_and_continues(self):
+        path = self.root / "list.yml"
+        self.write(path, {"testlist": [{"test": "a"}, {"test": "b"}]})
+        with chdir(self.root), patch(
+            "flows.recipes.testharness_run_testlist.verilator_testharness_run"
+        ) as child, self.assertRaises(typer.Exit):
+            testharness_run_testlist(
+                simulator=Simulator.verilator,
+                target="t",
+                testlist=str(path),
+                comp_mode=CompMode.rtl,
+                trace_mode=TraceMode.notrace,
+                sim_timeout=2,
+                tandem_enabled=True,
+                quiet=True,
+            )
+        self.assertEqual(child.call_count, 2)
+        report = yaml.safe_load(
+            next(self.root.glob("build/**/cook_report.yml")).read_text()
+        )
+        self.assertEqual(report["status"], "fail")
+        rows = next(m["data"] for m in report["metrics"] if m["name"] == "Test results")
+        self.assertEqual([r["status"] for r in rows], ["fail", "fail"])
 
     def test_missing_target_yaml_has_explicit_provenance(self):
         self.assertIsNone(prepare_spike_config(self.root, "t", self.root))

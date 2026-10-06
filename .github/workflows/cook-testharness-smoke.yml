@@ -16,7 +16,7 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: cook-testharness-smoke-${{ github.ref }}
+  group: cook-testharness-smoke-${{ github.ref }}-${{ github.run_id }}
   cancel-in-progress: true
 env:
   NUM_JOBS: '2'
@@ -95,3 +95,4 @@ jobs:
             build/cv32a65x_axi/elab/sim_rtl_verilator_testharness/cook_manifest.yml
             build/cv32a65x_axi/elab/sim_rtl_verilator_testharness/cook_report.yml
             build/cv32a65x_axi/elab/sim_rtl_verilator_testharness/verilator.version
+            build/cv32a65x_axi/elab/sim_rtl_verilator_testharness/Variane_testharness
