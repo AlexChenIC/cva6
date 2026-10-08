@@ -37,14 +37,18 @@ def checked_integer_program(path):
         if line.startswith("Disassembly of section "):
             executable = line.split()[-1].rstrip(":").startswith(".text")
         if executable:
-            match = re.match(r"^\s*[0-9a-f]+:\s+[0-9a-f]{4,8}\s+([a-z][a-z0-9_.]*)\b", line)
+            match = re.match(
+                r"^\s*[0-9a-f]+:\s+[0-9a-f]{4,8}\s+([a-z][a-z0-9_.]*)\b", line
+            )
             if match:
                 instructions.append(match[1])
     if not instructions or "<_start>:" not in text:
         raise ValueError(f"{path}: missing executable startup")
     forbidden = [
-        op for op in instructions
-        if op.startswith("csr") or op in {"mret", "sret", "ecall"}
+        op
+        for op in instructions
+        if op.startswith("csr")
+        or op in {"mret", "sret", "ecall"}
         or (op.startswith("f") and not op.startswith("fence"))
     ]
     if forbidden:
@@ -199,10 +203,14 @@ def main():
         baseline = read_yaml(root / ".github/cook/stage1.yml")["upstream_revision"]
         subprocess.run(
             ["git", "diff", "--exit-code", baseline, "--", "core", "config/target"],
-            check=True, cwd=root, timeout=30,
+            check=True,
+            cwd=root,
+            timeout=30,
         )
         evidence["core_baseline"] = {
-            "revision": baseline, "paths": ["core", "config/target"], "unchanged": True,
+            "revision": baseline,
+            "paths": ["core", "config/target"],
+            "unchanged": True,
         }
         target = config["target"]
         evidence.update(
@@ -248,12 +256,19 @@ def main():
                 )
                 planned = names(read_yaml(Path(testlist)))
                 if config.get("environment") == "adapted-machine-mode-integer":
-                    evidence.setdefault("program_scope", {}).update({
-                        name: checked_integer_program(
-                            root / "build" / target / "compile" / name / f"{name}.dump"
-                        )
-                        for name in planned
-                    })
+                    evidence.setdefault("program_scope", {}).update(
+                        {
+                            name: checked_integer_program(
+                                root
+                                / "build"
+                                / target
+                                / "compile"
+                                / name
+                                / f"{name}.dump"
+                            )
+                            for name in planned
+                        }
+                    )
                 if suite == "basic":
                     run(
                         "single-test",

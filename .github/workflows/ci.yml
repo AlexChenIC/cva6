@@ -7,7 +7,7 @@ name: ci
 on:
   push:
     # Isolated fork experiment only; upstream master_candidate/master stay unchanged.
-    branches-ignore: [jchen/master-candidate-cook-stage1-20261006]
+    branches-ignore: [jchen/master-candidate-cook-stage1-20261006, jchen/master-candidate-cook-stage1-basic-live-20261008]
   pull_request: {}
 
 jobs:

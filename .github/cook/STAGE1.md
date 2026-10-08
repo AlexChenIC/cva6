@@ -35,7 +35,12 @@ Download each live artifact and check raw native results, Cook reports,
 manifests, source/model snapshots, ELF identity and negative-control logs.
 Negative controls are infrastructure verification, not architectural
 testcases: expected stack rejection, SIGTERM, timeout and wrong-Spike-ELF
-divergence must all be observed. Errors in those logs are intentional;
+divergence must all be observed. An intentionally failed program also
+must exit the public Cook Run CLI with code 1 and failing report/receipt.
+After checking it, the unchanged failing Run directory is archived under
+ci-results/native-negative/software-fail/run, outside the functional
+report merge. Its failed report remains available in the artifact.
+Errors in those logs are intentional;
 unobserved rejection is a CI failure.
 
 Hello remains a separate RTL-only regression of the merged smoke recipes;

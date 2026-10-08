@@ -32,7 +32,7 @@ from flows.recipes.testharness_run_testlist import testharness_run_testlist, Sim
 from flows.recipes.verilator_testharness_run import verilator_testharness_run
 from flows.recipes.verilator_testharness_comp import verilator_testharness_comp
 from prepare_stage1 import materialize, names
-from check_native_failures import has_instruction_divergence
+from check_native_failures import has_instruction_divergence, checked_failed_recipe
 from run_stage1 import checked_integer_program
 from flows.utils.logged_process import run_logged_process
 
@@ -359,17 +359,22 @@ class Contracts(unittest.TestCase):
     def test_integer_environment_is_hashed_and_explicit(self):
         for profile in ("rv32-60x", "rv32-65x", "rv64"):
             config, _ = materialize(profile, self.root / profile)
-            provenance = yaml.safe_load((self.root / profile / "provenance.yml").read_text())
+            provenance = yaml.safe_load(
+                (self.root / profile / "provenance.yml").read_text()
+            )
             self.assertEqual(config["environment"], "adapted-machine-mode-integer")
             self.assertIn(".github/cook/env/m/riscv_test.h", provenance["sources"])
             self.assertNotIn("f", config["march"].split("_")[0][4:])
             self.assertNotIn("d", config["march"].split("_")[0][4:])
 
     def test_core_and_target_files_match_upstream_baseline(self):
-        baseline = yaml.safe_load(Path(".github/cook/stage1.yml").read_text())["upstream_revision"]
+        baseline = yaml.safe_load(Path(".github/cook/stage1.yml").read_text())[
+            "upstream_revision"
+        ]
         subprocess.run(
             ["git", "diff", "--exit-code", baseline, "--", "core", "config/target"],
-            check=True, timeout=30,
+            check=True,
+            timeout=30,
         )
 
     def test_program_scope_checks_code_not_data(self):
@@ -387,6 +392,29 @@ class Contracts(unittest.TestCase):
             "Disassembly of section .data:\n 80001000: 00000013 csrw t0\n"
         )
         self.assertEqual(checked_integer_program(dump)["instruction_count"], 2)
+
+    def test_expected_failure_requires_public_cook_failure(self):
+        self.write(
+            self.root / "cook_report.yml",
+            dict(recipe="verilator-testharness-run", status="fail", fail_kind="test"),
+        )
+        self.write(
+            self.root / "result.yml",
+            dict(status="FAIL", tandem_enabled=True, iss_enabled=False),
+        )
+        self.write(self.root / "execution.yml", dict(exit_code=1, timed_out=False))
+        self.assertEqual(checked_failed_recipe(self.root, 1, False)["status"], "PASS")
+        for code, timed_out in ((0, False), (True, False), (1, True)):
+            with self.subTest(code=code, timed_out=timed_out), self.assertRaises(
+                ValueError
+            ):
+                checked_failed_recipe(self.root, code, timed_out)
+        self.write(
+            self.root / "cook_report.yml",
+            dict(recipe="verilator-testharness-run", status="pass", fail_kind=None),
+        )
+        with self.assertRaises(ValueError):
+            checked_failed_recipe(self.root, 1, False)
 
 
 if __name__ == "__main__":

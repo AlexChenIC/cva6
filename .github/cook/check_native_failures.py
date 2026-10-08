@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import signal
+import shutil
 import sys
 import subprocess
 import time
@@ -23,6 +24,7 @@ from flows.utils.testharness import (
     testharness_log_passed,
 )
 from flows.utils.autocompletion import CompMode, TraceMode
+from flows.utils.logged_process import run_logged_process
 
 
 def wait_for_initialization(process, log, timeout=30):
@@ -55,6 +57,37 @@ def has_instruction_divergence(report):
                 raise ValueError(f"Native mismatch is missing {key}")
             divergent |= core[key] != reference[key]
     return divergent
+
+
+def checked_failed_recipe(directory, code, timed_out):
+    report = yaml.safe_load((directory / "cook_report.yml").read_text())
+    receipt = yaml.safe_load((directory / "result.yml").read_text())
+    execution = yaml.safe_load((directory / "execution.yml").read_text())
+    if (
+        type(code) is not int
+        or code != 1
+        or timed_out is not False
+        or report.get("recipe") != "verilator-testharness-run"
+        or report.get("status") != "fail"
+        or report.get("fail_kind") != "test"
+        or receipt.get("status") != "FAIL"
+        or receipt.get("tandem_enabled") is not True
+        or receipt.get("iss_enabled") is not False
+        or type(execution.get("exit_code")) is not int
+        or execution["exit_code"] == 0
+        or execution.get("timed_out") is not False
+    ):
+        raise ValueError(
+            "Intentional tohost failure did not fail the public Cook recipe"
+        )
+    return {
+        "status": "PASS",
+        "expected_simulation": "FAIL",
+        "actual_exit_code": code,
+        "timed_out": timed_out,
+        "cook_report_status": report["status"],
+        "receipt_status": receipt["status"],
+    }
 
 
 def check_native_failures(root, target, config, names, cook, run):
@@ -191,6 +224,72 @@ def check_native_failures(root, target, config, names, cook, run):
             "expected_simulation": "FAIL",
             "detail": detail,
         }
+
+        # Verify public Cook CLI/report failure, not only the raw native helper.
+        run(
+            "compile-negative-fail",
+            cook
+            + [
+                "sw-compile",
+                "-t",
+                target,
+                "-c",
+                "github_actions_gcc",
+                "--out",
+                "ci-fail",
+                "--march",
+                config["march"],
+                "--mabi",
+                config["mabi"],
+                "--linker",
+                f"config/target/{target}/link.ld",
+                "--options",
+                "nostdlib",
+                "--options",
+                "nostartfiles",
+                "--options",
+                "static",
+                ".github/cook/fixtures/fail.S",
+                "--quiet",
+            ],
+        )
+        directory = output / "software-fail"
+        directory.mkdir()
+        command = cook + [
+            "verilator-testharness-run",
+            "-t",
+            target,
+            "-n",
+            "ci-fail",
+            "--tandem-enabled",
+            "--sim-timeout",
+            "30",
+            "--quiet",
+        ]
+        (directory / "command.json").write_text(json.dumps(command, indent=2) + "\n")
+        code, timed_out = run_logged_process(
+            command,
+            cwd=root,
+            env=os.environ.copy(),
+            log=directory / "cook.log",
+            timeout=60,
+        )
+        run_dir = (
+            root
+            / "build"
+            / target
+            / "simulation"
+            / "sim_rtl_verilator_testharness_tandem"
+            / "ci-fail"
+        )
+        results["checks"]["software-fail"] = checked_failed_recipe(
+            run_dir, code, timed_out
+        )
+        # Keep the original failing report, outside the functional report merge.
+        shutil.move(str(run_dir), directory / "run")
+        results["checks"]["software-fail"]["report_path"] = str(
+            (directory / "run").relative_to(root)
+        )
 
         # Keep RTL/FESVR on the first genuine test; load the second ELF only
         # into Spike. The native rvfi_compare scoreboard must detect divergence.
