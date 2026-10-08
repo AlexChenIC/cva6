@@ -59,7 +59,7 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
-        with: {persist-credentials: false}
+        with: {persist-credentials: false, fetch-depth: 0}
       - uses: actions/setup-python@v6
         with: {python-version: '3.11'}
       - run: python3 -m pip install -c .github/cook/constraints.txt -r flows/requirements.txt
@@ -68,6 +68,7 @@ jobs:
     uses: ./.github/workflows/cook-testharness-smoke.yml
     with:
       cold_tools: ${{ inputs.cold_tools || false }}
+      run_scope: ${{ inputs.selection || 'profiles' }}
   live:
     needs: plan
     name: ${{ matrix.profile }} / ${{ inputs.selection || 'profiles' }} / live
@@ -79,7 +80,7 @@ jobs:
         profile: ${{ fromJSON(needs.plan.outputs.profiles) }}
     steps:
       - uses: actions/checkout@v7
-        with: {submodules: recursive, persist-credentials: false}
+        with: {submodules: recursive, persist-credentials: false, fetch-depth: 0}
       - uses: actions/setup-python@v6
         with: {python-version: '3.11'}
       - name: Record source and dependencies

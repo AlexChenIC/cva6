@@ -4,6 +4,9 @@ name: Cook Verilator TestHarness smoke
 on:
   workflow_call:
     inputs:
+      run_scope:
+        type: string
+        default: standalone
       cold_tools:
         type: boolean
         default: false
@@ -14,7 +17,7 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: cook-testharness-smoke-${{ github.workflow }}-${{ github.ref }}-${{ inputs.selection || 'smoke' }}
+  group: cook-testharness-smoke-${{ github.workflow }}-${{ github.ref }}-${{ inputs.run_scope || 'standalone' }}
   cancel-in-progress: true
 env:
   NUM_JOBS: '2'

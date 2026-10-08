@@ -18,13 +18,13 @@ hardware and software are rebuilt from scratch regardless of that flag.
 Local reproduction on a Linux host with compatible GCC, Verilator 5.050,
 and the pinned vendor Spike installation:
 
-\`\`\`sh
+```sh
 export CONFIG_DIR="$PWD/ci-results/cook-config"
 python3 .github/cook/prepare_toolchains.py --output-dir "$CONFIG_DIR" --tandem-enabled
 python3 .github/cook/run_stage1.py --selection profiles --profile rv32-60x
 python3 cook.py merge-reports -t cv32a60x_axi --quiet
 python3 cook.py report-html --quiet
-\`\`\`
+```
 
 Prepare the pinned riscv-tests source using
 verif/regress/install-riscv-tests.sh first. Each invocation needs a fresh

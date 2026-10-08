@@ -36,7 +36,7 @@ runs:
       id: gcc
       with:
         path: tools/riscv-toolchain
-        key: cook-smoke-ubuntu24-gcc-v1-${{ hashFiles('ci/install-toolchain.sh') }}
+        key: cook-stage1-ubuntu24-gcc-v2-${{ hashFiles('.github/cook/setup/action.yml') }}
     - uses: actions/cache/restore@v6
       if: inputs.cold-tools != 'true'
       id: spike
@@ -65,13 +65,18 @@ runs:
           curl --fail --location --retry 3 --max-time 600 \
             https://buildbot.embecosm.com/job/riscv32-gcc-ubuntu2204-release/10/artifact/riscv32-embecosm-ubuntu2204-gcc13.2.0.tar.gz \
             -o "$RUNNER_TEMP/riscv-gcc.tar.gz"
-          sha256sum "$RUNNER_TEMP/riscv-gcc.tar.gz"
+          # Pinned identity observed in the successful 2026-10-02 cold-tool run.
+          # Jenkins does not publish a signed upstream checksum for this archive.
+          printf '%s  %s\n' 63feda7d4c6f1cd396367f9555da90bc57c9938235b531763fb6424f097dd28d "$RUNNER_TEMP/riscv-gcc.tar.gz" | sha256sum --check --strict
           tar -xf "$RUNNER_TEMP/riscv-gcc.tar.gz" --strip-components=1 -C "$RISCV"
+          printf '%s\n' 63feda7d4c6f1cd396367f9555da90bc57c9938235b531763fb6424f097dd28d > "$RISCV/.archive-sha256"
         fi
+        test "$(cat "$RISCV/.archive-sha256")" = 63feda7d4c6f1cd396367f9555da90bc57c9938235b531763fb6424f097dd28d
         "$RISCV/bin/${CV_SW_PREFIX}gcc" --version
         if [ "$VERILATOR_HIT" != true ]; then
           unset VERILATOR_ROOT
           git clone --depth 1 --branch "v$VERSION" https://github.com/verilator/verilator.git "$RUNNER_TEMP/verilator-$VERSION"
+          test "$(git -C "$RUNNER_TEMP/verilator-$VERSION" rev-parse HEAD)" = 848d926ebd4addacacd294dc84e35d9d4ae8078c
           (
             cd "$RUNNER_TEMP/verilator-$VERSION"
             autoconf

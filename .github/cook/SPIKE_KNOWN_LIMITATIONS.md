@@ -19,7 +19,7 @@ The instruction bodies and scalar assertions come from the pinned
 riscv-tests sources. The required profiles substitute env/m/riscv_test.h
 for the original p-mode startup. Tests remain in M-mode and do not
 initialize PMP, VM, F/D state or transition privilege. Names contain
-\`m-stage1\`; this is not unchanged p-mode, PMP/MMU or F/D coverage.
+`m-stage1`; this is not unchanged p-mode, PMP/MMU or F/D coverage.
 Narrow software march/ABI does not change the actual hardware/model ISA.
 
 ## Deferred Work
