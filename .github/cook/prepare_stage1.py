@@ -36,6 +36,9 @@ def materialize(profile, output, selection="profiles"):
     output.mkdir(parents=True, exist_ok=True)
     lists, seen = {}, set()
     hashes = {str(config_path): hashlib.sha256(config_path.read_bytes()).hexdigest()}
+    for relative in config.get("support_files", []):
+        path = Path(relative)
+        hashes[relative] = hashlib.sha256(path.read_bytes()).hexdigest()
     for suite, spec in config["suites"].items():
         path = Path(spec["source"])
         data = yaml.safe_load(path.read_text())

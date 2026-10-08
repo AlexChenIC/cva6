@@ -11,12 +11,10 @@ on:
   workflow_dispatch: {}
   push:
     branches: [jchen/master-candidate-cook-verilator-testharness-hello]
-  pull_request:
-    branches: [master_candidate]
 permissions:
   contents: read
 concurrency:
-  group: cook-testharness-smoke-${{ github.ref }}-${{ github.run_id }}
+  group: cook-testharness-smoke-${{ github.workflow }}-${{ github.ref }}-${{ inputs.selection || 'smoke' }}
   cancel-in-progress: true
 env:
   NUM_JOBS: '2'

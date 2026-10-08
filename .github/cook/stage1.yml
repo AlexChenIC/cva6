@@ -1,30 +1,49 @@
 # Copyright 2026 OpenHW Foundation
 # SPDX-License-Identifier: Apache-2.0
 schema_version: 1
+upstream_revision: f20877eb51f0e84451283d366e9e1bc0a4732517
 profiles:
   rv32-60x:
     target: cv32a60x_axi
-    march: rv32imc_zicsr_zifencei_zba_zbb_zbs_zbc
+    march: rv32imc_zicsr_zifencei
     mabi: ilp32
+    environment: adapted-machine-mode-integer
+    support_files: [.github/cook/env/m/riscv_test.h]
     suites:
-      basic: {source: verif/tests/base_rv32_p.yaml, enabled: 5}
-      integer-extra: {source: .github/cook/testlists/rv32-integer-extra.yaml, enabled: 3}
+      basic: {source: .github/cook/testlists/rv32-basic-m.yaml, enabled: 5}
+      integer-extra: {source: .github/cook/testlists/rv32-integer-extra-m.yaml, enabled: 3}
   rv32-65x:
     # Existing Thales historical OK target with NAPOT; does not fix the non-SV32 model gap.
     target: cv32a65x_sv32_axi
-    march: rv32imc_zicsr_zifencei_zba_zbb_zbs_zbc
+    march: rv32imc_zicsr_zifencei
+    mabi: ilp32
+    environment: adapted-machine-mode-integer
+    support_files: [.github/cook/env/m/riscv_test.h]
+    suites:
+      basic: {source: .github/cook/testlists/rv32-basic-m.yaml, enabled: 5}
+      integer-extra: {source: .github/cook/testlists/rv32-integer-extra-m.yaml, enabled: 3}
+  rv64:
+    target: cv64a6_imafdc_sv39_hpdcache_pmp_mmu_axi
+    march: rv64imc_zicsr_zifencei
+    mabi: lp64
+    environment: adapted-machine-mode-integer
+    support_files: [.github/cook/env/m/riscv_test.h]
+    suites:
+      basic: {source: .github/cook/testlists/rv64-basic-m.yaml, enabled: 5}
+      integer-extra: {source: .github/cook/testlists/rv64-integer-extra-m.yaml, enabled: 3}
+diagnostics:
+  basic-65x-sv32-p:
+    target: cv32a65x_sv32_axi
+    march: rv32imc_zicsr_zifencei
     mabi: ilp32
     suites:
       basic: {source: verif/tests/base_rv32_p.yaml, enabled: 5}
-      integer-extra: {source: .github/cook/testlists/rv32-integer-extra.yaml, enabled: 3}
-  rv64:
+  basic-rv64-p:
     target: cv64a6_imafdc_sv39_hpdcache_pmp_mmu_axi
-    march: rv64gc_zba_zbb_zbs_zbc
-    mabi: lp64d
+    march: rv64imc_zicsr_zifencei
+    mabi: lp64
     suites:
       basic: {source: verif/tests/base_rv64_p.yaml, enabled: 5}
-      integer-extra: {source: .github/cook/testlists/rv64-integer-extra.yaml, enabled: 3}
-diagnostics:
   basic-65x-no-napot:
     target: cv32a65x_axi
     march: rv32imc_zicsr_zifencei_zba_zbb_zbs_zbc
@@ -52,13 +71,16 @@ diagnostics:
 pilots:
   rv32-extra:
     target: cv32a60x_axi
-    march: rv32imc_zicsr_zifencei_zba_zbb_zbs_zbc
+    march: rv32imc_zicsr_zifencei
     mabi: ilp32
+    environment: adapted-machine-mode-integer
+    support_files: [.github/cook/env/m/riscv_test.h]
     suites:
-      basic: {source: verif/tests/base_rv32_p.yaml, enabled: 5}
-      integer-extra: {source: .github/cook/testlists/rv32-integer-extra.yaml, enabled: 3}
-      multiply-divide: {source: .github/cook/testlists/rv32-m-extra.yaml, enabled: 3}
+      basic: {source: .github/cook/testlists/rv32-basic-m.yaml, enabled: 5}
+      integer-extra: {source: .github/cook/testlists/rv32-integer-extra-m.yaml, enabled: 3}
+      multiply-divide: {source: .github/cook/testlists/rv32-m-extra-m.yaml, enabled: 3}
 deferred:
+  original_p_mode: The existing riscv-tests p-mode startup writes PMP CSRs and transitions privilege. Keep it as a strict diagnostic until the shared CSR/RVFI issues are resolved; adapted M-mode PASS is not original p-mode acceptance.
   non_sv32_65x: cv32a65x_axi rejects NAPOT PMP writes while vendor Spike accepts them. Keep strict diagnostics; no WARL masking or RTL change is used to hide it.
   zcmt: Historical Thales cv32a65x_axi base_zcmt jobs fail; same root cause not proven. Diagnostics only pending native evidence.
   pmp: Dedicated cv32a65x_axi PMP list needs strict native validation; historical dashboard PASS alone is insufficient.

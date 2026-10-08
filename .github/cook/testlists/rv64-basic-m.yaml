@@ -1,0 +1,24 @@
+# Copyright 2026 OpenHW Foundation
+# SPDX-License-Identifier: Apache-2.0
+# Original riscv-tests instruction bodies with the bounded Cook M-mode environment.
+# Not equivalent to the original p-mode privilege/PMP coverage.
+common: &common
+  iterations: 1
+  path_var: TESTS_PATH
+  gcc_opts: "-static -mcmodel=medany -fvisibility=hidden -nostdlib -nostartfiles -mno-relax -I.github/cook/env/m/ -I<path_var>/riscv-tests/isa/macros/scalar/"
+testlist:
+  - test: rv64ui-m-stage1-add
+    <<: *common
+    asm_tests: <path_var>/riscv-tests/isa/rv64ui/add.S
+  - test: rv64ui-m-stage1-lw
+    <<: *common
+    asm_tests: <path_var>/riscv-tests/isa/rv64ui/lw.S
+  - test: rv64ui-m-stage1-sw
+    <<: *common
+    asm_tests: <path_var>/riscv-tests/isa/rv64ui/sw.S
+  - test: rv64ui-m-stage1-beq
+    <<: *common
+    asm_tests: <path_var>/riscv-tests/isa/rv64ui/beq.S
+  - test: rv64ui-m-stage1-jal
+    <<: *common
+    asm_tests: <path_var>/riscv-tests/isa/rv64ui/jal.S

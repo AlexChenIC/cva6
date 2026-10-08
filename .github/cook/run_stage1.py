@@ -6,6 +6,7 @@
 import argparse
 import json
 import os
+import re
 from pathlib import Path
 import shutil
 import subprocess
@@ -25,6 +26,30 @@ from flows.utils.logged_process import run_logged_process
 from prepare_stage1 import materialize, names
 from run_smoke import checked_report, metric, read_yaml, require_fields, sha256
 from check_native_failures import check_native_failures
+
+
+def checked_integer_program(path):
+    """Check executable sections, not data that objdump -D treats as code."""
+    text = path.read_text()
+    instructions = []
+    executable = False
+    for line in text.splitlines():
+        if line.startswith("Disassembly of section "):
+            executable = line.split()[-1].rstrip(":").startswith(".text")
+        if executable:
+            match = re.match(r"^\s*[0-9a-f]+:\s+[0-9a-f]{4,8}\s+([a-z][a-z0-9_.]*)\b", line)
+            if match:
+                instructions.append(match[1])
+    if not instructions or "<_start>:" not in text:
+        raise ValueError(f"{path}: missing executable startup")
+    forbidden = [
+        op for op in instructions
+        if op.startswith("csr") or op in {"mret", "sret", "ecall"}
+        or (op.startswith("f") and not op.startswith("fence"))
+    ]
+    if forbidden:
+        raise ValueError(f"{path}: outside bounded M-mode integer scope: {forbidden}")
+    return {"instruction_count": len(instructions), "forbidden_instructions": []}
 
 
 def checked_case(root, target, name):
@@ -171,6 +196,14 @@ def main():
     code = 1
     try:
         config, lists = materialize(args.profile, output / "testlists", args.selection)
+        baseline = read_yaml(root / ".github/cook/stage1.yml")["upstream_revision"]
+        subprocess.run(
+            ["git", "diff", "--exit-code", baseline, "--", "core", "config/target"],
+            check=True, cwd=root, timeout=30,
+        )
+        evidence["core_baseline"] = {
+            "revision": baseline, "paths": ["core", "config/target"], "unchanged": True,
+        }
         target = config["target"]
         evidence.update(
             target=target,
@@ -214,6 +247,13 @@ def main():
                     ],
                 )
                 planned = names(read_yaml(Path(testlist)))
+                if config.get("environment") == "adapted-machine-mode-integer":
+                    evidence.setdefault("program_scope", {}).update({
+                        name: checked_integer_program(
+                            root / "build" / target / "compile" / name / f"{name}.dump"
+                        )
+                        for name in planned
+                    })
                 if suite == "basic":
                     run(
                         "single-test",

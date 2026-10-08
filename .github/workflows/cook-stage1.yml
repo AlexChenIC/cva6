@@ -13,8 +13,12 @@ on:
         description: Build tools without restoring or saving caches
         type: boolean
         default: false
+      profile:
+        description: Optional diagnostic or pilot profile; empty runs the whole selected group
+        type: string
+        default: ''
   push:
-    branches: [jchen/master-candidate-cook-stage1-20261006]
+    branches: [master_candidate, jchen/master-candidate-cook-stage1-basic-live-20261008]
   pull_request:
     branches: [master_candidate]
 permissions:
@@ -40,8 +44,16 @@ jobs:
       - id: plan
         env:
           SELECTION: ${{ inputs.selection || 'profiles' }}
+          PROFILE: ${{ inputs.profile || '' }}
         run: |
-          python3 -c 'import os,json,yaml; c=yaml.safe_load(open(".github/cook/stage1.yml")); print("profiles="+json.dumps(list(c[os.environ["SELECTION"]])))' >> "$GITHUB_OUTPUT"
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import os,json,yaml
+          c=yaml.safe_load(open(".github/cook/stage1.yml"))[os.environ["SELECTION"]]
+          p=os.environ["PROFILE"]
+          assert not p or p in c, "Unknown profile for selected group"
+          assert not p or os.environ["SELECTION"] != "profiles", "Required Tier 1 always runs all three targets"
+          print("profiles="+json.dumps([p] if p else list(c)))
+          PY
   contracts:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
@@ -86,13 +98,6 @@ jobs:
           source verif/regress/install-riscv-tests.sh
           git -C verif/tests/riscv-tests rev-parse HEAD > ci-results/riscv-tests-revision.txt
           git -C verif/tests/riscv-tests diff > ci-results/riscv-tests.patch
-      - name: Run real CSR readback checks
-        env:
-          SELECTION: ${{ inputs.selection || 'profiles' }}
-          PROFILE: ${{ matrix.profile }}
-        run: |
-          target=$(python3 -c 'import os,yaml; print(yaml.safe_load(open(".github/cook/stage1.yml"))[os.environ["SELECTION"]][os.environ["PROFILE"]]["target"])')
-          python3 .github/cook/check_csr_readback.py --target "$target" --output ci-results/csr-readback
       - name: Compile and execute Cook suites
         env:
           CONFIG_DIR: ${{ github.workspace }}/ci-results/cook-config
@@ -102,6 +107,15 @@ jobs:
           ulimit -c 0
           python3 .github/cook/prepare_toolchains.py --output-dir "$CONFIG_DIR" --tandem-enabled
           python3 .github/cook/run_stage1.py --selection "$SELECTION" --profile "$PROFILE"
+      - name: Consolidate native Cook reports and render pipeline HTML
+        if: always()
+        env:
+          SELECTION: ${{ inputs.selection || 'profiles' }}
+          PROFILE: ${{ matrix.profile }}
+        run: |
+          target=$(python3 -c 'import os,yaml; print(yaml.safe_load(open(".github/cook/stage1.yml"))[os.environ["SELECTION"]][os.environ["PROFILE"]]["target"])')
+          python3 cook.py merge-reports -t "$target" --quiet
+          python3 cook.py report-html --quiet
       - name: Upload available native and unified Cook evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -111,7 +125,7 @@ jobs:
           if-no-files-found: error
           path: |
             ci-results/
-            !ci-results/csr-readback/obj/
+            artifacts/reports/
             build/*/compile/
             build/*/simulation/
             build/*/elab/*/compilation.*

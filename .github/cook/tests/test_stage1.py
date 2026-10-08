@@ -7,6 +7,7 @@ import copy
 import os
 from pathlib import Path
 import sys
+import subprocess
 import tempfile
 from types import SimpleNamespace
 import unittest
@@ -32,6 +33,7 @@ from flows.recipes.verilator_testharness_run import verilator_testharness_run
 from flows.recipes.verilator_testharness_comp import verilator_testharness_comp
 from prepare_stage1 import materialize, names
 from check_native_failures import has_instruction_divergence
+from run_stage1 import checked_integer_program
 from flows.utils.logged_process import run_logged_process
 
 
@@ -353,6 +355,38 @@ class Contracts(unittest.TestCase):
         self.assertTrue(has_instruction_divergence(data))
         with self.assertRaises(ValueError):
             has_instruction_divergence({"mismatches": []})
+
+    def test_integer_environment_is_hashed_and_explicit(self):
+        for profile in ("rv32-60x", "rv32-65x", "rv64"):
+            config, _ = materialize(profile, self.root / profile)
+            provenance = yaml.safe_load((self.root / profile / "provenance.yml").read_text())
+            self.assertEqual(config["environment"], "adapted-machine-mode-integer")
+            self.assertIn(".github/cook/env/m/riscv_test.h", provenance["sources"])
+            self.assertNotIn("f", config["march"].split("_")[0][4:])
+            self.assertNotIn("d", config["march"].split("_")[0][4:])
+
+    def test_core_and_target_files_match_upstream_baseline(self):
+        baseline = yaml.safe_load(Path(".github/cook/stage1.yml").read_text())["upstream_revision"]
+        subprocess.run(
+            ["git", "diff", "--exit-code", baseline, "--", "core", "config/target"],
+            check=True, timeout=30,
+        )
+
+    def test_program_scope_checks_code_not_data(self):
+        dump = self.root / "test.dump"
+        for opcode in ("csrw", "mret", "sret", "ecall", "fld", "fadd.d"):
+            dump.write_text(
+                f"Disassembly of section .text.init:\n80000000 <_start>:\n 80000000: 00000013 {opcode} t0\n"
+            )
+            with self.subTest(opcode=opcode), self.assertRaises(ValueError):
+                checked_integer_program(dump)
+        dump.write_text(
+            "Disassembly of section .text.init:\n80000000 <_start>:\n"
+            " 80000000: 00000013 add t0,t1,t2\n"
+            " 80000004: 0000000f fence\n"
+            "Disassembly of section .data:\n 80001000: 00000013 csrw t0\n"
+        )
+        self.assertEqual(checked_integer_program(dump)["instruction_count"], 2)
 
 
 if __name__ == "__main__":
