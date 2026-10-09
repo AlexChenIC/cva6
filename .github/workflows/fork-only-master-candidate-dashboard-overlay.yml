@@ -6,19 +6,23 @@ on:
       - master
     paths:
       - .github/workflows/fork-only-master-candidate-dashboard-overlay.yml
+      - .github/scripts/dashboard_legacy_migration.py
+      - .github/tests/test_dashboard_legacy_migration.py
   workflow_run:
     workflows:
       - openhw-cva6-ci-tier1
       - openhw-cva6-ci-tier2
     types:
       - completed
+    branches:
+      - jchen/pr3480-legacy-ci-e7-20261009
   schedule:
     - cron: "17 */4 * * *"
   workflow_dispatch:
 
 concurrency:
   group: fork-only-master-candidate-dashboard-overlay
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 permissions:
   actions: read
@@ -28,7 +32,9 @@ permissions:
 
 env:
   DASHBOARD_SOURCE_SHA: 6464894fa0709630c09ea0414691358aec4fa9e7
-  TIER_BRANCH: jchen/master-candidate-openhw-tier-ci
+  TIER_BRANCH: jchen/pr3480-legacy-ci-e7-20261009
+  LEGACY_SHA: e7c272c93dc0db08d030f1ebe7412af8d78dae6b
+  DEVELOPMENT_BRANCH: jchen/master-candidate-openhw-tier-ci
   TARGET_BRANCH: master_candidate
   THALES_DASHBOARD_URL: https://riscv-ci.pages.thales-invia.fr/dashboard/dashboard_cva6.html
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
@@ -38,8 +44,10 @@ jobs:
     if: >-
       github.repository == 'AlexChenIC/cva6' &&
       (github.event_name != 'workflow_run' ||
-      github.event.workflow_run.head_branch ==
-      'jchen/master-candidate-openhw-tier-ci')
+      (github.event.workflow_run.head_branch ==
+      'jchen/pr3480-legacy-ci-e7-20261009' &&
+      github.event.workflow_run.head_sha ==
+      'e7c272c93dc0db08d030f1ebe7412af8d78dae6b'))
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
@@ -57,6 +65,14 @@ jobs:
           python3 -m pip install --disable-pip-version-check \
             jinja2==3.1.6 \
             pyyaml==6.0.3
+
+      - name: Verify frozen legacy ref
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          actual_sha=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/$TIER_BRANCH" --jq '.object.sha')
+          test "$actual_sha" = "$LEGACY_SHA"
 
       - name: Restore published dashboard data
         run: |
@@ -88,14 +104,14 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          python3 .github/scripts/dashboard/collect_data.py --repo "${{ github.repository }}" --data-dir /tmp/legacy-data --fetch-count 10
-          python3 .github/scripts/dashboard_tiers/collect_data.py --repo "${{ github.repository }}" --data-dir /tmp/tier-data --fetch-count 20
+          python3 .github/scripts/dashboard_legacy_migration.py collect --collector .github/scripts/dashboard/collect_data.py --repo "${{ github.repository }}" --history-dir /tmp/legacy-data --fetch-count 10
+          python3 .github/scripts/dashboard_legacy_migration.py collect --collector .github/scripts/dashboard_tiers/collect_data.py --repo "${{ github.repository }}" --history-dir /tmp/tier-data --fetch-count 20
 
       - name: Collect master_candidate Tier data
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          python3 candidate-dashboard-source/.github/scripts/dashboard_tiers/collect_data.py --repo "${{ github.repository }}" --data-dir /tmp/master-candidate-data --fetch-count 20 --branch "$TIER_BRANCH" --base-branch "$TARGET_BRANCH"
+          python3 .github/scripts/dashboard_legacy_migration.py collect --collector candidate-dashboard-source/.github/scripts/dashboard_tiers/collect_data.py --repo "${{ github.repository }}" --history-dir /tmp/master-candidate-data --fetch-count 20 --branch "$TIER_BRANCH" --base-branch "$TARGET_BRANCH" --expected-sha "$LEGACY_SHA"
 
       - name: Collect Thales GitLab reference
         run: |
@@ -104,13 +120,21 @@ jobs:
             --output /tmp/master-candidate-data/thales_reference.json
 
       - name: Test dashboard data handling
-        run: python3 -m unittest discover --start-directory candidate-dashboard-source/.github/tests --pattern 'test_tier_dashboard.py'
+        run: |
+          python3 -m unittest discover --start-directory candidate-dashboard-source/.github/tests --pattern 'test_tier_dashboard.py'
+          python3 -m unittest discover --start-directory .github/tests --pattern 'test_dashboard_legacy_migration.py'
 
       - name: Generate complete dashboard site
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          python3 .github/scripts/dashboard/generate_dashboard.py --data-dir /tmp/legacy-data --output-dir /tmp/dash-site --repo "${{ github.repository }}"
-          python3 .github/scripts/dashboard_tiers/generate_dashboard.py --data-dir /tmp/tier-data --output-dir /tmp/dash-site/tier --repo "${{ github.repository }}"
-          python3 candidate-dashboard-source/.github/scripts/dashboard_tiers/generate_dashboard.py --data-dir /tmp/master-candidate-data --output-dir /tmp/dash-site/master_candidate --repo "${{ github.repository }}"
+          set -euo pipefail
+          python3 .github/scripts/dashboard_legacy_migration.py views --history-root /tmp --output-root /tmp/dashboard-views
+          python3 .github/scripts/dashboard/generate_dashboard.py --data-dir /tmp/dashboard-views/legacy-data --output-dir /tmp/dash-site --repo "${{ github.repository }}"
+          python3 .github/scripts/dashboard_tiers/generate_dashboard.py --data-dir /tmp/dashboard-views/tier-data --output-dir /tmp/dash-site/tier --repo "${{ github.repository }}"
+          python3 candidate-dashboard-source/.github/scripts/dashboard_tiers/generate_dashboard.py --data-dir /tmp/dashboard-views/master-candidate-data --output-dir /tmp/dash-site/master_candidate --repo "${{ github.repository }}"
+          development_sha=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/$DEVELOPMENT_BRANCH" --jq '.object.sha')
+          python3 .github/scripts/dashboard_legacy_migration.py label --site-dir /tmp/dash-site --history-root /tmp --repo "${{ github.repository }}" --development-sha "$development_sha"
           cp -r /tmp/legacy-data /tmp/dash-site/data
           cp -r /tmp/tier-data /tmp/dash-site/tier/data
           cp -r /tmp/master-candidate-data /tmp/dash-site/master_candidate/data
@@ -181,6 +205,7 @@ jobs:
           DATA_LABEL: ${{ matrix.label }}
         run: |
           set -euo pipefail
+          cp .github/scripts/dashboard_legacy_migration.py /tmp/dashboard_legacy_migration.py
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           if git ls-remote --exit-code --heads origin "$DATA_BRANCH" >/dev/null 2>&1; then
@@ -208,9 +233,8 @@ jobs:
           DATA_SOURCE: ${{ matrix.source }}
         run: |
           set -euo pipefail
-          rm -rf data
-          mkdir data
-          cp -r "/tmp/dashboard-data/$DATA_SOURCE/." data/
+          python3 /tmp/dashboard_legacy_migration.py merge \
+            --incoming-dir "/tmp/dashboard-data/$DATA_SOURCE" --history-dir data
           git add -A data/
           if git diff --cached --quiet; then
             echo "No $DATA_LABEL changes"

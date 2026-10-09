@@ -14,7 +14,8 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  TIER_BRANCH: jchen/master-candidate-openhw-tier-ci
+  TIER_BRANCH: jchen/pr3480-legacy-ci-e7-20261009
+  LEGACY_SHA: e7c272c93dc0db08d030f1ebe7412af8d78dae6b
 
 jobs:
   dispatch:
@@ -22,10 +23,24 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
-      - name: Dispatch master_candidate Tier 2
+      - name: Verify frozen legacy target
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          set -euo pipefail
+          actual_sha=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/$TIER_BRANCH" --jq '.object.sha')
+          test "$actual_sha" = "$LEGACY_SHA"
+          gh api --method GET \
+            "repos/$GITHUB_REPOSITORY/contents/.github/workflows/openhw-cva6-ci-tier2.yml" \
+            --field "ref=$TIER_BRANCH" >/dev/null
+          printf 'Legacy branch: `%s`\n\nFrozen source SHA: `%s`\n' \
+            "$TIER_BRANCH" "$actual_sha" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Dispatch legacy e7 Cook Tier 2
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
           gh api \
             --method POST \
             "repos/$GITHUB_REPOSITORY/actions/workflows/openhw-cva6-ci-tier2.yml/dispatches" \
