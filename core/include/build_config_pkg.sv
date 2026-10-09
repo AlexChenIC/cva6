@@ -299,6 +299,13 @@ package build_config_pkg;
     cfg.ObiZcmtbusCfg.OptionalCfg.RChkWidth = 1;
 
     cfg.PipelineOnly = CVA6Cfg.PipelineOnly;
+    cfg.NrStoreInFlight = CVA6Cfg.NrStoreInFlight;
+
+    cfg.DclsEn = CVA6Cfg.DclsEn;
+    cfg.DclsDelay = CVA6Cfg.DclsDelay;
+    cfg.DclsCommonRegfile = CVA6Cfg.DclsCommonRegfile;
+    cfg.DclsCommonBHT = CVA6Cfg.DclsCommonBHT;
+    cfg.DclsCommonModules = CVA6Cfg.DclsCommonBHT | CVA6Cfg.DclsCommonRegfile;
 
     return cfg;
   endfunction

@@ -7,3 +7,10 @@ tqdm
 rich
 typer
 pyyaml
+jinja2
+pyserial
+black
+pylint
+sphinx>=3.1.2
+sphinx-rtd-theme
+recommonmark

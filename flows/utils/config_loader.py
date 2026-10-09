@@ -50,7 +50,7 @@ def _read_config(config_file: str, verbose: bool):
             )
     # Test to detect dummy config (uninitialised environement
     # Rename dummy1 key in yaml to disable this error
-    if DATA != None and "dummy1" in DATA:
+    if DATA is not None and "dummy1" in DATA:
         if verbose:
             console.print(
                 Panel(
@@ -73,3 +73,17 @@ def load_techno_config(verbose: bool = True):
 
 def load_compiler_config(verbose: bool = True):
     return _read_config("compiler.yml", verbose)
+
+
+def is_clang_toolchain(toolchain, verbose: bool = False):
+    """
+    True when `toolchain` selects a Clang/LLVM compiler.
+
+    Patterns use it to pick compiler-specific options: a flag understood by
+    one compiler is often rejected outright by the other, and an option that
+    fixes a GCC code generation issue can cost performance on Clang (or the
+    reverse). `toolchain` accepts the Enum or its string value.
+    """
+    name = getattr(toolchain, "value", toolchain)
+    entry = load_compiler_config(verbose).get(name) or {}
+    return bool(entry.get("CLANG"))

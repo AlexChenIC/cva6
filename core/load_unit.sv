@@ -220,12 +220,14 @@ module load_unit
 
   logic paddr_is_cacheable;  // asserted if physical address is non-cacheable
   assign paddr_is_cacheable = config_pkg::is_inside_cacheable_regions(
-      CVA6Cfg, {{64 - CVA6Cfg.DCACHE_TAG_WIDTH{1'b0}}, 
-                ypb_load_req_o.paddr[ CVA6Cfg.DCACHE_TAG_WIDTH + 
+      CVA6Cfg,
+      {
+        {64 - CVA6Cfg.DCACHE_INDEX_WIDTH - CVA6Cfg.DCACHE_TAG_WIDTH{1'b0}},
+        ypb_load_req_o.paddr[ CVA6Cfg.DCACHE_TAG_WIDTH +
                                       CVA6Cfg.DCACHE_INDEX_WIDTH-1:
-                                      CVA6Cfg.DCACHE_INDEX_WIDTH ], 
-                {CVA6Cfg.DCACHE_INDEX_WIDTH{1'b0}}
-              }
+                                      CVA6Cfg.DCACHE_INDEX_WIDTH ],
+        {CVA6Cfg.DCACHE_INDEX_WIDTH{1'b0}}
+      }
   );
 
   logic paddr_nonidempotent;
@@ -322,7 +324,10 @@ module load_unit
   //default ypb state registred
   assign ypb_load_req_o.paddr = ypb_a_state_q == TRANSPARENT ? paddr : paddr_q;
   assign ypb_load_req_o.we = '0;
-  assign ypb_load_req_o.be = (ypb_a_state_q == TRANSPARENT) && valid_i ? lsu_ctrl_i.be : be_q;
+  // With an MMU paddr comes from s1 while lsu_ctrl_i already presents the next
+  // request, so the registered byte enable is the one belonging to it.
+  assign ypb_load_req_o.be = (ypb_a_state_q == TRANSPARENT) && valid_i && !CVA6Cfg.MmuPresent
+                             ? lsu_ctrl_i.be : be_q;
   assign ypb_load_req_o.size = (CVA6Cfg.XLEN == 64) ? ariane_pkg::size_gen(
       ypb_load_req_o.be
   ) : ariane_pkg::size_gen_32(

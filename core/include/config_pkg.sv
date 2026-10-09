@@ -237,6 +237,17 @@ package config_pkg;
     int unsigned                 ObiVersion;
     // Configuration defines cva6_pipeline module as top instead of cva6 (no cache and OBI instead of AXI)
     bit                          PipelineOnly;
+    // Depth of the store buffer FIFO tracking the stores granted but not yet
+    // acknowledged, so that a colliding load waits for them. 0 disables the
+    // tracking, which is only safe when nothing buffers the accesses between
+    // the store bus and the memory.
+    int unsigned                 NrStoreInFlight;
+    // DCLS parameters
+    bit                          DclsEn;
+    // Number of cycles o
+    int unsigned                 DclsDelay;
+    bit                          DclsCommonRegfile;
+    bit                          DclsCommonBHT;
   } cva6_user_cfg_t;
 
   typedef struct packed {
@@ -408,6 +419,13 @@ package config_pkg;
     obi_pkg::obi_cfg_t ObiZcmtbusCfg;
 
     bit PipelineOnly;
+    int unsigned NrStoreInFlight;
+
+    bit DclsEn;
+    int unsigned DclsDelay;
+    bit DclsCommonRegfile;
+    bit DclsCommonBHT;
+    bit DclsCommonModules;
   } cva6_cfg_t;
 
   /// Empty configuration to sanity check proper parameter passing. Whenever
