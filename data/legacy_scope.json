@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-10-09T08:56:19.803626+00:00",
+  "generated_at": "2026-10-09T09:01:38.660115+00:00",
   "legacy_branch": "jchen/pr3480-legacy-ci-e7-20261009",
   "frozen_source_sha": "e7c272c93dc0db08d030f1ebe7412af8d78dae6b",
   "dashboard_source_sha": "6464894fa0709630c09ea0414691358aec4fa9e7",
@@ -13,7 +13,7 @@
       "original_branch_e7": 1
     },
     "runs_tier2": {
-      "legacy": 1,
+      "legacy": 2,
       "original_branch_e7": 50
     }
   }
