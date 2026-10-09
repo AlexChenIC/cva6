@@ -1,7 +1,7 @@
 {
-  "generated_at": "2026-10-08T21:22:03.894796+00:00",
+  "generated_at": "2026-10-09T08:23:49.060281+00:00",
   "repo": "AlexChenIC/cva6",
-  "branch": "jchen/master-candidate-openhw-tier-ci",
+  "branch": "jchen/pr3480-legacy-ci-e7-20261009",
   "base_branch": "master_candidate",
   "workflows": [
     "tier1",
