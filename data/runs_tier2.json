@@ -1,5 +1,60 @@
 [
   {
+    "id": 37907849556,
+    "source": "github-actions",
+    "simulator": "verilator",
+    "run_number": 314,
+    "status": "completed",
+    "conclusion": "success",
+    "html_url": "https://github.com/AlexChenIC/cva6/actions/runs/37907849556",
+    "head_branch": "jchen/pr3480-legacy-ci-e7-20261009",
+    "head_sha": "e7c272c9",
+    "event": "workflow_dispatch",
+    "created_at": "2026-10-09T08:54:15Z",
+    "updated_at": "2026-10-09T08:59:15Z",
+    "run_started_at": "2026-10-09T08:54:15Z",
+    "duration_seconds": 300,
+    "total_jobs": 3,
+    "passed_jobs": 3,
+    "failed_jobs": 0,
+    "skipped_jobs": 0,
+    "jobs": [
+      {
+        "name": "RV32 Tier2 cv32a60x_axi / base-rv32-p",
+        "conclusion": "success",
+        "started_at": "2026-10-09T08:55:29Z",
+        "completed_at": "2026-10-09T08:59:06Z",
+        "duration_seconds": 217,
+        "html_url": "https://github.com/AlexChenIC/cva6/actions/runs/37907849556/job/113745955848",
+        "arch": "rv32",
+        "config": "cv32a60x_axi",
+        "testcase": "base-rv32-p"
+      },
+      {
+        "name": "RV32 Tier2 cv32a65x_axi / base-rv32-p",
+        "conclusion": "success",
+        "started_at": "2026-10-09T08:55:29Z",
+        "completed_at": "2026-10-09T08:58:21Z",
+        "duration_seconds": 172,
+        "html_url": "https://github.com/AlexChenIC/cva6/actions/runs/37907849556/job/113745956186",
+        "arch": "rv32",
+        "config": "cv32a65x_axi",
+        "testcase": "base-rv32-p"
+      },
+      {
+        "name": "RV32 Tier2 cv32a65x_axi / base-pmp",
+        "conclusion": "success",
+        "started_at": "2026-10-09T08:55:29Z",
+        "completed_at": "2026-10-09T08:59:14Z",
+        "duration_seconds": 225,
+        "html_url": "https://github.com/AlexChenIC/cva6/actions/runs/37907849556/job/113745956481",
+        "arch": "rv32",
+        "config": "cv32a65x_axi",
+        "testcase": "base-pmp"
+      }
+    ]
+  },
+  {
     "id": 37904402601,
     "source": "github-actions",
     "simulator": "verilator",
