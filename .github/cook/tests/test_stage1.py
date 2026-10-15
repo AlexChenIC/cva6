@@ -19,7 +19,7 @@ ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / ".github/cook"))
 from prepare_testlists import materialize, names
-from flows.utils.autocompletion import CompMode, TraceMode
+from flows.utils.autocompletion import CompMode, TraceMode, UvmVerbosity
 from flows.utils.testharness_tandem import (
     read_tandem_report,
     snapshot_spike_config,
@@ -232,6 +232,54 @@ class TestRunVerdict(unittest.TestCase):
             result = CliRunner().invoke(app, ["--help"])
             self.assertEqual(result.exit_code, 0, result.output)
             self.assertIn("tandem", result.output)
+
+
+class TestBatchVerdict(unittest.TestCase):
+    def test_failure_is_retained_and_next_test_still_runs(self):
+        with tempfile.TemporaryDirectory() as directory, chdir(directory):
+            testlist = Path(directory) / "tests.yml"
+            testlist.write_text(
+                yaml.safe_dump(
+                    {
+                        "testlist": [
+                            {"test": "first"},
+                            {"test": "second"},
+                            {"test": "disabled", "iterations": 0},
+                        ]
+                    }
+                )
+            )
+            seen = []
+
+            def fake_run(**kwargs):
+                seen.append((kwargs["test_name"], kwargs["tandem_enabled"]))
+                if kwargs["test_name"] == "first_0":
+                    raise typer.Exit(1)
+
+            with patch.object(
+                batch_recipe, "verilator_testharness_run", side_effect=fake_run
+            ):
+                with self.assertRaises(typer.Exit):
+                    batch_recipe.testharness_run_testlist(
+                        simulator=batch_recipe.Simulator.verilator,
+                        target="target",
+                        testlist=str(testlist),
+                        comp_mode=CompMode.rtl,
+                        trace_mode=TraceMode.notrace,
+                        sim_timeout=10,
+                        tandem_enabled=True,
+                        uvm_verbosity=UvmVerbosity.low,
+                        quiet=True,
+                    )
+            self.assertEqual(seen, [("first_0", True), ("second_0", True)])
+            report = yaml.safe_load(
+                (
+                    Path(directory)
+                    / "build/target/simulation/testharness_verilator_tests_tandem/cook_report.yml"
+                ).read_text()
+            )
+            self.assertEqual(report["status"], "fail")
+            self.assertEqual(report["label"], "1/2 PASS")
 
 
 if __name__ == "__main__":

@@ -194,7 +194,10 @@ def verilator_testharness_run(
         prerequisite = directory / "cook_report.yml"
         if not prerequisite.is_file():
             report.error_exit(f"Missing prerequisite report: {prerequisite}", env=True)
-        previous = yaml.safe_load(prerequisite.read_text())
+        try:
+            previous = yaml.safe_load(prerequisite.read_text())
+        except (OSError, yaml.YAMLError) as error:
+            report.error_exit(f"Unreadable prerequisite report: {error}", env=True)
         if (
             not isinstance(previous, dict)
             or previous.get("recipe") != recipe

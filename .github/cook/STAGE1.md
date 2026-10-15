@@ -45,6 +45,10 @@ python3 .github/cook/run_stage1.py --scope pilot --profile rv32-extra
 The GitHub `cook-stage1.yml` workflow exposes these scopes. A probe is not
 Tier 1 acceptance. Tier 1 always runs all three targets. The workflow has
 no scheduled trigger; upstream candidate/main push and PR events use Tier 1.
+Manual reference validation also enables `--check-reference-baseline`.
+The no-extra-RTL condition is not a permanent ban on future processor PRs:
+ordinary push/PR runs test the submitted RTL rather than requiring identity
+to this frozen teaching baseline.
 
 ## Evidence And Failure Controls
 

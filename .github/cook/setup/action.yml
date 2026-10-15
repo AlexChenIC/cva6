@@ -16,6 +16,9 @@ runs:
         mkdir -p ci-results
         python3 cook.py git-dependencies --repo riscv-tests --quiet
         git submodule status --recursive > ci-results/submodules.txt
+        git -C verif/tests/riscv-tests rev-parse HEAD > ci-results/riscv-tests-revision.txt
+        git -C verif/tests/riscv-tests diff --binary > ci-results/riscv-tests.patch
+        git -C verif/tests/riscv-tests/env diff --binary > ci-results/riscv-tests-env.patch
         sha256sum flows/config/dependencies.yml verif/patches/*.patch > ci-results/dependency-patches.sha256
         git -C verif/core-v-verif diff --binary > ci-results/core-v-verif.patch
         git -C core/cache_subsystem/hpdcache diff --binary > ci-results/hpdcache.patch

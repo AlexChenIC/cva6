@@ -86,7 +86,11 @@ jobs:
         run: |
           ulimit -c 0
           python3 .github/cook/prepare_toolchains.py --output-dir "$CONFIG_DIR" --tandem-enabled
-          python3 .github/cook/run_stage1.py --scope "$SCOPE" --profile "$PROFILE"
+          args=()
+          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
+            args+=(--check-reference-baseline)
+          fi
+          python3 .github/cook/run_stage1.py --scope "$SCOPE" --profile "$PROFILE" "${args[@]}"
       - name: Render unified Cook reports
         if: always()
         run: |

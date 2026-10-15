@@ -29,8 +29,15 @@ UPSTREAM = "fb095566d6ce3a2a89d0a24d3c147863f058cfdb"
 USER_CHECKPOINT = "9255652fe53d44b6172f6c2bee5be35c624357c5"
 
 
-def checked_case(root, target, name):
-    directory = root / "build" / target / "simulation" / testharness_mode(True) / name
+def checked_case(root, target, name, run_name=None):
+    directory = (
+        root
+        / "build"
+        / target
+        / "simulation"
+        / testharness_mode(True)
+        / (run_name or name)
+    )
     report = checked_report(directory, "verilator-testharness-run", name)
     manifest = read_yaml(directory / "cook_manifest.yml")
     require_fields(manifest, {"recipe": "verilator-testharness-run"}, "Run manifest")
@@ -42,6 +49,7 @@ def checked_case(root, target, name):
             "tandem_enabled": True,
             "comp_mode": "rtl",
             "trace_mode": "notrace",
+            "run_name": run_name,
         },
         "Run options",
     )
@@ -83,6 +91,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--profile", required=True)
     parser.add_argument("--scope", choices=("probe", "tier1", "pilot"), default="tier1")
+    parser.add_argument("--check-reference-baseline", action="store_true")
     args = parser.parse_args()
     root = Path.cwd()
     output = root / "ci-results"
@@ -93,6 +102,7 @@ def main():
         "profile": args.profile,
         "commands": [],
         "suites": {},
+        "single_runs": {},
         "negative_controls": {},
     }
     destination = output / "stage1-evidence.json"
@@ -122,7 +132,10 @@ def main():
         )
         evidence["active_stage"] = None
         save()
-        if timed_out or (code == 0 if expected_failure else code != 0):
+        if timed_out or (
+            expected_failure is not None
+            and (code == 0 if expected_failure else code != 0)
+        ):
             raise ValueError(f"{label}: exit={code}, outer timeout={timed_out}")
         return code
 
@@ -141,7 +154,7 @@ def main():
         )
         # Official submodule patches are recorded separately, not mistaken for
         # extra processor RTL changes in this reference.
-        subprocess.run(
+        baseline_check = subprocess.run(
             [
                 "git",
                 "diff",
@@ -152,10 +165,17 @@ def main():
                 "core",
                 "config/target",
             ],
-            check=True,
+            check=False,
             timeout=30,
+            capture_output=True,
+            text=True,
         )
-        evidence["no_extra_core_or_target_changes"] = True
+        if baseline_check.returncode not in (0, 1):
+            raise ValueError("Could not inspect the reference RTL baseline")
+        (output / "core-and-target.diff").write_text(baseline_check.stdout)
+        evidence["no_extra_core_or_target_changes"] = baseline_check.returncode == 0
+        if args.check_reference_baseline and baseline_check.returncode:
+            raise ValueError("Reference adds processor RTL or target changes")
         if args.scope == "probe":
             data = read_yaml(Path(lists["basic"]))
             data["testlist"] = data["testlist"][:1]
@@ -201,9 +221,23 @@ def main():
             # Check independent single-test use, then testlist composition.
             run(
                 f"single-{suite}",
-                cook + ["verilator-testharness-run", "-n", planned[0], *common],
+                cook
+                + [
+                    "verilator-testharness-run",
+                    "-n",
+                    planned[0],
+                    "--run-name",
+                    f"single-{suite}",
+                    *common,
+                ],
             )
-            checked_case(root, target, planned[0])
+            evidence["single_runs"][suite] = {
+                "test_name": planned[0],
+                "run_name": f"single-{suite}",
+                "comparisons": checked_case(
+                    root, target, planned[0], f"single-{suite}"
+                ),
+            }
             run(
                 f"batch-{suite}",
                 cook
@@ -340,10 +374,11 @@ def main():
                 f"+elf_file={second}" if arg.startswith("+elf_file=") else arg
                 for arg in command
             ]
+            # Raw native exit status alone is not a comparison verdict.
             run(
                 "control-mismatch",
                 command,
-                expected_failure=True,
+                expected_failure=None,
                 timeout=60,
                 cwd=mismatch,
             )
@@ -354,6 +389,19 @@ def main():
                 or native["mismatches_count"] < 1
             ):
                 raise ValueError("Controlled model/RTL divergence was not detected")
+            divergent = any(
+                isinstance(row, dict)
+                and isinstance(row.get("core"), dict)
+                and isinstance(row.get("reference_model"), dict)
+                and any(
+                    row["core"].get(key) is not None
+                    and row["core"].get(key) != row["reference_model"].get(key)
+                    for key in ("insn", "pc_rdata")
+                )
+                for row in native.get("mismatches", [])
+            )
+            if not divergent:
+                raise ValueError("Control has no native instruction/PC divergence")
             try:
                 read_tandem_report(native_path)
             except ValueError:
@@ -366,6 +414,7 @@ def main():
                 "status": "PASS",
                 "expected_native": "FAIL",
                 "mismatches_count": native["mismatches_count"],
+                "divergent_instruction": True,
             }
         evidence["status"] = "PASS"
         return 0
