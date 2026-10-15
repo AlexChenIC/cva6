@@ -1,13 +1,15 @@
 # Copyright 2026 OpenHW Foundation
 # SPDX-License-Identifier: Apache-2.0
-"""Select upstream tests without replacing their startup or compiler options."""
+"""Bound upstream integer tests, explicitly adapting only the RV64 startup."""
 
 import copy
+import hashlib
 from pathlib import Path
+import shlex
 
 import yaml
 
-# Reuse upstream definitions and startup; only bound the software ISA/selection.
+# RV32 retains upstream startup; RV64 has a documented, limited M-mode profile.
 _RV32_PROFILE = {
     "target": "cv32a60x_axi",
     "march": "rv32imc_zicsr_zifencei",
@@ -43,6 +45,8 @@ REGRESSION_CONFIG = {
             "target": "cv64a6_imafdc_sv39_hpdcache_pmp_mmu_axi",
             "march": "rv64imc_zicsr_zifencei",
             "mabi": "lp64",
+            "environment": "stage1-integer-m",
+            "startup_header": ".github/cook/env/m/riscv_test.h",
             "suites": {
                 "basic": {
                     "source": "verif/tests/base_rv64_p.yaml",
@@ -103,7 +107,11 @@ def names(data):
 def materialize(profile, output, selection="profiles"):
     config = copy.deepcopy(REGRESSION_CONFIG[selection][profile])
     output.mkdir(parents=True, exist_ok=True)
-    lists, seen = {}, set()
+    lists, seen, adaptations = {}, set(), {}
+    if "startup_header" in config:
+        content = Path(config["startup_header"]).read_bytes()
+        config["startup_sha256"] = hashlib.sha256(content).hexdigest()
+        (output / "riscv_test.h").write_bytes(content)
     for suite, spec in config["suites"].items():
         path = Path(spec["source"])
         entries = yaml.safe_load(path.read_text())["testlist"]
@@ -119,6 +127,30 @@ def materialize(profile, output, selection="profiles"):
         for entry in data["testlist"]:
             entry.setdefault("march", spec.get("march", config["march"]))
             entry.setdefault("mabi", config["mabi"])
+            if "startup_header" in config:
+                original = entry["test"]
+                if not original.startswith("rv64ui-p-"):
+                    raise ValueError(
+                        "Restricted startup supports selected RV64 integer tests only"
+                    )
+                original_options = {
+                    key: entry[key] for key in ("gcc_opts", "llvm_opts") if key in entry
+                }
+                for key, value in original_options.items():
+                    options = shlex.split(value)
+                    include = "-I<path_var>/riscv-tests/env/p/"
+                    if options.count(include) != 1:
+                        raise ValueError("Expected one upstream p environment include")
+                    options[options.index(include)] = "-I.github/cook/env/m/"
+                    options.append("-mno-relax")
+                    entry[key] = shlex.join(options)
+                entry["test"] = "rv64ui-m-stage1-" + original.removeprefix("rv64ui-p-")
+                adaptations[entry["test"]] = {
+                    "source_test": original,
+                    "asm_tests": entry["asm_tests"],
+                    "original_compiler_options": original_options,
+                    "gcc_opts": entry["gcc_opts"],
+                }
         planned = names(data)
         if len(planned) != spec["enabled"] or seen.intersection(planned):
             raise ValueError("Reviewed count changed or cross-suite ELF names collide")
@@ -133,6 +165,7 @@ def materialize(profile, output, selection="profiles"):
                 selection=selection,
                 config=config,
                 lists=lists,
+                adaptations=adaptations,
             ),
             sort_keys=False,
         )

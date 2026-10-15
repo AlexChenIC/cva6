@@ -4,6 +4,7 @@
 
 from contextlib import chdir
 import copy
+import hashlib
 import json
 from pathlib import Path
 import sys
@@ -41,7 +42,7 @@ NATIVE = {
 
 
 class TestSelection(unittest.TestCase):
-    def test_three_profiles_keep_eight_tests_and_original_startup(self):
+    def test_three_profiles_keep_eight_tests_with_explicit_startup(self):
         with tempfile.TemporaryDirectory() as directory, chdir(ROOT):
             for profile in ("rv32-60x", "rv32-65x", "rv64"):
                 config, lists = materialize(profile, Path(directory) / profile)
@@ -51,8 +52,35 @@ class TestSelection(unittest.TestCase):
                     for entry in yaml.safe_load(Path(path).read_text())["testlist"]
                 ]
                 self.assertEqual(len(tests), 8)
-                self.assertEqual(config["environment"], "upstream-riscv-tests-p")
-                self.assertTrue(all("/env/p/" in entry["gcc_opts"] for entry in tests))
+                if profile == "rv64":
+                    self.assertEqual(config["environment"], "stage1-integer-m")
+                    self.assertTrue(
+                        all(
+                            "-I.github/cook/env/m/" in entry["gcc_opts"]
+                            and "/env/p/" not in entry["gcc_opts"]
+                            for entry in tests
+                        )
+                    )
+                    self.assertTrue(
+                        all(
+                            entry["test"].startswith("rv64ui-m-stage1-")
+                            for entry in tests
+                        )
+                    )
+                    snapshot = Path(directory) / profile / "riscv_test.h"
+                    self.assertEqual(
+                        hashlib.sha256(snapshot.read_bytes()).hexdigest(),
+                        config["startup_sha256"],
+                    )
+                    provenance = yaml.safe_load(
+                        (snapshot.parent / "provenance.yml").read_text()
+                    )
+                    self.assertEqual(len(provenance["adaptations"]), 8)
+                else:
+                    self.assertEqual(config["environment"], "upstream-riscv-tests-p")
+                    self.assertTrue(
+                        all("/env/p/" in entry["gcc_opts"] for entry in tests)
+                    )
                 self.assertFalse(
                     any(
                         entry["test"] in ("mcause_warl", "irq_mtval_zero")

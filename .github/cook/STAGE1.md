@@ -20,8 +20,11 @@ acceptance decision.
 - Tier 1: five selected basic integer tests plus three selected integer
   tests per target. Selection is explicit; additions to upstream base lists
   do not silently expand this scope.
-- The initial candidate preserves the original upstream p-mode startup.
-  A narrow software ISA is not a change to the hardware/model ISA.
+- RV32 preserves the original upstream p environment startup. RV64 uses an
+  explicitly named `rv64ui-m-stage1-*` integer environment: original test
+  bodies/assertions, no PMP/VM/F/D initialization or privilege transitions.
+  Its header and adaptation provenance are uploaded. This is not original
+  p environment coverage or a change to the hardware/model ISA.
 - Manual Tier 2 pilot: the 60x lists plus div, rem and mulh.
 - Live Spike is required, including on RV64. No automatic RV64/F/D disable,
   CSR warning downgrade, comparison masking, or additional core/RVFI RTL fix.
@@ -78,3 +81,6 @@ architecture-test coverage is not claimed.
 Actual validation results and any startup/model limitations must be read
 from the run's evidence and the accompanying handover, not inferred from
 this scope document.
+
+See `SPIKE_LIMITATIONS.md` for the preserved original RV64 failure and the
+reason for the bounded software startup, rather than an RTL or model waiver.
