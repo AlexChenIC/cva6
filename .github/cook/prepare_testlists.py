@@ -143,7 +143,14 @@ def materialize(profile, output, selection="profiles"):
                         raise ValueError("Expected one upstream p environment include")
                     options[options.index(include)] = "-I.github/cook/env/m/"
                     options.append("-mno-relax")
-                    entry[key] = shlex.join(options)
+                    # Cook's testlist interface tokenizes whitespace, not shell quotes.
+                    if any(
+                        any(char.isspace() for char in option) for option in options
+                    ):
+                        raise ValueError(
+                            "Cook testlist options cannot contain token whitespace"
+                        )
+                    entry[key] = " ".join(options)
                 entry["test"] = "rv64ui-m-stage1-" + original.removeprefix("rv64ui-p-")
                 adaptations[entry["test"]] = {
                     "source_test": original,

@@ -67,6 +67,21 @@ class TestSelection(unittest.TestCase):
                             for entry in tests
                         )
                     )
+                    for entry in tests:
+                        for key in ("gcc_opts", "llvm_opts"):
+                            if key not in entry:
+                                continue
+                            tokens = entry[key].split()
+                            self.assertIn("-I.github/cook/env/m/", tokens)
+                            self.assertIn(
+                                "-I<path_var>/riscv-tests/isa/macros/scalar/", tokens
+                            )
+                            self.assertTrue(
+                                all(
+                                    "'" not in token and '"' not in token
+                                    for token in tokens
+                                )
+                            )
                     snapshot = Path(directory) / profile / "riscv_test.h"
                     self.assertEqual(
                         hashlib.sha256(snapshot.read_bytes()).hexdigest(),
