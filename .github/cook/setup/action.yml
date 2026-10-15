@@ -1,7 +1,7 @@
 # Copyright 2026 OpenHW Foundation
 # SPDX-License-Identifier: Apache-2.0
 name: Setup CVA6 Cook environment
-description: GCC and Verilator with vendor Spike libraries and disassembler for RTL-only jobs
+description: GCC and Verilator with vendor Spike libraries for Cook smoke and live tandem
 inputs:
   verilator-version:
     description: Verilator release to build
@@ -9,6 +9,16 @@ inputs:
 runs:
   using: composite
   steps:
+    - name: Prepare official dependencies and record applied patches
+      shell: bash
+      run: |
+        set -euo pipefail
+        mkdir -p ci-results
+        python3 cook.py git-dependencies --repo riscv-tests --quiet
+        git submodule status --recursive > ci-results/submodules.txt
+        sha256sum flows/config/dependencies.yml verif/patches/*.patch > ci-results/dependency-patches.sha256
+        git -C verif/core-v-verif diff --binary > ci-results/core-v-verif.patch
+        git -C core/cache_subsystem/hpdcache diff --binary > ci-results/hpdcache.patch
     - name: Resolve tools
       id: tools
       shell: bash
@@ -32,12 +42,12 @@ runs:
       id: gcc
       with:
         path: tools/riscv-toolchain
-        key: cook-smoke-ubuntu24-gcc-v1-${{ hashFiles('ci/install-toolchain.sh') }}
+        key: cook-stage1-ubuntu24-gcc-63feda7d-v1
     - uses: actions/cache/restore@v6
       id: spike
       with:
         path: tools/spike
-        key: cook-smoke-ubuntu24-spike-v1-${{ hashFiles('verif/regress/install-spike.sh') }}-${{ steps.tools.outputs.corev }}
+        key: cook-stage1-ubuntu24-spike-v2-${{ hashFiles('verif/regress/install-spike.sh', 'flows/config/dependencies.yml', 'verif/patches/*.patch') }}-${{ steps.tools.outputs.corev }}
     - uses: actions/cache/restore@v6
       id: verilator
       with:
@@ -59,13 +69,15 @@ runs:
           curl --fail --location --retry 3 --max-time 600 \
             https://buildbot.embecosm.com/job/riscv32-gcc-ubuntu2204-release/10/artifact/riscv32-embecosm-ubuntu2204-gcc13.2.0.tar.gz \
             -o "$RUNNER_TEMP/riscv-gcc.tar.gz"
-          sha256sum "$RUNNER_TEMP/riscv-gcc.tar.gz"
+          # Fixed archive identity from the prior cold-build validation.
+          printf '%s  %s\n' 63feda7d4c6f1cd396367f9555da90bc57c9938235b531763fb6424f097dd28d "$RUNNER_TEMP/riscv-gcc.tar.gz" | sha256sum --check --strict
           tar -xf "$RUNNER_TEMP/riscv-gcc.tar.gz" --strip-components=1 -C "$RISCV"
         fi
         "$RISCV/bin/${CV_SW_PREFIX}gcc" --version
         if [ "$VERILATOR_HIT" != true ]; then
           unset VERILATOR_ROOT
           git clone --depth 1 --branch "v$VERSION" https://github.com/verilator/verilator.git "$RUNNER_TEMP/verilator-$VERSION"
+          test "$(git -C "$RUNNER_TEMP/verilator-$VERSION" rev-parse HEAD)" = 848d926ebd4addacacd294dc84e35d9d4ae8078c
           (
             cd "$RUNNER_TEMP/verilator-$VERSION"
             autoconf

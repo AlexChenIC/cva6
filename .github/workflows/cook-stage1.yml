@@ -1,0 +1,127 @@
+# Copyright 2026 OpenHW Foundation
+# SPDX-License-Identifier: Apache-2.0
+name: Cook Stage 1 Verilator
+on:
+  push:
+    branches: [master_candidate, main]
+  pull_request:
+    branches: [master_candidate, main]
+  workflow_dispatch:
+    inputs:
+      scope:
+        type: choice
+        options: [tier1, probe, pilot]
+        default: tier1
+        description: Required three-target Tier 1, one-target probe, or finite manual Tier 2
+      profile:
+        type: choice
+        options: [rv32-60x, rv32-65x, rv64]
+        default: rv32-60x
+        description: Probe target only; Tier 1 always runs all three
+permissions:
+  contents: read
+concurrency:
+  group: cook-stage1-${{ github.ref }}-${{ inputs.scope || 'tier1' }}
+  cancel-in-progress: true
+env:
+  NUM_JOBS: '2'
+  NO_COLOR: '1'
+  TERM: dumb
+jobs:
+  plan:
+    runs-on: ubuntu-24.04
+    outputs:
+      profiles: ${{ steps.matrix.outputs.profiles }}
+    steps:
+      - id: matrix
+        env:
+          SCOPE: ${{ inputs.scope || 'tier1' }}
+          PROFILE: ${{ inputs.profile || 'rv32-60x' }}
+        run: |
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import json,os
+          scope=os.environ["SCOPE"]
+          profile=os.environ["PROFILE"]
+          assert scope in ("tier1","probe","pilot")
+          assert profile in ("rv32-60x","rv32-65x","rv64")
+          selected=["rv32-60x","rv32-65x","rv64"] if scope=="tier1" else ["rv32-extra"] if scope=="pilot" else [profile]
+          print("profiles="+json.dumps(selected))
+          PY
+  contracts:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with: {persist-credentials: false}
+      - uses: actions/setup-python@v6
+        with: {python-version: '3.11'}
+      - run: python3 -m pip install -c .github/cook/constraints.txt -r flows/requirements.txt
+      - run: python3 -m unittest discover -s .github/cook/tests -v
+  live:
+    needs: plan
+    runs-on: ubuntu-24.04
+    name: ${{ matrix.profile }} / ${{ inputs.scope || 'tier1' }} / live
+    timeout-minutes: 110
+    strategy:
+      fail-fast: false
+      matrix:
+        profile: ${{ fromJSON(needs.plan.outputs.profiles) }}
+    steps:
+      - uses: actions/checkout@v7
+        with: {submodules: recursive, persist-credentials: false, fetch-depth: 0}
+      - uses: actions/setup-python@v6
+        with: {python-version: '3.11'}
+      - name: Record checkout and prepare Cook
+        run: |
+          mkdir -p ci-results
+          git rev-parse HEAD > ci-results/source-revision.txt
+          python3 -m pip install -c .github/cook/constraints.txt -r flows/requirements.txt
+          python3 -m pip freeze > ci-results/python-packages.txt
+      - uses: ./.github/cook/setup
+      - name: Compile, execute and reconcile native results
+        env:
+          CONFIG_DIR: ${{ github.workspace }}/ci-results/cook-config
+          SCOPE: ${{ inputs.scope || 'tier1' }}
+          PROFILE: ${{ matrix.profile }}
+        run: |
+          ulimit -c 0
+          python3 .github/cook/prepare_toolchains.py --output-dir "$CONFIG_DIR" --tandem-enabled
+          python3 .github/cook/run_stage1.py --scope "$SCOPE" --profile "$PROFILE"
+      - name: Render unified Cook reports
+        if: always()
+        run: |
+          python3 cook.py merge-reports --quiet
+          python3 cook.py report-html --quiet
+      - name: Upload available evidence, including failures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cook-stage1-${{ inputs.scope || 'tier1' }}-${{ matrix.profile }}
+          retention-days: 14
+          if-no-files-found: error
+          path: |
+            ci-results/
+            artifacts/reports/
+            build/git_dependencies/
+            build/*/compile/
+            build/*/simulation/
+            build/*/elab/*/compilation.*
+            build/*/elab/*/cook_manifest.yml
+            build/*/elab/*/cook_report.yml
+            build/*/elab/*/Flist.live
+            build/*/elab/*/verilator.version
+  acceptance:
+    name: ${{ inputs.scope == 'probe' && 'Probe only (not Tier 1 acceptance)' || inputs.scope == 'pilot' && 'Manual Tier 2 pilot acceptance' || 'Cook Stage 1 required acceptance' }}
+    if: always()
+    needs: [plan, contracts, live]
+    runs-on: ubuntu-24.04
+    steps:
+      - env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: |
+          python3 - <<'PY'
+          import json,os
+          results=json.loads(os.environ["RESULTS"])
+          print(results)
+          assert all(job["result"]=="success" for job in results.values()), "Failed, skipped or cancelled required job"
+          PY

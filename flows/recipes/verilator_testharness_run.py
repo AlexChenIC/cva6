@@ -12,17 +12,19 @@
 """
 Run one test on the Verilator TestHarness.
 
-The harness prints its verdict rather than returning it: the simulation
-exits 0 whatever the program did, so the log is what says whether the
-test passed.
+Require normal successful termination and, when requested, a successful
+native Spike comparison. Trace disassembly is not reference-model checking.
 """
 
 from pathlib import Path
+from typing import Annotated
+import json
 import re
 import shutil
 import stat
 
 import typer
+import yaml
 
 from flows.utils.autocompletion import (
     CompMode,
@@ -39,6 +41,11 @@ from flows.utils.manifest import (
 )
 from flows.utils.recipe_report import RecipeReport
 from flows.utils.run_cmd import run_cmd
+from flows.utils.testharness_tandem import (
+    read_tandem_report,
+    snapshot_spike_config,
+    testharness_mode,
+)
 
 app = typer.Typer()
 
@@ -81,6 +88,9 @@ def verilator_testharness_run(
     sim_timeout: int = typer.Option(
         SIMULATION_TIMEOUT, "--sim-timeout", help="Simulation timeout in seconds"
     ),
+    tandem_enabled: Annotated[
+        bool, typer.Option(help="Require native live Spike comparison")
+    ] = False,
     run_name: str = typer.Option(
         None,
         "--run-name",
@@ -105,6 +115,7 @@ def verilator_testharness_run(
             "interactive_gui": interactive_gui,
             "sim_timeout": sim_timeout,
             "run_name": run_name,
+            "tandem_enabled": tandem_enabled,
         },
         quiet=quiet,
     )
@@ -122,13 +133,13 @@ def verilator_testharness_run(
     repo_dir = Path.cwd()
     build_root = repo_dir / "build" / target
     compile_dir = build_root / "compile" / test_name
-    elab_dir = build_root / "elab" / "sim_rtl_verilator_testharness"
+    elab_dir = build_root / "elab" / testharness_mode(tandem_enabled)
     # Named after the run rather than the test, so running the same test
     # twice on one elaboration keeps both outputs and both reports.
     simulation_dir = (
         build_root
         / "simulation"
-        / "sim_rtl_verilator_testharness"
+        / testharness_mode(tandem_enabled)
         / (run_name or test_name)
     )
     report.set_out_dir(simulation_dir)
@@ -142,6 +153,8 @@ def verilator_testharness_run(
     # CHECK PREREQUISITES
     # ==========================================================
     report.step("Check prerequisites")
+    if sim_timeout < 1:
+        report.error_exit("sim-timeout must be positive", env=True)
 
     # Software must be compiled first
     require_prerequisite(
@@ -162,6 +175,42 @@ def verilator_testharness_run(
     # Options must be compatible with how the design was elaborated
     elab_manifest = read_manifest(elab_dir, report)
     compile_manifest = read_manifest(compile_dir, report)
+    if any(
+        not isinstance(manifest, dict) or not isinstance(manifest.get("options"), dict)
+        for manifest in (elab_manifest, compile_manifest)
+    ):
+        report.error_exit("Missing or malformed prerequisite manifest", env=True)
+    if (
+        get_manifest_option(elab_manifest, "tandem_enabled", False)
+        is not tandem_enabled
+    ):
+        report.error_exit(
+            "TestHarness build does not match the requested tandem mode", env=True
+        )
+    for directory, recipe, manifest in (
+        (elab_dir, "verilator-testharness-comp", elab_manifest),
+        (compile_dir, "sw-compile", compile_manifest),
+    ):
+        prerequisite = directory / "cook_report.yml"
+        if not prerequisite.is_file():
+            report.error_exit(f"Missing prerequisite report: {prerequisite}", env=True)
+        previous = yaml.safe_load(prerequisite.read_text())
+        if (
+            not isinstance(previous, dict)
+            or previous.get("recipe") != recipe
+            or previous.get("status") != "pass"
+            or manifest.get("recipe") != recipe
+            or get_manifest_option(manifest, "target") != target
+        ):
+            report.error_exit(
+                f"Inconsistent or failing prerequisite: {directory}", env=True
+            )
+    if get_manifest_option(compile_manifest, "test_name") != test_name:
+        report.error_exit(
+            "Compiled software name does not match requested test", env=True
+        )
+    if get_manifest_option(elab_manifest, "comp_mode") != comp_mode.value:
+        report.error_exit("TestHarness compilation mode does not match", env=True)
     if trace_mode != TraceMode.notrace:
         require_manifest_option(
             elab_manifest,
@@ -232,6 +281,16 @@ def verilator_testharness_run(
         "+report_file=testharness.log.yaml",
         f"+tohost_addr={add_tohost}",
     ]
+    if tandem_enabled:
+        try:
+            spike_config = snapshot_spike_config(repo_dir, target, simulation_dir)
+        except (OSError, ValueError, yaml.YAMLError) as error:
+            report.error_exit(str(error), env=True)
+        if spike_config is not None:
+            sim_cmd.append(f"+config_file={spike_config}")
+    (simulation_dir / "simulation.command.json").write_text(
+        json.dumps(sim_cmd, indent=2) + "\n", encoding="utf-8"
+    )
 
     # ==========================================================
     # LAUNCH SIMULATION
@@ -267,7 +326,11 @@ def verilator_testharness_run(
     # Named after the test: the GitHub smoke reads the verdict of this step
     report.step(f"Run {test_name}")
     passed = False
-    text = log_file.read_text(encoding="utf-8", errors="replace")
+    text = (
+        log_file.read_text(encoding="utf-8", errors="replace")
+        if log_file.is_file()
+        else ""
+    )
     failures = [
         marker
         for marker in (
@@ -288,11 +351,24 @@ def verilator_testharness_run(
     else:
         passed = True
         report.success(f"{test_name}: TestHarness completed")
-        # The cycle count the driver prints with its verdict, the label
-        # the dashboard shows as for the UVM runs
+        # The dashboard displays the cycle count, as for UVM runs.
         cycles = re.search(r"\*\*\* SUCCESS \*\*\*.* after (\d+) cycles", text)
         if cycles:
             report.set_label(f"{int(cycles.group(1)) / 1000:.2f} kCycles")
+
+    if tandem_enabled:
+        report.step("Validate native live tandem")
+        try:
+            native = read_tandem_report(simulation_dir / "testharness.log.yaml")
+            report.metric("Tandem comparison").add_row(
+                status="pass",
+                instr_count=native["instr_count"],
+                csrs_match_count=native["csrs_match_count"],
+                mismatches_count=native["mismatches_count"],
+            )
+        except (OSError, ValueError, yaml.YAMLError) as error:
+            passed = False
+            report.error(f"Live tandem evidence failed: {error}")
 
     # ==========================================================
     # DISASSEMBLE RVFI TRACE
@@ -334,6 +410,7 @@ def verilator_testharness_run(
             "trace_mode": trace_mode,
             "interactive_gui": interactive_gui,
             "run_name": run_name,
+            "tandem_enabled": tandem_enabled,
         },
         report=report,
     )

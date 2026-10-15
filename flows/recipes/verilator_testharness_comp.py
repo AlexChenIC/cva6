@@ -18,6 +18,8 @@ talks to the core over AXI, so only the AXI targets are wired for it.
 """
 
 from pathlib import Path
+from typing import Annotated
+import os
 import shlex
 import shutil
 
@@ -28,8 +30,18 @@ from flows.utils.manifest import write_manifest
 from flows.utils.recipe_report import RecipeReport
 from flows.utils.run_cmd import run_cmd
 from flows.utils.target_config import read_config_or_exit_testbench_cfg
+from flows.utils.testharness_tandem import testharness_mode
 
 app = typer.Typer()
+
+TANDEM_SOURCES = (
+    "verif/tb/core/uvma_core_cntrl_pkg.sv",
+    "verif/tb/core/uvma_cva6pkg_utils_pkg.sv",
+    "verif/tb/core/uvma_rvfi_pkg.sv",
+    "verif/tb/core/uvmc_rvfi_reference_model_pkg.sv",
+    "verif/tb/core/uvmc_rvfi_scoreboard_pkg.sv",
+    "corev_apu/tb/common/spike.sv",
+)
 
 # C++ side of the harness: the driver, and the debug transport and JTAG
 # models it calls. elfloader.cc is not among them, the driver loading the
@@ -66,6 +78,9 @@ def verilator_testharness_comp(
     ),
     stats: bool = typer.Option(False, help="RTL perf tracer; currently unsupported"),
     jobs: int = typer.Option(8, "--jobs", "-j", help="Verilator parallel jobs"),
+    tandem_enabled: Annotated[
+        bool, typer.Option(help="Compile native live Spike/RVFI comparison")
+    ] = False,
     quiet: bool = typer.Option(
         False, "--quiet", "-q", help="Suppress output (errors only)"
     ),
@@ -82,6 +97,7 @@ def verilator_testharness_comp(
             "trace_mode": trace_mode,
             "stats": stats,
             "jobs": jobs,
+            "tandem_enabled": tandem_enabled,
         },
         quiet=quiet,
     )
@@ -113,7 +129,7 @@ def verilator_testharness_comp(
 
     # Create files and folder paths
     build_root = repo_dir / "build" / target
-    elab_dir = build_root / "elab" / "sim_rtl_verilator_testharness"
+    elab_dir = build_root / "elab" / testharness_mode(tandem_enabled)
     report.set_out_dir(elab_dir)
     spike_dir = repo_dir / "tools" / "spike"
     binary = elab_dir / "Variane_testharness"
@@ -122,6 +138,8 @@ def verilator_testharness_comp(
     # CHECK PREREQUISITES
     # ==========================================================
     report.step("Check prerequisites")
+    if jobs < 1:
+        report.error_exit("jobs must be positive", env=True)
 
     cva6_hier = read_config_or_exit_testbench_cfg(target, report)
     if cva6_hier.value != "axi":
@@ -160,6 +178,8 @@ def verilator_testharness_comp(
         "CVA6_REPO_DIR": str(repo_dir),
         "TARGET_CFG": target,
         "HPDCACHE_DIR": str(repo_dir / "core" / "cache_subsystem" / "hpdcache"),
+        "SPIKE_INSTALL_DIR": str(spike_dir),
+        "SPIKE_TANDEM": "",
     }
 
     # ==========================================================
@@ -188,6 +208,19 @@ def verilator_testharness_comp(
     ]
     if trace_mode == TraceMode.compact:
         ldflags.append("-lz")
+    harness_flist = repo_dir / "verif" / "tb" / "core" / "Flist.testharness"
+    if tandem_enabled:
+        cflags.append("-DCVA6_TANDEM_STACK_BYTES=268435456")
+        # Keep upstream ordering; insert only the existing live-model packages.
+        content = harness_flist.read_text()
+        anchor = "${CVA6_REPO_DIR}/corev_apu/src/ariane.sv"
+        if content.count(anchor) != 1:
+            report.error_exit(
+                "Review live package ordering: TestHarness filelist changed", env=True
+            )
+        additions = "\n".join("${CVA6_REPO_DIR}/" + source for source in TANDEM_SOURCES)
+        harness_flist = elab_dir / "Flist.live"
+        harness_flist.write_text(content.replace(anchor, additions + "\n" + anchor))
 
     verilator_cmd = [
         verilator,
@@ -199,7 +232,7 @@ def verilator_testharness_comp(
         "-f",
         str(repo_dir / "config" / "target" / target / "Flist.cva6"),
         "-f",
-        str(repo_dir / "verif" / "tb" / "core" / "Flist.testharness"),
+        str(harness_flist),
         "-DPRELOAD=1",
         "--unroll-count",
         "256",
@@ -223,6 +256,8 @@ def verilator_testharness_comp(
         "--cc",
         "--vpi",
     ]
+    if tandem_enabled:
+        verilator_cmd += ["+define+SPIKE_TANDEM=1", "-fno-inline-funcs-eager"]
     if trace_mode == TraceMode.fast:
         verilator_cmd += ["--trace", "+define+VM_TRACE"]
     elif trace_mode == TraceMode.compact:
@@ -261,7 +296,7 @@ def verilator_testharness_comp(
         warning_patterns=[r"^%Warning"],
         log_file=log_file,
         timeout=1800,
-        check=False,
+        check=True,
     )
 
     report.analyze_log(
@@ -272,7 +307,7 @@ def verilator_testharness_comp(
         fail_on_error=False,
     )
 
-    if not binary.exists():
+    if report.failed or not binary.is_file() or not os.access(binary, os.X_OK):
         report.error_exit("Variane_testharness not generated")
 
     report.success("Variane_testharness generated")
@@ -288,6 +323,7 @@ def verilator_testharness_comp(
             "comp_mode": comp_mode,
             "trace_mode": trace_mode,
             "stats": stats,
+            "tandem_enabled": tandem_enabled,
         },
         report=report,
     )

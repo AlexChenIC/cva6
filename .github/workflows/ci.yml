@@ -4,7 +4,13 @@
 
 # Run functional regression checks
 name: ci
-on: [push, pull_request]
+# Legacy jobs use the old master flows and target names. Candidate/main are
+# checked by cook-stage1.yml; this is a scoped replacement, not full equivalence.
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
 
 jobs:
   build-riscv-tests:

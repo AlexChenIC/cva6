@@ -18,6 +18,7 @@ one run per test, and a single report carrying the verdict of each.
 
 from enum import Enum
 from pathlib import Path
+from typing import Annotated
 
 import typer
 import yaml
@@ -30,6 +31,7 @@ from flows.utils.autocompletion import (
     autocompletion_testlist,
 )
 from flows.utils.recipe_report import RecipeReport
+from flows.utils.testharness_tandem import testharness_mode
 from flows.recipes.questa_testharness_run import questa_testharness_run
 from flows.recipes.vcs_testharness_run import vcs_testharness_run
 from flows.recipes.verilator_testharness_run import (
@@ -82,6 +84,9 @@ def testharness_run_testlist(
     sim_timeout: int = typer.Option(
         SIMULATION_TIMEOUT, "--sim-timeout", help="Simulation timeout in seconds"
     ),
+    tandem_enabled: Annotated[
+        bool, typer.Option(help="Require live tandem for every Verilator test")
+    ] = False,
     uvm_verbosity: UvmVerbosity = typer.Option(
         # LOW rather than NONE: the harness reports its verdict with
         # `uvm_info(..., UVM_LOW)`, and NONE drops the line the recipes
@@ -103,7 +108,7 @@ def testharness_run_testlist(
         "testharness-run-testlist",
         out_dir=build_root
         / "simulation"
-        / f"testharness_{simulator.value}_{testlist_file.stem}",
+        / f"testharness_{simulator.value}_{testlist_file.stem}{'_tandem' if tandem_enabled else ''}",
         title="TESTHARNESS TESTLIST RUN",
         context={
             "simulator": simulator.value,
@@ -111,10 +116,13 @@ def testharness_run_testlist(
             "testlist": testlist,
             "comp_mode": comp_mode.value,
             "trace_mode": trace_mode.value,
+            "tandem_enabled": tandem_enabled,
         },
         quiet=quiet,
     )
     results = report.metric("Test results")
+    if tandem_enabled and simulator != Simulator.verilator:
+        report.error_exit("This live tandem option supports Verilator only", env=True)
 
     report.step("Read the testlist")
     if not testlist_file.is_file():
@@ -135,8 +143,18 @@ def testharness_run_testlist(
             report.error_exit(
                 f"Each entry of {testlist_file} needs a string 'test'", env=True
             )
-        for iteration in range(entry.get("iterations", 1)):
+        iterations = entry.get("iterations", 1)
+        if type(iterations) is not int or iterations < 0:
+            report.error_exit("iterations must be a nonnegative integer", env=True)
+        if (
+            entry["test"] in {"", ".", ".."}
+            or Path(entry["test"]).name != entry["test"]
+        ):
+            report.error_exit("Invalid compiled test name", env=True)
+        for iteration in range(iterations):
             names.append(f"{entry['test']}_{iteration}")
+    if len(names) != len(set(names)):
+        report.error_exit("Duplicate compiled test names", env=True)
     if not names:
         report.error_exit(f"No enabled test in {testlist_file}", env=True)
     report.success(f"{len(names)} test(s) to run")
@@ -144,7 +162,14 @@ def testharness_run_testlist(
     for name in names:
         report.step(f"Run {name}")
         run_dir = (
-            build_root / "simulation" / f"sim_rtl_{simulator.value}_testharness" / name
+            build_root
+            / "simulation"
+            / (
+                testharness_mode(tandem_enabled)
+                if simulator == Simulator.verilator
+                else f"sim_rtl_{simulator.value}_testharness"
+            )
+            / name
         )
         # Each test already has its own output directory, hence run_name.
         # The options are passed explicitly: one left out of a recipe
@@ -162,7 +187,9 @@ def testharness_run_testlist(
         try:
             if simulator == Simulator.verilator:
                 # Only Verilator opens a waveform viewer of its own.
-                verilator_testharness_run(interactive_gui=False, **arguments)
+                verilator_testharness_run(
+                    interactive_gui=False, tandem_enabled=tandem_enabled, **arguments
+                )
             else:
                 # The event-driven simulators take the UVM verbosity, the
                 # harness reporting its verdict through uvm_info.
