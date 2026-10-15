@@ -1,3 +1,6 @@
+<!-- Copyright 2026 OpenHW Foundation
+SPDX-License-Identifier: Apache-2.0 -->
+
 # Cook Stage 1 Reference
 
 This branch is a learning reference, not a submitted PR or an upstream
