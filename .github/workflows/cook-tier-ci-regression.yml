@@ -102,6 +102,46 @@ jobs:
       # ============================================================
       # Step 3: Generate reports and upload available results, even on failure
       # ============================================================
+      # Fork validation diagnostics only; not part of the proposed C11 patch.
+      - name: Capture initialization crash without changing runtime limits
+        if: failure()
+        env:
+          PROFILE: ${{ matrix.profile }}
+        run: |
+          python3 - <<'PYDIAG'
+          import json, os, resource, shlex, shutil, subprocess, sys
+          from pathlib import Path
+          import yaml
+          sys.path.insert(0, str(Path('.github/cook').resolve()))
+          from prepare_testlists import REGRESSION_CONFIG
+          profile = os.environ['PROFILE']
+          target = REGRESSION_CONFIG['profiles'][profile]['target']
+          out = Path('ci-results') / profile / 'diagnostics'
+          out.mkdir(parents=True, exist_ok=True)
+          (out / 'process-limits.txt').write_text(Path('/proc/self/limits').read_text())
+          report_path = Path('build') / target / 'simulation' / 'sim_rtl_verilator_testharness_tandem' / 'rv32ui-p-add_0' / 'cook_report.yml'
+          gdb = shutil.which('gdb')
+          state = {'profile': profile, 'stack_limits': resource.getrlimit(resource.RLIMIT_STACK), 'gdb': gdb, 'report_exists': report_path.is_file()}
+          if gdb and report_path.is_file():
+              report = yaml.safe_load(report_path.read_text())
+              commands = [line for metric in report.get('metrics', []) if metric.get('name') == 'Details' for line in metric.get('data', []) if line.startswith('[LAUNCH SIMULATION] /') and 'Variane_testharness ' in line]
+              if len(commands) != 1:
+                  raise RuntimeError('Expected one original simulation command')
+              command = shlex.split(commands[0].removeprefix('[LAUNCH SIMULATION] '))
+              state['command'] = command
+              debug_dir = out / 'run'
+              debug_dir.mkdir(exist_ok=True)
+              args = [gdb, '--batch', '-ex', 'set pagination off', '-ex', 'set disable-randomization off', '-ex', 'run', '-ex', 'bt 16', '-ex', 'info registers rsp rbp rip', '-ex', 'info proc mappings', '-ex', 'x/8i $pc', '--args', *command]
+              with (out / 'gdb.log').open('w') as log:
+                  try:
+                      result = subprocess.run(args, cwd=debug_dir, stdout=log, stderr=subprocess.STDOUT, timeout=120)
+                      state['gdb_exit'] = result.returncode
+                  except subprocess.TimeoutExpired:
+                      state['diagnostic_timeout'] = True
+          (out / 'diagnostic-state.json').write_text(json.dumps(state, indent=2) + '\n')
+          print(json.dumps(state, indent=2))
+          PYDIAG
+
       - name: Render unified Cook reports
         if: always()
         env:
