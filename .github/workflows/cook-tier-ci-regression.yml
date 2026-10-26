@@ -95,57 +95,43 @@ jobs:
         env:
           CONFIG_DIR: ${{ github.workspace }}/ci-results/cook-config
           PROFILE: ${{ matrix.profile }}
+          # Initial finite setting for the live model's observed 16 MiB stack overflow.
+          # Tune with runtime evidence and Thales; this is not a measured minimum.
+          TANDEM_STACK_KIB: "262144"
         run: |
+          set -e -o pipefail
+          # Same-shell setting: inherited by software/model compilation and simulation
+          # in this step. Independent steps and Hello/ordinary workflows are unchanged.
+          stack_log="ci-results/stack-limit.log"
+          stack_soft_before=$(ulimit -S -s)
+          stack_hard_before=$(ulimit -H -s)
+          printf 'requested_kib=%s\nbefore_soft_kib=%s\nbefore_hard_kib=%s\n' \
+            "$TANDEM_STACK_KIB" "$stack_soft_before" "$stack_hard_before" | tee "$stack_log"
+          if [[ ! "$TANDEM_STACK_KIB" =~ ^[1-9][0-9]*$ ]]; then
+            echo "::error::TANDEM_STACK_KIB must be a positive finite integer" | tee -a "$stack_log"
+            exit 1
+          fi
+          if [[ "$stack_soft_before" != unlimited ]] && [ "$stack_soft_before" -lt "$TANDEM_STACK_KIB" ]; then
+            if ! ulimit -S -s "$TANDEM_STACK_KIB"; then
+              echo "::error::Cannot set tandem stack soft limit; check the hard limit" | tee -a "$stack_log"
+              exit 1
+            fi
+          fi
+          printf 'after_soft_kib=%s\nafter_hard_kib=%s\n' "$(ulimit -S -s)" "$(ulimit -H -s)" | tee -a "$stack_log"
+          python3 - <<'PY_STACK' | tee -a "$stack_log"
+          import os
+          import resource
+          soft, hard = resource.getrlimit(resource.RLIMIT_STACK)
+          print(f"child_soft_bytes={soft} child_hard_bytes={hard} (-1=unlimited)")
+          if soft != resource.RLIM_INFINITY and soft < int(os.environ["TANDEM_STACK_KIB"]) * 1024:
+              raise SystemExit("Tandem stack limit was not inherited")
+          PY_STACK
           python3 .github/cook/prepare_toolchains.py --output-dir "$CONFIG_DIR" --tandem-enabled
           python3 .github/cook/run-tier-regression.py --profile "$PROFILE"
 
       # ============================================================
       # Step 3: Generate reports and upload available results, even on failure
       # ============================================================
-      # Fork validation diagnostics only; not part of the proposed C11 patch.
-      - name: Capture initialization crash without changing runtime limits
-        if: failure()
-        env:
-          PROFILE: ${{ matrix.profile }}
-        run: |
-          if ! command -v gdb >/dev/null 2>&1; then
-            sudo apt-get update
-            sudo apt-get install --no-install-recommends -y gdb
-          fi
-          python3 - <<'PYDIAG'
-          import json, os, resource, shlex, shutil, subprocess, sys
-          from pathlib import Path
-          import yaml
-          sys.path.insert(0, str(Path('.github/cook').resolve()))
-          from prepare_testlists import REGRESSION_CONFIG
-          profile = os.environ['PROFILE']
-          target = REGRESSION_CONFIG['profiles'][profile]['target']
-          out = Path('ci-results') / profile / 'diagnostics'
-          out.mkdir(parents=True, exist_ok=True)
-          (out / 'process-limits.txt').write_text(Path('/proc/self/limits').read_text())
-          report_path = Path('build') / target / 'simulation' / 'sim_rtl_verilator_testharness_tandem' / 'rv32ui-p-add_0' / 'cook_report.yml'
-          gdb = shutil.which('gdb')
-          state = {'profile': profile, 'stack_limits': resource.getrlimit(resource.RLIMIT_STACK), 'gdb': gdb, 'report_exists': report_path.is_file()}
-          if gdb and report_path.is_file():
-              report = yaml.safe_load(report_path.read_text())
-              commands = [line for metric in report.get('metrics', []) if metric.get('name') == 'Details' for line in metric.get('data', []) if line.startswith('[LAUNCH SIMULATION] /') and 'Variane_testharness ' in line]
-              if len(commands) != 1:
-                  raise RuntimeError('Expected one original simulation command')
-              command = shlex.split(commands[0].removeprefix('[LAUNCH SIMULATION] '))
-              state['command'] = command
-              debug_dir = out / 'run'
-              debug_dir.mkdir(exist_ok=True)
-              args = [gdb, '--batch', '-ex', 'set pagination off', '-ex', 'set disable-randomization off', '-ex', 'run', '-ex', 'bt 16', '-ex', 'info registers rsp rbp rip', '-ex', 'info proc mappings', '-ex', 'x/8i $pc', '--args', *command]
-              with (out / 'gdb.log').open('w') as log:
-                  try:
-                      result = subprocess.run(args, cwd=debug_dir, stdout=log, stderr=subprocess.STDOUT, timeout=120)
-                      state['gdb_exit'] = result.returncode
-                  except subprocess.TimeoutExpired:
-                      state['diagnostic_timeout'] = True
-          (out / 'diagnostic-state.json').write_text(json.dumps(state, indent=2) + '\n')
-          print(json.dumps(state, indent=2))
-          PYDIAG
-
       - name: Render unified Cook reports
         if: always()
         env:
