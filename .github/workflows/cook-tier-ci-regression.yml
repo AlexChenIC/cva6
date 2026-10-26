@@ -108,6 +108,10 @@ jobs:
         env:
           PROFILE: ${{ matrix.profile }}
         run: |
+          if ! command -v gdb >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install --no-install-recommends -y gdb
+          fi
           python3 - <<'PYDIAG'
           import json, os, resource, shlex, shutil, subprocess, sys
           from pathlib import Path
