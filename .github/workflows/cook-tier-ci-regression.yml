@@ -1,0 +1,17 @@
+# Fork-only registration for manual Cook regression validation.
+# Dispatch this workflow on a reviewed validation branch, where the same path
+# contains the actual regression. Do not merge the development tree into master.
+name: fork-only-cook-tier-ci-validation
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  select-validation-branch:
+    if: github.repository == 'AlexChenIC/cva6'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Require a validation branch
+        run: |
+          echo "::error::Select a reviewed C11 validation branch when dispatching this workflow."
+          exit 1
