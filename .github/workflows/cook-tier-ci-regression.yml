@@ -33,7 +33,7 @@
 #   live filelists and tool versions; binaries, waveforms and disassembly are omitted.
 # ================================================================================
 
-name: openhw-cva6-ci-tier1
+name: RV64 model A-B-A diagnostic
 
 on:
   push:
@@ -53,7 +53,7 @@ env:
   TERM: dumb
 jobs:
   execute-tier1:
-    name: Tier 1 / ${{ matrix.profile }} / live Spike
+    name: Diagnostic / ${{ matrix.profile }} / live Spike
     runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
@@ -129,7 +129,114 @@ jobs:
               raise SystemExit("Tandem stack limit was not inherited")
           PY_STACK
           python3 .github/cook/prepare_toolchains.py --output-dir "$CONFIG_DIR" --tandem-enabled
-          python3 .github/cook/run-tier-regression.py --profile "$PROFILE"
+          # Validation branch only: compile once, compare original/variant/restored.
+          python3 - <<'PY_AB'
+          import copy
+          import json
+          import os
+          from pathlib import Path
+          import subprocess
+          import sys
+
+          import yaml
+
+          sys.path.insert(0, str(Path(".github/cook").resolve()))
+          from prepare_testlists import REGRESSION_CONFIG
+          from run_smoke import checked_report, read_yaml, run_logged, sha256
+
+          root = Path.cwd()
+          out = root / "ci-results/model-ab"
+          out.mkdir(parents=True, exist_ok=True)
+          target = REGRESSION_CONFIG["profiles"][os.environ["PROFILE"]]["target"]
+          test = "alu_chain_test_0"
+          build = root / "build" / target
+          mode = "sim_rtl_verilator_testharness_tandem"
+          model = build / "elab" / mode / "Variane_testharness"
+          elf = build / "compile" / test / (test + ".elf")
+          config = root / "config/target" / target / "spike.yaml"
+          original = config.read_bytes()
+          needle = b"extensions: cv32a60x,cvxif"
+          assert original.count(needle) == 1
+          variant = original.replace(needle, b"extensions: cv32a60x")
+          expected = copy.deepcopy(yaml.safe_load(original))
+          expected["spike_param_tree"]["core_configs"][0]["extensions"] = "cv32a60x"
+          assert yaml.safe_load(variant) == expected
+          (out / "A-spike.yaml").write_bytes(original)
+          (out / "B-spike.yaml").write_bytes(variant)
+          result = {
+              "purpose": "Diagnostic A/B/A, not production Tier 1 acceptance",
+              "source_revision": subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip(),
+              "target": target,
+              "test": test,
+              "only_model_change": "Remove cvxif plugin registration; keep live and all comparison checks",
+              "cases": [],
+          }
+          def save():
+              (out / "result.json").write_text(json.dumps(result, indent=2))
+          def run(label, command, directory):
+              print("Diagnostic", label, ":", " ".join(command), flush=True)
+              rc, timed_out = run_logged(command, cwd=root, env=os.environ.copy(),
+                                         log=out / (label + "-driver.log"), timeout=None)
+              native = read_yaml(directory / "testharness.log.yaml")
+              cook = read_yaml(directory / "cook_report.yml")
+              text = (directory / "testharness.log").read_text()
+              row = {
+                  "label": label, "exit_code": rc, "timed_out": timed_out,
+                  "native_report": str(directory / "testharness.log.yaml"),
+                  "cook_status": cook.get("status"), "tandem_enabled": cook["context"]["tandem_enabled"],
+                  "instr_count": native.get("instr_count"), "csrs_match_count": native.get("csrs_match_count"),
+                  "mismatches_count": native.get("mismatches_count"), "exit_cause": native.get("exit_cause"),
+                  "native_exit_code": native.get("exit_code"),
+                  "software_success": "*** SUCCESS *** (tohost = 0)" in text,
+                  "config_sha256": sha256(config),
+              }
+              first = native.get("mismatches")
+              if first:
+                  pair = next(iter(first[0].values()))
+                  row["first_mismatch"] = pair
+              result["cases"].append(row)
+              save()
+              assert not timed_out and row["tandem_enabled"] is True
+              assert isinstance(row["instr_count"], int) and row["instr_count"] > 0
+              return row
+
+          try:
+              a = run("A_original", [sys.executable, ".github/cook/run-tier-regression.py",
+                      "--profile", os.environ["PROFILE"]], build / "simulation" / mode / test)
+              checked_report(build / "compile/rv64-basic", "sw-compile-testlist", "software")
+              checked_report(build / "elab" / mode, "verilator-testharness-comp", "model")
+              result["build_identity_before"] = {"model_sha256": sha256(model), "elf_sha256": sha256(elf)}
+              save()
+              assert a["exit_code"] != 0 and a["cook_status"] == "fail" and a["exit_cause"] == "MISMATCH"
+              assert a["mismatches_count"] > 0 and a["first_mismatch"]["core"]["insn_disasm"].startswith("c.sd ")
+              common = [sys.executable, "cook.py", "verilator-testharness-run", "-t", target,
+                        "-n", test, "--tandem-enabled", "--quiet", "--run-name"]
+              config.write_bytes(variant)
+              b = run("B_without_cvxif", common + ["alu_without_cvxif"],
+                      build / "simulation" / mode / "alu_without_cvxif")
+              config.write_bytes(original)
+              restored = run("A_restored", common + ["alu_restored_cvxif"],
+                             build / "simulation" / mode / "alu_restored_cvxif")
+              result["build_identity_after"] = {"model_sha256": sha256(model), "elf_sha256": sha256(elf)}
+              assert result["build_identity_before"] == result["build_identity_after"]
+              assert restored["exit_code"] != 0 and restored["cook_status"] == "fail"
+              assert restored["exit_cause"] == "MISMATCH" and restored["mismatches_count"] == a["mismatches_count"]
+              assert restored["instr_count"] == a["instr_count"]
+              assert restored["first_mismatch"] == a["first_mismatch"]
+              result["B_positive_live"] = (
+                  b["exit_code"] == 0 and b["cook_status"] == "pass" and b["software_success"]
+                  and b["mismatches_count"] == 0 and b["exit_cause"] == "SUCCESS"
+                  and b["native_exit_code"] == 0
+              )
+              result["expected_ABA_observed"] = result["B_positive_live"]
+              if not result["expected_ABA_observed"]:
+                  raise SystemExit("Variant did not pass; retain all original failures for analysis")
+          finally:
+              config.write_bytes(original)
+              result["original_config_restored"] = config.read_bytes() == original
+              save()
+          print(json.dumps(result, indent=2), flush=True)
+          PY_AB
 
       # ============================================================
       # Step 3: Generate reports and upload available results, even on failure
@@ -171,59 +278,24 @@ jobs:
             build/**/verilator.version
             !build/**/spike_dasm.log
 
-      - name: Summarize regression results
+      - name: Summarize diagnostic cases
         if: always()
-        env:
-          PROFILE: ${{ matrix.profile }}
-          REGRESSION_STATUS: ${{ steps.regression.outcome }}
         run: |
-          printf '### Tier 1 — %s\n\nRegression step: **%s**\n\n' \
-            "$PROFILE" "$REGRESSION_STATUS" >> "$GITHUB_STEP_SUMMARY"
-          python3 - <<'PY'
-          import os
+          python3 - <<'PY_SUMMARY'
+          import json, os
           from pathlib import Path
-
-          try:
-              import yaml
-          except ImportError:
-              with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as summary:
-                  summary.write("Cook data unavailable: Python dependencies were not prepared.\n")
-              raise SystemExit(0)
-
-          def read_report(path):
-              try:
-                  data = yaml.safe_load(path.read_text())
-                  return data if isinstance(data, dict) else {}
-              except (OSError, yaml.YAMLError):
-                  return {}
-
-          def metric(report, name):
-              return next((m["data"] for m in report.get("metrics", []) if m["name"] == name), {})
-
-          profile = os.environ["PROFILE"]
-          report = read_report(Path("build/tier-regression") / profile / "cook_report.yml")
-          target = report.get("context", {}).get("target", "not recorded")
-          tests = [test for suite in metric(report, "Selected tests").values() for test in suite]
-          rows, passed = [], 0
-          for test in tests:
-              path = Path("build") / target / "simulation/sim_rtl_verilator_testharness_tandem" / test
-              result = read_report(path / "cook_report.yml")
-              tandem = metric(result, "Tandem report")
-              status = result.get("status", "no report")
-              passed += status == "pass"
-              compared = tandem.get("instr_count")
-              mismatches = tandem.get("mismatches_count")
-              end = tandem.get("exit_cause") or "—"
-              rows.append(f"| {test} | {status} | {compared if compared is not None else '—'} | "
-                          f"{mismatches if mismatches is not None else '—'} | {end} |")
-
+          path = Path("ci-results/model-ab/result.json")
           with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as summary:
-              summary.write(f"**Core:** {target}\n\n")
-              if tests:
-                  summary.write(f"**Cook tests:** {passed}/{len(tests)} passed\n\n")
-                  summary.write("| Testcase | Cook | Spike comparisons | Mismatches | Tandem end |\n")
-                  summary.write("|---|---|---:|---:|---|\n" + "\n".join(rows) + "\n\n")
+              summary.write("### RV64 model A/B/A diagnostic\n\n")
+              summary.write("Same ELF and RTL model; only Spike cvxif plugin registration changes. "
+                            "Expected baseline failures remain in Cook reports. This is not Tier 1 acceptance.\n\n")
+              if path.exists():
+                  result = json.loads(path.read_text())
+                  summary.write(f"**Core:** {result['target']}\n\n")
+                  summary.write("| Case | Cook | Comparisons | Mismatches | End |\n|---|---|---:|---:|---|\n")
+                  for row in result["cases"]:
+                      summary.write(f"| {row['label']} | {row['cook_status']} | {row['instr_count']} | "
+                                    f"{row['mismatches_count']} | {row['exit_cause']} |\n")
               else:
-                  summary.write("No test selection recorded; see the failed or skipped steps.\n\n")
-              summary.write(f"Details: artifact `tier1-regression-{profile}` (Cook HTML/YAML and logs).\n\n")
-          PY
+                  summary.write("No diagnostic result: inspect the failed preparation step.\n")
+          PY_SUMMARY
