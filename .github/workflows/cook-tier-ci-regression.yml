@@ -18,7 +18,7 @@
 #   Shared matrix for push, PR and manual runs:
 #     rv32-60x -> cv32a60x_axi:      basic (5) + integer-extra (3).
 #     rv32-65x -> cv32a65x_sv32_axi: basic (5) + integer-extra (3).
-#     rv64 -> cv64a6_imafdc_sv39_hpdcache_pmp_mmu_axi:
+#     rv64 -> cv64a6_imac_sv39_hpdcache_pmp_nommu_axi_zcmt:
 #             basic (1): alu_chain_test.
 #   These selections reuse the upstream test sources and startup. This is a
 #   bounded integer regression, not the complete instruction/feature coverage.

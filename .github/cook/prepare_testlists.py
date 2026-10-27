@@ -40,7 +40,7 @@ REGRESSION_CONFIG = {
         "rv32-65x": {**_RV32_PROFILE, "target": "cv32a65x_sv32_axi"},
         "rv64": {
             **_RV32_PROFILE,
-            "target": "cv64a6_imafdc_sv39_hpdcache_pmp_mmu_axi",
+            "target": "cv64a6_imac_sv39_hpdcache_pmp_nommu_axi_zcmt",
             "march": "rv64imc_zicsr_zifencei",
             "mabi": "lp64",
             "environment": "upstream-custom-crt",
