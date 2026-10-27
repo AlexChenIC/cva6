@@ -192,7 +192,7 @@ jobs:
               }
               first = native.get("mismatches")
               if first:
-                  pair = next(iter(first[0].values()))
+                  pair = {key: first[0][key] for key in ("core", "reference_model")}
                   row["first_mismatch"] = pair
               result["cases"].append(row)
               save()
