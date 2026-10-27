@@ -19,7 +19,7 @@
 #   Shared matrix for push, PR and manual runs:
 #     rv32-60x -> cv32a60x_axi:      basic (5) + integer-extra (3).
 #     rv32-65x -> cv32a65x_sv32_axi: basic (5) + integer-extra (3).
-#     rv64 -> cv64a6_imac_sv39_hpdcache_pmp_nommu_axi_zcmt: ALU self-check.
+#     rv64 -> cv64a6_imac_sv39_hpdcache_pmp_nommu_axi_zcmt: ALU + fence.i self-checks (2).
 #   These selections reuse the upstream test sources and startup.
 #   RV64 does not run live Spike comparison.
 #
@@ -60,6 +60,8 @@ jobs:
       matrix:
         # All triggers use these entries from REGRESSION_CONFIG.profiles.
         include:
+          - profile: rv32-60x
+          - profile: rv32-65x
           - profile: rv64
     steps:
       # ============================================================
@@ -135,67 +137,6 @@ jobs:
           fi
           python3 .github/cook/prepare_toolchains.py --output-dir "$CONFIG_DIR" "${tandem_args[@]}"
           python3 .github/cook/run-tier-regression.py --profile "$PROFILE"
-
-      # Validation-only: preserve the positive ALU evidence, then expect this step to fail.
-      # This diagnostic is never copied into the learning candidate.
-      - name: Negative control - wrong ALU expected value (expected failure)
-        env:
-          CONFIG_DIR: ${{ github.workspace }}/ci-results/cook-config
-        run: |
-          cat > ci-results/negative_control.py <<'PY_NEG'
-          import copy
-          import hashlib
-          import importlib.util
-          import json
-          from pathlib import Path
-          import shutil
-          import sys
-          import yaml
-
-          root = Path.cwd()
-          sys.path.insert(0, str(root / ".github/cook"))
-          from prepare_testlists import REGRESSION_CONFIG
-          profile = REGRESSION_CONFIG["profiles"]["rv64"]
-          target = profile["target"]
-          positive = root / "ci-results/alu-positive"
-          positive.mkdir(parents=True)
-          shutil.copytree(root / "ci-results/rv64", positive / "selection")
-          for base in [root / "build" / target, root / "build/tier-regression/rv64"]:
-              for item in base.rglob("*"):
-                  if item.is_file() and (item.name in ("cook_report.yml", "cook_manifest.yml", "compilation.command") or (item.suffix == ".log" and item.name != "spike_dasm.log")):
-                      destination = positive / item.relative_to(root)
-                      destination.parent.mkdir(parents=True, exist_ok=True)
-                      shutil.copy2(item, destination)
-
-          negative = root / "ci-results/negative-control"
-          negative.mkdir(parents=True)
-          original = root / "verif/tests/custom/alu/alu_chain_test.S"
-          text = original.read_text()
-          assert text.count("li  t4, 0x140") == 1
-          bad = negative / "alu_wrong_expected.S"
-          bad.write_text(text.replace("li  t4, 0x140", "li  t4, 0x141"))
-          source = yaml.safe_load((root / "verif/tests/base_rv64_p.yaml").read_text())
-          entry = next(t for t in source["testlist"] if t["test"] == "alu_chain_test")
-          entries = []
-          for name, asm in [("alu_expected_failure", bad), ("alu_after_failure", original)]:
-              item = copy.deepcopy(entry)
-              item.update(test=name, asm_tests=str(asm))
-              entries.append(item)
-          source_file = negative / "testlist.yaml"
-          source_file.write_text(yaml.safe_dump({"testlist": entries}, sort_keys=False))
-          profile["suites"] = {"basic": {"source": str(source_file), "tests": [t["test"] for t in entries], "enabled": 2}}
-          (negative / "control.json").write_text(json.dumps({"purpose": "expected software failure followed by an unmodified passing ALU", "change": "expected constant 0x140 -> 0x141", "original_sha256": hashlib.sha256(original.read_bytes()).hexdigest(), "negative_sha256": hashlib.sha256(bad.read_bytes()).hexdigest()}, indent=2))
-          spec = importlib.util.spec_from_file_location("tier", root / ".github/cook/run-tier-regression.py")
-          module = importlib.util.module_from_spec(spec)
-          spec.loader.exec_module(module)
-          sys.argv = ["run-tier-regression.py", "--profile", "rv64"]
-          code = module.main()
-          (negative / "runner-exit.json").write_text(json.dumps({"exit_code": code, "expected_nonzero": True}))
-          if code == 0:
-              raise SystemExit("Negative control unexpectedly passed")
-          raise SystemExit(code)
-          PY_NEG
-          python3 ci-results/negative_control.py
 
       # ============================================================
       # Step 3: Generate reports and upload available results, even on failure

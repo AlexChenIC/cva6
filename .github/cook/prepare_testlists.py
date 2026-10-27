@@ -49,8 +49,8 @@ REGRESSION_CONFIG = {
             "suites": {
                 "basic": {
                     "source": "verif/tests/base_rv64_p.yaml",
-                    "tests": ["alu_chain_test"],
-                    "enabled": 1,
+                    "tests": ["alu_chain_test", "fence_i_smc"],
+                    "enabled": 2,
                 },
             },
         },
