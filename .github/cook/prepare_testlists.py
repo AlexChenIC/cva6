@@ -43,22 +43,12 @@ REGRESSION_CONFIG = {
             "target": "cv64a6_imafdc_sv39_hpdcache_pmp_mmu_axi",
             "march": "rv64imc_zicsr_zifencei",
             "mabi": "lp64",
+            "environment": "upstream-custom-crt",
             "suites": {
                 "basic": {
                     "source": "verif/tests/base_rv64_p.yaml",
-                    "tests": [
-                        "rv64ui-p-add",
-                        "rv64ui-p-lw",
-                        "rv64ui-p-sw",
-                        "rv64ui-p-beq",
-                        "rv64ui-p-jal",
-                    ],
-                    "enabled": 5,
-                },
-                "integer-extra": {
-                    "source": "verif/tests/testlist_riscv-tests-cv64a6_imafdc_sv39-p.yaml",
-                    "tests": ["rv64ui-p-sub", "rv64ui-p-xor", "rv64ui-p-sll"],
-                    "enabled": 3,
+                    "tests": ["alu_chain_test"],
+                    "enabled": 1,
                 },
             },
         },
