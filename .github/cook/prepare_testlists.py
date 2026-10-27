@@ -63,19 +63,6 @@ REGRESSION_CONFIG = {
             },
         },
     },
-    "pilots": {
-        "rv32-extra": {
-            **_RV32_PROFILE,
-            "suites": {
-                **_RV32_PROFILE["suites"],
-                "multiply-divide": {
-                    "source": "verif/tests/testlist_riscv-tests-cv32a60x-p.yaml",
-                    "tests": ["rv32um-p-div", "rv32um-p-rem", "rv32um-p-mulh"],
-                    "enabled": 3,
-                },
-            },
-        },
-    },
 }
 
 
@@ -100,8 +87,8 @@ def names(data):
     return result
 
 
-def materialize(profile, output, selection="profiles"):
-    config = copy.deepcopy(REGRESSION_CONFIG[selection][profile])
+def materialize(profile, output):
+    config = copy.deepcopy(REGRESSION_CONFIG["profiles"][profile])
     output.mkdir(parents=True, exist_ok=True)
     lists, seen = {}, set()
     for suite, spec in config["suites"].items():
@@ -130,7 +117,6 @@ def materialize(profile, output, selection="profiles"):
         yaml.safe_dump(
             dict(
                 profile=profile,
-                selection=selection,
                 config=config,
                 lists=lists,
             ),
