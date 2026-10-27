@@ -1,7 +1,7 @@
 # Copyright 2026 OpenHW Foundation
 # SPDX-License-Identifier: Apache-2.0
 # ================================================================================
-# RV64 original-p single-test diagnosis on an isolated validation branch
+# OpenHW CVA6 CI - Tier 1: Fast Verilator Sanity
 # ================================================================================
 #
 # PURPOSE:
@@ -14,9 +14,14 @@
 #   pull_request      -> Check PRs targeting master_candidate.
 #   workflow_dispatch -> On-demand rerun for manual validation.
 #
-# VALIDATION SCOPE:
-#   One original rv64ui-p-add_0 on the existing RV64 AXI target.
-#   No startup conversion or mismatch exemption. Trial-only workflow.
+# COVERED CONFIGURATIONS AND TESTS:
+#   Shared matrix for push, PR and manual runs:
+#     rv32-60x -> cv32a60x_axi:      basic (5) + integer-extra (3).
+#     rv32-65x -> cv32a65x_sv32_axi: basic (5) + integer-extra (3).
+#     rv64 -> cv64a6_imafdc_sv39_hpdcache_pmp_mmu_axi:
+#             basic (5) + integer-extra (3).
+#   These selections reuse the upstream test sources and startup. This is a
+#   bounded integer regression, not the complete instruction/feature coverage.
 #
 # CONFIGURATION AND RESULTS:
 #   .github/cook/prepare_testlists.py -> REGRESSION_CONFIG selects tests/targets.
@@ -47,14 +52,16 @@ env:
   NO_COLOR: "1"
   TERM: dumb
 jobs:
-  reproduce-rv64-add:
-    name: RV64 original-p add / live Spike
+  execute-tier1:
+    name: Tier 1 / ${{ matrix.profile }} / live Spike
     runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
-        # Single RV64 diagnostic job; full matrix follows only after diagnosis.
+        # All triggers use these entries from REGRESSION_CONFIG.profiles.
         include:
+          - profile: rv32-60x
+          - profile: rv32-65x
           - profile: rv64
     steps:
       # ============================================================
@@ -87,7 +94,7 @@ jobs:
       # ============================================================
       # Step 2: Run the selected regression through Cook
       # ============================================================
-      - name: Compile and run original RV64 add
+      - name: Run selected live tests
         id: regression
         env:
           CONFIG_DIR: ${{ github.workspace }}/ci-results/cook-config
@@ -124,16 +131,7 @@ jobs:
               raise SystemExit("Tandem stack limit was not inherited")
           PY_STACK
           python3 .github/cook/prepare_toolchains.py --output-dir "$CONFIG_DIR" --tandem-enabled
-          target=cv64a6_imafdc_sv39_hpdcache_pmp_mmu_axi
-          python3 cook.py sw-compile-testlist -t "$target" -c github_actions_gcc \
-            -l verif/tests/base_rv64_p.yaml -n rv64ui-p-add \
-            --march rv64imc_zicsr_zifencei --mabi lp64 2>&1 | tee ci-results/rv64-compile-add.log
-          "$RISCV/bin/${CV_SW_PREFIX}objdump" -f "build/$target/compile/rv64ui-p-add_0/rv64ui-p-add_0.elf" \
-            | tee ci-results/rv64-elf.txt
-          python3 cook.py verilator-testharness-comp -t "$target" \
-            --tandem-enabled --trace-mode notrace --jobs "$NUM_JOBS" 2>&1 | tee ci-results/rv64-compile-model.log
-          python3 cook.py verilator-testharness-run -t "$target" -n rv64ui-p-add_0 \
-            --tandem-enabled --trace-mode notrace 2>&1 | tee ci-results/rv64-run-add.log
+          python3 .github/cook/run-tier-regression.py --profile "$PROFILE"
 
       # ============================================================
       # Step 3: Generate reports and upload available results, even on failure
@@ -174,6 +172,60 @@ jobs:
             build/**/Flist.live
             build/**/verilator.version
             !build/**/spike_dasm.log
-            build/**/*.elf
-            build/**/*.dump
-            build/**/trace_rvfi_hart_00.dasm
+
+      - name: Summarize regression results
+        if: always()
+        env:
+          PROFILE: ${{ matrix.profile }}
+          REGRESSION_STATUS: ${{ steps.regression.outcome }}
+        run: |
+          printf '### Tier 1 — %s\n\nRegression step: **%s**\n\n' \
+            "$PROFILE" "$REGRESSION_STATUS" >> "$GITHUB_STEP_SUMMARY"
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+
+          try:
+              import yaml
+          except ImportError:
+              with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as summary:
+                  summary.write("Cook data unavailable: Python dependencies were not prepared.\n")
+              raise SystemExit(0)
+
+          def read_report(path):
+              try:
+                  data = yaml.safe_load(path.read_text())
+                  return data if isinstance(data, dict) else {}
+              except (OSError, yaml.YAMLError):
+                  return {}
+
+          def metric(report, name):
+              return next((m["data"] for m in report.get("metrics", []) if m["name"] == name), {})
+
+          profile = os.environ["PROFILE"]
+          report = read_report(Path("build/tier-regression") / profile / "cook_report.yml")
+          target = report.get("context", {}).get("target", "not recorded")
+          tests = [test for suite in metric(report, "Selected tests").values() for test in suite]
+          rows, passed = [], 0
+          for test in tests:
+              path = Path("build") / target / "simulation/sim_rtl_verilator_testharness_tandem" / test
+              result = read_report(path / "cook_report.yml")
+              tandem = metric(result, "Tandem report")
+              status = result.get("status", "no report")
+              passed += status == "pass"
+              compared = tandem.get("instr_count")
+              mismatches = tandem.get("mismatches_count")
+              end = tandem.get("exit_cause") or "—"
+              rows.append(f"| {test} | {status} | {compared if compared is not None else '—'} | "
+                          f"{mismatches if mismatches is not None else '—'} | {end} |")
+
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as summary:
+              summary.write(f"**Core:** {target}\n\n")
+              if tests:
+                  summary.write(f"**Cook tests:** {passed}/{len(tests)} passed\n\n")
+                  summary.write("| Testcase | Cook | Spike comparisons | Mismatches | Tandem end |\n")
+                  summary.write("|---|---|---:|---:|---|\n" + "\n".join(rows) + "\n\n")
+              else:
+                  summary.write("No test selection recorded; see the failed or skipped steps.\n\n")
+              summary.write(f"Details: artifact `tier1-regression-{profile}` (Cook HTML/YAML and logs).\n\n")
+          PY
