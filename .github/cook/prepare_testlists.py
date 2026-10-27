@@ -9,6 +9,7 @@ import yaml
 
 # Reuse upstream definitions and startup; only bound the software ISA/selection.
 _RV32_PROFILE = {
+    "tandem_enabled": True,
     "target": "cv32a60x_axi",
     "march": "rv32imc_zicsr_zifencei",
     "mabi": "ilp32",
@@ -40,6 +41,7 @@ REGRESSION_CONFIG = {
         "rv32-65x": {**_RV32_PROFILE, "target": "cv32a65x_sv32_axi"},
         "rv64": {
             **_RV32_PROFILE,
+            "tandem_enabled": False,
             "target": "cv64a6_imac_sv39_hpdcache_pmp_nommu_axi_zcmt",
             "march": "rv64imc_zicsr_zifencei",
             "mabi": "lp64",
