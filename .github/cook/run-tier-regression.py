@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # Copyright 2026 OpenHW Foundation
 # SPDX-License-Identifier: Apache-2.0
-"""Run a selected live TestHarness regression through existing Cook recipes."""
+"""Run a selected TestHarness regression through existing Cook recipes."""
 
 import argparse
 import os
@@ -68,22 +68,32 @@ def main():
         )
         config, lists = materialize(args.profile, output / "testlists")
         target = config["target"]
-        report.add_context({"target": target, "environment": config["environment"]})
+        tandem_enabled = config["tandem_enabled"]
+        suffix = "_tandem" if tandem_enabled else ""
+        report.add_context(
+            {
+                "target": target,
+                "environment": config["environment"],
+                "tandem_enabled": tandem_enabled,
+            }
+        )
         report.metric(
             "Selected tests",
             {suite: names(read_yaml(Path(path))) for suite, path in lists.items()},
         )
-        report.warning(
-            "The upstream analyzer can accept zero comparisons; review native counts."
-        )
+        if tandem_enabled:
+            report.warning(
+                "The upstream analyzer can accept zero comparisons; review native counts."
+            )
         common = [
             "-t",
             target,
-            "--tandem-enabled",
             "--trace-mode",
             "notrace",
             "--quiet",
         ]
+        if tandem_enabled:
+            common.append("--tandem-enabled")
         build = root / "build" / target
         for suite, testlist in lists.items():
             run(
@@ -108,7 +118,7 @@ def main():
                 "--jobs",
                 os.environ.get("NUM_JOBS", "2"),
             ],
-            build / "elab" / "sim_rtl_verilator_testharness_tandem",
+            build / "elab" / f"sim_rtl_verilator_testharness{suffix}",
         )
         for suite, testlist in lists.items():
             run(
@@ -123,7 +133,7 @@ def main():
                 ],
                 build
                 / "simulation"
-                / f"testharness_verilator_{Path(testlist).stem}_tandem",
+                / f"testharness_verilator_{Path(testlist).stem}{suffix}",
             )
     except (
         OSError,
