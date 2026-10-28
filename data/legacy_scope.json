@@ -1,11 +1,11 @@
 {
-  "generated_at": "2026-10-27T20:44:35.657408+00:00",
+  "generated_at": "2026-10-28T05:44:24.470135+00:00",
   "legacy_branch": "jchen/pr3480-legacy-ci-e7-20261009",
   "frozen_source_sha": "e7c272c93dc0db08d030f1ebe7412af8d78dae6b",
   "dashboard_source_sha": "6464894fa0709630c09ea0414691358aec4fa9e7",
   "publisher_sha": "2064924569377dfe31f5afda0ecddd51765be2bc",
   "development_branch": "jchen/master-candidate-openhw-tier-ci",
-  "development_sha_observed": "8beaafa0b3ea50b78deab3d52c4780eea9385d95",
+  "development_sha_observed": "a84241eec31453ca0eeac588e2d1469eba4659c5",
   "development_validation": "not_assessed_by_legacy_dashboard",
   "run_counts": {
     "runs_tier1": {
@@ -13,7 +13,7 @@
       "original_branch_e7": 1
     },
     "runs_tier2": {
-      "legacy": 3,
+      "legacy": 4,
       "original_branch_e7": 50
     }
   }
