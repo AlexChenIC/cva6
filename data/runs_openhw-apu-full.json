@@ -1,5 +1,26 @@
 [
   {
+    "id": 40617596193,
+    "source": "github-actions",
+    "simulator": "verilator",
+    "run_number": 232,
+    "status": "completed",
+    "conclusion": "failure",
+    "html_url": "https://github.com/AlexChenIC/cva6/actions/runs/40617596193",
+    "head_branch": "master",
+    "head_sha": "20649245",
+    "event": "schedule",
+    "created_at": "2026-10-28T01:52:22Z",
+    "updated_at": "2026-10-28T02:06:37Z",
+    "run_started_at": "2026-10-28T01:52:22Z",
+    "duration_seconds": 855,
+    "total_jobs": 0,
+    "passed_jobs": 0,
+    "failed_jobs": 0,
+    "skipped_jobs": 0,
+    "jobs": []
+  },
+  {
     "id": 40433927475,
     "source": "github-actions",
     "simulator": "verilator",
