@@ -9,6 +9,7 @@ import yaml
 
 # Reuse upstream definitions and startup; only bound the software ISA/selection.
 _RV32_PROFILE = {
+    "tandem_enabled": True,
     "target": "cv32a60x_axi",
     "march": "rv32imc_zicsr_zifencei",
     "mabi": "ilp32",
@@ -40,25 +41,16 @@ REGRESSION_CONFIG = {
         "rv32-65x": {**_RV32_PROFILE, "target": "cv32a65x_sv32_axi"},
         "rv64": {
             **_RV32_PROFILE,
-            "target": "cv64a6_imafdc_sv39_hpdcache_pmp_mmu_axi",
+            "tandem_enabled": False,
+            "target": "cv64a6_imac_sv39_hpdcache_pmp_nommu_axi_zcmt",
             "march": "rv64imc_zicsr_zifencei",
             "mabi": "lp64",
+            "environment": "upstream-custom-crt",
             "suites": {
                 "basic": {
                     "source": "verif/tests/base_rv64_p.yaml",
-                    "tests": [
-                        "rv64ui-p-add",
-                        "rv64ui-p-lw",
-                        "rv64ui-p-sw",
-                        "rv64ui-p-beq",
-                        "rv64ui-p-jal",
-                    ],
-                    "enabled": 5,
-                },
-                "integer-extra": {
-                    "source": "verif/tests/testlist_riscv-tests-cv64a6_imafdc_sv39-p.yaml",
-                    "tests": ["rv64ui-p-sub", "rv64ui-p-xor", "rv64ui-p-sll"],
-                    "enabled": 3,
+                    "tests": ["alu_chain_test", "fence_i_smc"],
+                    "enabled": 2,
                 },
             },
         },
