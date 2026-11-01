@@ -62,6 +62,12 @@ jobs:
       matrix:
         # All triggers use these entries from REGRESSION_CONFIG.profiles.
         include:
+          - profile: rv32-scalar
+            core: fpga_linux_cv32a6
+            mode: live Spike
+          - profile: rv32-superscalar
+            core: summit_titlis
+            mode: live Spike
           - profile: rv64
             core: profile_rva20s64
             mode: self-check
