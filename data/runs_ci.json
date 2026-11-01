@@ -1,5 +1,26 @@
 [
   {
+    "id": 41278796314,
+    "source": "github-actions",
+    "simulator": "verilator",
+    "run_number": 276,
+    "status": "completed",
+    "conclusion": "failure",
+    "html_url": "https://github.com/AlexChenIC/cva6/actions/runs/41278796314",
+    "head_branch": "jchen/c13-integration-validation-20261101",
+    "head_sha": "4bbf4689",
+    "event": "push",
+    "created_at": "2026-11-01T05:56:01Z",
+    "updated_at": "2026-11-01T05:56:01Z",
+    "run_started_at": "2026-11-01T05:56:01Z",
+    "duration_seconds": 0,
+    "total_jobs": 0,
+    "passed_jobs": 0,
+    "failed_jobs": 0,
+    "skipped_jobs": 0,
+    "jobs": []
+  },
+  {
     "id": 40652089967,
     "source": "github-actions",
     "simulator": "verilator",
