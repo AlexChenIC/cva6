@@ -38,6 +38,7 @@ name: openhw-cva6-ci-tier1
 on:
   push:
     branches: [jchen/verify-3480-20261116-0822]
+  workflow_dispatch: {}
 permissions:
   contents: read
 concurrency:
