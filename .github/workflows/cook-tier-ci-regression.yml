@@ -37,11 +37,7 @@ name: openhw-cva6-ci-tier1
 
 on:
   push:
-    branches: [master_candidate]
-  pull_request:
-    branches: [master_candidate]
-  # Dispatch requires this workflow on the repository's default branch.
-  workflow_dispatch:
+    branches: [jchen/verify-3480-20261116-0822]
 permissions:
   contents: read
 concurrency:
@@ -77,6 +73,8 @@ jobs:
       # ============================================================
       - uses: actions/checkout@v7
         with:
+          # Fork-only trigger commit; test the unmodified integration tree.
+          ref: 307a5b3d12ed28e74caeab757e6ef2a4c5c91f19
           submodules: recursive
           persist-credentials: false
       - name: Record source
