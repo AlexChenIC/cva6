@@ -282,7 +282,7 @@ def flist_substitutions(target, repo_dir=None):
     """
     Return the (placeholder, value) pairs used inside a CVA6 filelist.
 
-    A filelist is written with the placeholders the Makefile flow exports;
+    A filelist is written with placeholders (`${CVA6_REPO_DIR}`, ...);
     expanding them is what lets `read_config_or_exit_flist` follow the
     `-F` includes and hand absolute paths to the tools.
 
@@ -420,3 +420,43 @@ def read_config_or_exit_doc(target, report):
     if isinstance(authors, str):
         report.error_exit(f"'authors' of {path} must be a list, not a string", env=True)
     return cfg
+
+
+def require_flist_files(files, flist_name, report):
+    """Abort the recipe when a source of a filelist doesn't exist"""
+    missing = [f for f in files if not Path(f).exists()]
+    if missing:
+        report.warning(
+            f"{len(missing)} source file(s) of {flist_name} not found \n"
+            + "\n".join(f"{f}" for f in missing)
+        )
+
+
+def require_core_files_in_flist(
+    target, fpga_files, excluded, flist_name, report, repo_dir=None
+):
+    """Abort when a source of the core filelist is neither in the FPGA filelist nor excluded."""
+    repo_dir = Path(repo_dir) if repo_dir else Path.cwd()
+    core_files = read_config_or_exit_flist(
+        target, report, filename="Flist.cva6", repo_dir=repo_dir
+    )
+    in_fpga = {Path(f).resolve() for f in fpga_files}
+    skipped = {(repo_dir / e).resolve() for e in excluded}
+    missing = [f for f in core_files if Path(f).resolve() not in in_fpga | skipped]
+    if missing:
+        report.warning(
+            f"{len(missing)} source file(s) of the core fileslist missing from {flist_name}:\n"
+            + "\n".join(f"{f}" for f in missing)
+            + "\n Add them to the FPGA filelist, or to FPGA_CORE_EXCLUDED if the FPGA"
+            "build must leave them out."
+        )
+
+
+def warn_if_fpga_disabled(target, report, repo_dir=None):
+    "Warn when 'target' is built for fpga without FpgaEn =1"
+    if read_config_or_exit_rtl_cfg(target, report, repo_dir).get("FpgaEn"):
+        return True
+    report.warning(
+        f"Target {target} has FpgaEn = 0 (config/target/{target}/rtl_cfg_pkg.sv)\n"
+    )
+    return False
