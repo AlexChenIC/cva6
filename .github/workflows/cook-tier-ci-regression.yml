@@ -117,31 +117,6 @@ jobs:
           tandem_args=()
           if [[ "$tandem_enabled" == True ]]; then
             tandem_args+=(--tandem-enabled)
-            # Same-shell setting inherited by this live regression's child processes.
-            stack_log="ci-results/stack-limit.log"
-            stack_soft_before=$(ulimit -S -s)
-            stack_hard_before=$(ulimit -H -s)
-            printf 'requested_kib=%s\nbefore_soft_kib=%s\nbefore_hard_kib=%s\n' \
-              "$TANDEM_STACK_KIB" "$stack_soft_before" "$stack_hard_before" | tee "$stack_log"
-            if [[ ! "$TANDEM_STACK_KIB" =~ ^[1-9][0-9]*$ ]]; then
-              echo "::error::TANDEM_STACK_KIB must be a positive finite integer" | tee -a "$stack_log"
-              exit 1
-            fi
-            if [[ "$stack_soft_before" != unlimited ]] && [ "$stack_soft_before" -lt "$TANDEM_STACK_KIB" ]; then
-              if ! ulimit -S -s "$TANDEM_STACK_KIB"; then
-                echo "::error::Cannot set tandem stack soft limit; check the hard limit" | tee -a "$stack_log"
-                exit 1
-              fi
-            fi
-            printf 'after_soft_kib=%s\nafter_hard_kib=%s\n' "$(ulimit -S -s)" "$(ulimit -H -s)" | tee -a "$stack_log"
-            python3 - <<'PY_STACK' | tee -a "$stack_log"
-          import os
-          import resource
-          soft, hard = resource.getrlimit(resource.RLIMIT_STACK)
-          print(f"child_soft_bytes={soft} child_hard_bytes={hard} (-1=unlimited)")
-          if soft != resource.RLIM_INFINITY and soft < int(os.environ["TANDEM_STACK_KIB"]) * 1024:
-              raise SystemExit("Tandem stack limit was not inherited")
-          PY_STACK
           fi
           python3 .github/cook/prepare_toolchains.py --output-dir "$CONFIG_DIR" "${tandem_args[@]}"
           python3 .github/cook/run-tier-regression.py --profile "$PROFILE"

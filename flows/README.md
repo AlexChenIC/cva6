@@ -1052,6 +1052,25 @@ the run rejects a model built for the other mode. It loads
 or preparing its tool configuration alone does not enable comparison.
 The default remains RTL-only.
 
+A live verdict requires a valid, positive instruction comparison count,
+zero mismatches and a successful native exit, in addition to the software
+result. Zero or missing comparison counts fail the recipe.
+
+The Cook live run launches the harness through a child-process stack
+wrapper. It sets a finite soft stack limit before executing the model,
+without changing the calling shell or raising the hard limit. Set
+`TANDEM_STACK_KIB` to a positive integer to override the initial
+262144 KiB (256 MiB) setting, also used by Actions. This is an empirical
+setting, not a measured minimum. An invalid setting or insufficient hard
+limit fails before launching the model. Ordinary RTL-only runs are not
+wrapped. Direct execution of the model outside Cook requires the caller
+to prepare its stack limit.
+
+```bash
+TANDEM_STACK_KIB=262144 ./cook.py verilator-testharness-run \
+  -t fpga_linux_cv32a6 -n rv32ui-p-add_0 --tandem-enabled
+```
+
 #### `verilator-testharness-comp`
 
 Build the Verilator model of the harness.

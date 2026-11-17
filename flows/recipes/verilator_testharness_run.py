@@ -21,6 +21,7 @@ from typing import Annotated
 import re
 import shutil
 import stat
+import sys
 
 import typer
 
@@ -246,6 +247,11 @@ def verilator_testharness_run(
     ]
     if tandem_enabled:
         sim_cmd.append(f"+config_file={spike_config}")
+        sim_cmd = [
+            sys.executable,
+            str(repo_dir / "flows" / "utils" / "tandem_launcher.py"),
+            *sim_cmd,
+        ]
 
     # ==========================================================
     # LAUNCH SIMULATION
