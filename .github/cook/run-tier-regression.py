@@ -117,20 +117,24 @@ def main():
             build / "elab" / f"sim_rtl_verilator_testharness{suffix}",
         )
         for suite, testlist in lists.items():
-            run(
-                f"batch-{suite}",
-                [
-                    "testharness-run-testlist",
-                    "--simulator",
-                    "verilator",
-                    "-l",
-                    testlist,
-                    *common,
-                ],
-                build
-                / "simulation"
-                / f"testharness_verilator_{Path(testlist).stem}{suffix}",
-            )
+            try:
+                run(
+                    f"batch-{suite}",
+                    [
+                        "testharness-run-testlist",
+                        "--simulator",
+                        "verilator",
+                        "-l",
+                        testlist,
+                        *common,
+                    ],
+                    build
+                    / "simulation"
+                    / f"testharness_verilator_{Path(testlist).stem}{suffix}",
+                )
+            except ValueError as error:
+                report.error(str(error))
+                print(f"Cook batch failed: {error}", file=sys.stderr)
     except (
         OSError,
         ValueError,
