@@ -146,6 +146,14 @@ jobs:
           python3 .github/cook/prepare_toolchains.py --output-dir "$CONFIG_DIR" "${tandem_args[@]}"
           python3 .github/cook/run-tier-regression.py --profile "$PROFILE"
 
+      - name: Check first Ctrl-C during JTAG wait
+        if: matrix.profile == 'rv64'
+        run: |
+          python3 flows/tests/check_harness_interrupt.py \
+            --binary build/profile_rva20s64/elab/sim_rtl_verilator_testharness/Variane_testharness \
+            --elf build/profile_rva20s64/compile/alu_chain_test_0/alu_chain_test_0.elf \
+            --report ci-results/harness-interrupt.json
+
       # ============================================================
       # Step 3: Generate reports and upload available results, even on failure
       # ============================================================

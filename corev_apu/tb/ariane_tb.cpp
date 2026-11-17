@@ -64,8 +64,8 @@ extern remote_bitbang_t * jtag;
 static volatile sig_atomic_t termination_signal = 0;
 
 void handle_sigterm(int sig) {
-  // A repeated signal must also escape blocking JTAG DPI calls.
-  if (termination_signal) _exit(128 + sig);
+  // Ctrl-C must escape a JTAG DPI wait on its first delivery.
+  if (sig == SIGINT || termination_signal) _exit(128 + sig);
   // Do not call FESVR or classify a forced stop as a successful tohost exit.
   termination_signal = sig;
 }
