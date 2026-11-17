@@ -313,7 +313,9 @@ def verilator_testharness_run(
 
     if tandem_enabled:
         try:
-            if analyze_tandem_report(tandem_report, report, blocking=True):
+            if analyze_tandem_report(
+                tandem_report, report, blocking=True, require_comparisons=True
+            ):
                 passed = False
         except OSError as error:
             report.error(f"Cannot read tandem report: {error}")

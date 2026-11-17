@@ -130,7 +130,9 @@ def check_tandem_verdict(tandem_report, spike_param_file, report):
         report.add_context({"tandem_mismatch": True})
 
 
-def analyze_tandem_report(tandem_report, report, blocking=True):
+def analyze_tandem_report(
+    tandem_report, report, blocking=True, require_comparisons=False
+):
     """
     Read `tandem_report.yml` back and record the tandem verdict.
 
@@ -146,6 +148,8 @@ def analyze_tandem_report(tandem_report, report, blocking=True):
         blocking: when False (ISA known to break Spike tandem, see
             check_tandem_verdict) tandem problems are recorded as
             warnings instead of errors and do not fail the recipe.
+        require_comparisons: require a positive instruction comparison count.
+            Opt-in so existing UVM callers retain their verdict policy.
 
     Returns True if a tandem problem was detected (mismatch, bad exit
     cause/code, missing or unreadable report), False otherwise.
@@ -193,6 +197,13 @@ def analyze_tandem_report(tandem_report, report, blocking=True):
         report.warning(f"Tandem mismatch description: {mismatch_description}")
 
     found = False
+    if require_comparisons and (
+        isinstance(data.get("instr_count"), bool)
+        or instr_count is None
+        or instr_count <= 0
+    ):
+        problem("Tandem requires a valid, positive instruction comparison count")
+        found = True
     if exit_cause != "SUCCESS":
         problem(f"Tandem exit cause: {exit_cause} (exit code: {exit_code})")
         found = True

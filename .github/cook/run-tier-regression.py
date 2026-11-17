@@ -81,10 +81,6 @@ def main():
             "Selected tests",
             {suite: names(read_yaml(Path(path))) for suite, path in lists.items()},
         )
-        if tandem_enabled:
-            report.warning(
-                "The upstream analyzer can accept zero comparisons; review native counts."
-            )
         common = [
             "-t",
             target,
