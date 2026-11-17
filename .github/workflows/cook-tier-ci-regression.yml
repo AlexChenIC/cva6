@@ -96,6 +96,14 @@ jobs:
           set -o pipefail
           env -u CONFIG_DIR python3 cook.py git-dependencies 2>&1 | tee ci-results/prepare-dependencies.log
           git submodule status --recursive > ci-results/submodules-after.txt
+      - name: Check Cook verdict and launcher contracts
+        run: |
+          python3 -m unittest discover -s flows/tests -p 'test_*.py' -v \
+            > ci-results/review-contract-tests.log 2>&1 || {
+              cat ci-results/review-contract-tests.log
+              exit 1
+            }
+          tail -5 ci-results/review-contract-tests.log
       - name: Prepare tools
         uses: ./.github/cook/setup
 

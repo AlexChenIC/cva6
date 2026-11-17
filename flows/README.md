@@ -1055,6 +1055,9 @@ The default remains RTL-only.
 A live verdict requires a valid, positive instruction comparison count,
 zero mismatches and a successful native exit, in addition to the software
 result. Zero or missing comparison counts fail the recipe.
+Proxy-kernel programs are rejected in live mode: they need the debug/HTIF
+transport that this tandem build disables. Ordinary TestHarness PK support
+is unchanged.
 
 The Cook live run launches the harness through a child-process stack
 wrapper. It sets a finite soft stack limit before executing the model,

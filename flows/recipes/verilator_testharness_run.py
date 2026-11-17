@@ -169,6 +169,12 @@ def verilator_testharness_run(
     # Options must be compatible with how the design was elaborated
     elab_manifest = read_manifest(elab_dir, report)
     compile_manifest = read_manifest(compile_dir, report)
+    if tandem_enabled and get_manifest_option(compile_manifest, "pk_dir"):
+        report.error_exit(
+            "Proxy-kernel programs are not supported with live Spike tandem; "
+            "run this program without --tandem-enabled",
+            env=True,
+        )
     build_options = (
         elab_manifest.get("options", {}) if isinstance(elab_manifest, dict) else {}
     )
