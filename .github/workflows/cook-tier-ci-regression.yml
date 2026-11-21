@@ -11,8 +11,8 @@
 #   Cook records software completion, applicable comparison results and failures.
 #
 # TRIGGER POLICY:
-#   push              -> Check updates to master_candidate.
-#   pull_request      -> Check PRs targeting master_candidate.
+#   push              -> Check updates to main.
+#   pull_request      -> Check PRs targeting main.
 #   workflow_dispatch -> On-demand rerun for manual validation.
 #
 # COVERED CONFIGURATIONS AND TESTS:
@@ -37,9 +37,9 @@ name: openhw-cva6-ci-tier1
 
 on:
   push:
-    branches: [master_candidate]
+    branches: [main]
   pull_request:
-    branches: [master_candidate]
+    branches: [main]
   # Dispatch requires this workflow on the repository's default branch.
   workflow_dispatch:
 permissions:
